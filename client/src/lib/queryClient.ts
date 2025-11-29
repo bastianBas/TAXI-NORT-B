@@ -1,6 +1,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-async function apiRequest({
+// AHORA EXPORTAMOS ESTA FUNCIÓN PARA QUE OTROS ARCHIVOS LA PUEDAN USAR
+export async function apiRequest({
   queryKey,
 }: {
   queryKey: readonly unknown[];
@@ -32,7 +33,6 @@ export const queryClient = new QueryClient({
   },
 });
 
-// ESTA ES LA FUNCIÓN QUE FALTABA Y QUE CAUSABA EL ERROR
 export async function apiRequestJson(
   path: string,
   method: string = "GET",
