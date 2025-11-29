@@ -1,76 +1,62 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
-  }
-}
-
-// ...existing code...
-export async function apiRequest(method: string, path: string, body?: any) {
-  const token = localStorage.getItem("token") || sessionStorage.getItem("token") || null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "include", // conserva cookies si el servidor las usa
-  });
-
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    // respuesta no-JSON
-  }
+async function apiRequest({
+  queryKey,
+}: {
+  queryKey: readonly unknown[];
+}) {
+  const [path] = queryKey as [string];
+  // IMPORTANTE: credentials: 'include' permite enviar la cookie de sesión
+  const res = await fetch(path, { credentials: 'include' });
 
   if (!res.ok) {
-    const message = data?.message || res.statusText || "Error en la petición";
-    throw new Error(message);
-  }
-
-  return data;
-}
-// ...existing code...
-
-type UnauthorizedBehavior = "returnNull" | "throw";
-export const getQueryFn: <T>(options: {
-  on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
-      credentials: "include",
-    });
-
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (res.status === 401) {
+      throw new Error("No autenticado");
     }
+    throw new Error(`Error ${res.status}: ${res.statusText}`);
+  }
 
-    await throwIfResNotOk(res);
-    return await res.json();
-  };
+  return res.json();
+}
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
-      refetchInterval: false,
+      queryFn: apiRequest as QueryFunction,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      retry: false, // No reintentar si falla por auth
     },
     mutations: {
       retry: false,
     },
   },
 });
+
+// ESTA ES LA FUNCIÓN QUE FALTABA Y QUE CAUSABA EL ERROR
+export async function apiRequestJson(
+  path: string,
+  method: string = "GET",
+  body?: any
+) {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "include", // IMPORTANTE: Enviar cookies
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error("No autenticado");
+    }
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || `Error ${res.status}`);
+  }
+
+  // Si no hay contenido (ej. logout), retornar null
+  if (res.status === 204) return null;
+  
+  return res.json().catch(() => null);
+}
