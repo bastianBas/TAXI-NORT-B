@@ -1,0 +1,160 @@
+🚖 Prompt completo para generar la app Taxi Nort S.A. (sin base de datos)
+
+Prompt:
+
+Create a complete full-stack fleet management web application for a public transport company named Taxi Nort S.A., focused on route slips (“hojas de ruta”), driver and vehicle management, payment tracking, and GPS simulation.
+
+🧩 General requirements:
+
+The app must run entirely locally — no external database, only local JSON files or in-memory storage.
+
+Include both frontend (React + TailwindCSS) and backend (Node.js + Express) in the same project.
+
+Structure the folders as:
+
+/server  → Node.js backend
+/client  → React frontend
+/data    → JSON storage files
+
+👥 Authentication system:
+
+Register and login users with JWT authentication and bcrypt password hashing.
+
+Store tokens in localStorage on the client.
+
+Support four roles:
+
+admin – full access
+
+operator – can manage drivers and vehicles
+
+finance – manages payments
+
+driver – can view assigned routes
+
+Include registration page (sign up) and login page.
+
+Seed one default admin user:
+
+Email: admin@taxinort.local
+
+Password: Admin123!
+
+🚗 Driver and Vehicle management:
+
+CRUD for drivers: name, RUT, phone, license number, status.
+
+CRUD for vehicles: plate, model, color, owner name, technical review date.
+
+Drivers can be assigned to vehicles.
+
+🧾 Route slips (“Hojas de ruta”):
+
+Allow creation of daily route slips with:
+
+Date, vehicle, driver, signature/stamp, payment status, and notes.
+
+Detect automatically if a route slip is duplicate (same driver, vehicle, and date).
+
+Validate missing route slips automatically.
+
+Save all route slips to /data/slips.json.
+
+💰 Payment system:
+
+Record daily payments (CLP $1,800) and monthly payments (CLP $43,200).
+
+Upload proof of payment (image or PDF) and store it locally in /uploads.
+
+Show payment history by driver or vehicle.
+
+Track pending and completed payments.
+
+📡 Real-time GPS simulation:
+
+Use Socket.io to simulate real-time GPS coordinates for vehicles.
+
+Each vehicle emits random coordinates every few seconds.
+
+Display all vehicles on a live map in the dashboard (use Leaflet or Google Maps).
+
+📊 Dashboard and reports:
+
+Interactive dashboard showing:
+
+Total vehicles
+
+Active drivers
+
+Pending payments
+
+Compliance percentage
+
+Include real-time map of vehicle locations.
+
+🧾 Audit log:
+
+Track every action (create, update, delete) across users, vehicles, and payments.
+
+Save logs in /data/audit.json with timestamp, user, action, and entity affected.
+
+🖥️ Frontend (React + TailwindCSS):
+
+Pages required:
+
+Login / Register
+
+Dashboard (with map and KPIs)
+
+Drivers management
+
+Vehicles management
+
+Route slips management
+
+Payments
+
+Audit log view
+
+Include navigation bar and sidebar.
+
+Make the design responsive and clean.
+
+⚙️ Backend (Node.js + Express):
+
+REST API endpoints for:
+
+/api/auth (register, login, verify token)
+
+/api/drivers
+
+/api/vehicles
+
+/api/slips
+
+/api/payments
+
+/api/audit
+
+/api/gps (Socket.io endpoint for live updates)
+
+Use local JSON files inside /data for all CRUD operations.
+
+Store uploads in /uploads.
+
+🚀 Run instructions:
+
+Provide a README.md with these steps:
+
+# Run backend
+cd server
+npm install
+npm start
+
+# Run frontend
+cd ../client
+npm install
+npm start
+
+
+The app must work entirely offline, store all data locally, and simulate all GPS and backend operations.
