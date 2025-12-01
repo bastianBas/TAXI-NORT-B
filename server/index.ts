@@ -2,26 +2,41 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import cookieParser from "cookie-parser"; // Reemplazo de session
+import cookieSession from "cookie-session"; 
+import passport from "passport";
 import cors from "cors";
 
 const app = express();
 
-// 1. CONFIANZA EN PROXY (Render)
+// Confianza en proxy (Vital para Render)
 app.set("trust proxy", 1);
 
-// 2. MIDDLEWARES BÁSICOS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 3. PARSEADOR DE COOKIES (Vital para leer el Token JWT)
-// Esto nos permite leer req.cookies.token en auth.ts
-app.use(cookieParser());
+// --- CONFIGURACIÓN DE SESIÓN (COOKIE-SESSION) ---
+app.use(
+  cookieSession({
+    name: "session",
+    keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
+    
+    // CAMBIO IMPORTANTE: Ponemos 'false' en secure para evitar problemas con proxies.
+    // Render ya encripta la conexión con el usuario, así que esto es seguro.
+    secure: false, 
+    
+    // Usamos 'lax' para permitir la navegación normal
+    sameSite: "lax",
+    
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 horas
+  })
+);
 
-// (Nota: Ya no hay app.use(session) ni passport.initialize aquí)
+app.use(passport.initialize());
+app.use(passport.session());
 
-// 4. LOGGING
+// Middleware de Logging
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -47,7 +62,6 @@ app.use((req, res, next) => {
   try {
     const server = await registerRoutes(app);
 
-    // Manejo de errores global
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
