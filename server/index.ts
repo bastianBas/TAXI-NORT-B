@@ -9,15 +9,15 @@ import cors from "cors";
 
 const app = express();
 
-// 1. CONFIANZA EN PROXY (CRÍTICO PARA RENDER)
-// Confiamos en el proxy de Render para manejar HTTPS
-app.set("trust proxy", 1);
+// 1. CONFIANZA TOTAL EN PROXY (CRÍTICO PARA RENDER)
+// Usamos 'true' en lugar de '1' para confiar en todos los saltos que hace Render.
+app.set("trust proxy", true);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 2. CONFIGURACIÓN DE SESIÓN AJUSTADA
+// 2. CONFIGURACIÓN DE SESIÓN PERMISIVA
 const MemoryStore = createMemoryStore(session);
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -25,15 +25,13 @@ app.use(session({
   store: new MemoryStore({ checkPeriod: 86400000 }),
   secret: process.env.SESSION_SECRET || "taxinort_secret_key",
   resave: false,
-  saveUninitialized: false, // Importante: false para no crear sesiones vacías
+  saveUninitialized: false,
   cookie: {
-    // ESTRATEGIA HÍBRIDA:
-    // En Render, el tráfico interno a veces se ve como HTTP aunque fuera sea HTTPS.
-    // Usar secure: false con sameSite: 'lax' suele ser lo más compatible para evitar problemas de login.
-    // Si esto falla, la única opción segura es secure: true + dominio personalizado.
-    secure: isProduction, // Intentemos de nuevo con true, ya que 'trust proxy' está activo
-    httpOnly: true, // Protege contra XSS
-    sameSite: "lax", // Permite navegación normal
+    // CAMBIO IMPORTANTE: Ponemos 'false' explícitamente para evitar problemas con SSL en Render.
+    // Al estar detrás de un proxy HTTPS, esto asegura que la cookie no se bloquee.
+    secure: false, 
+    httpOnly: true,
+    sameSite: "lax", 
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
     path: "/"
   }
