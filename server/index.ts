@@ -89,34 +89,3 @@ app.use((req, res, next) => {
     console.error("❌ Error fatal al iniciar:", err);
   }
 })();
-```
-
-### Paso 2: Asegurar la Respuesta de Login (`server/auth.ts`)
-
-Asegúrate de que `server/auth.ts` esté **exactamente** como te lo di en la última respuesta (con los logs de depuración y el `req.session.save`).
-
-Si tienes dudas, aquí te dejo el bloque clave que **debe** estar en `server/auth.ts`:
-
-```typescript
-  // En server/auth.ts
-  app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: User, info: any) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Error de autenticación" });
-      
-      req.login(user, (err) => {
-        if (err) return next(err);
-        
-        // ESTO ES LO QUE HACE QUE LA SESIÓN SE GUARDE SÍ O SÍ
-        req.session.save((err) => {
-          if (err) {
-            console.error("❌ Error guardando sesión:", err);
-            return next(err);
-          }
-          console.log(`✅ Sesión guardada para ${user.email}`);
-          const { password, ...userWithoutPassword } = user;
-          res.json({ user: userWithoutPassword });
-        });
-      });
-    })(req, res, next);
-  });
