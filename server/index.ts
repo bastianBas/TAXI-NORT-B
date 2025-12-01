@@ -2,41 +2,34 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import session from "express-session";
-import createMemoryStore from "memorystore";
+import cookieSession from "cookie-session"; // USAMOS ESTA LIBRERÍA AHORA
 import passport from "passport";
 import cors from "cors";
 
 const app = express();
 
-// 1. CONFIANZA TOTAL EN PROXY (CRÍTICO PARA RENDER)
-// Usamos 'true' en lugar de '1' para confiar en todos los saltos que hace Render.
-app.set("trust proxy", true);
+// Confianza en proxy (Vital para Render)
+app.set("trust proxy", 1);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 2. CONFIGURACIÓN DE SESIÓN PERMISIVA
-const MemoryStore = createMemoryStore(session);
-const isProduction = process.env.NODE_ENV === "production";
-
-app.use(session({
-  store: new MemoryStore({ checkPeriod: 86400000 }),
-  secret: process.env.SESSION_SECRET || "taxinort_secret_key",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    // CAMBIO IMPORTANTE: Ponemos 'false' explícitamente para evitar problemas con SSL en Render.
-    // Al estar detrás de un proxy HTTPS, esto asegura que la cookie no se bloquee.
-    secure: false, 
-    httpOnly: true,
-    sameSite: "lax", 
+// --- NUEVA CONFIGURACIÓN DE SESIÓN (COOKIE-SESSION) ---
+// Esto guarda los datos de sesión en la cookie misma, en lugar de en la memoria del servidor.
+// Es mucho más estable para reinicios y proxies.
+app.use(
+  cookieSession({
+    name: "session",
+    keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-    path: "/"
-  }
-}));
+    secure: process.env.NODE_ENV === "production", // True en Render
+    sameSite: "lax",
+    httpOnly: true,
+  })
+);
 
+// Mantenemos passport igual, pero ahora se engancha a la nueva cookie
 app.use(passport.initialize());
 app.use(passport.session());
 
