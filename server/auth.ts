@@ -8,6 +8,11 @@ const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_super_secret";
 
 // Middleware para verificar JWT
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
+  // 1. Verificación de seguridad: si no hay cookies parseadas, no hay token.
+  if (!req.cookies) {
+    return res.status(401).json({ message: "No autenticado (Sin cookies)" });
+  }
+
   const token = req.cookies.token;
 
   if (!token) {
@@ -131,14 +136,13 @@ export function setupAuth(app: Express) {
   // APLICAR MIDDLEWARE GLOBALMENTE para que req.user exista en las otras rutas
   // (Esto es un truco para no reescribir routes.ts completo)
   app.use("/api/*", (req, res, next) => {
-    if (req.path.startsWith("/api/auth")) return next(); // Saltar auth routes
+    // Si la ruta ya empieza por /api/auth, no hacemos nada (ya se maneja arriba)
+    if (req.path.startsWith("/api/auth")) return next();
     
-    // Intentar leer el token si existe, pero no bloquear (para rutas públicas si hubiera)
-    // Para rutas privadas, usamos 'isAuthenticated()' que inyectamos aquí.
-    const token = req.cookies.token;
-    if (token) {
+    // Intentar leer el token si existe
+    if (req.cookies && req.cookies.token) {
         try {
-            const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+            const decoded = jwt.verify(req.cookies.token, JWT_SECRET) as { id: string };
             storage.getUser(decoded.id).then(user => {
                 if (user) {
                     req.user = user;
