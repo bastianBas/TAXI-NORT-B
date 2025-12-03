@@ -2,21 +2,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copiamos solo el package.json (ignoramos el lockfile antiguo por seguridad)
-COPY package.json ./
+# Copy package files first to leverage Docker cache
+COPY package*.json ./
 
-# Instalamos las dependencias desde cero basándonos en el package.json actualizado
-# Esto evita problemas si el package-lock.json local estaba desactualizado
+# Install dependencies including devDependencies (needed for build tools like esbuild/vite)
+# We ensure NODE_ENV is NOT set to production here to force full install
 RUN npm install
 
-# Copiamos el resto del código
+# Copy the rest of the application code
 COPY . .
 
-# Construimos la aplicación
+# Build the application (Frontend and Backend)
 RUN npm run build
 
-# Exponemos el puerto 8080 (Estándar de Cloud Run)
+# Expose port 8080 (Cloud Run default)
 EXPOSE 8080
 
-# Comando de inicio
+# Start the application
 CMD ["npm", "run", "start"]
