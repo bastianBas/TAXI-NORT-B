@@ -2,18 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+# Copiamos solo el package.json (ignoramos el lockfile antiguo por seguridad)
+COPY package.json ./
 
-# Instalar todas las dependencias
+# Instalamos las dependencias desde cero basándonos en el package.json actualizado
+# Esto evita problemas si el package-lock.json local estaba desactualizado
 RUN npm install
 
+# Copiamos el resto del código
 COPY . .
 
-# Construir la aplicación (Frontend y Backend)
+# Construimos la aplicación
 RUN npm run build
 
-# Exponemos el puerto 8080 como buena práctica para Cloud Run
-# (Aunque tu app leerá la variable PORT automáticamente)
+# Exponemos el puerto 8080 (Estándar de Cloud Run)
 EXPOSE 8080
 
 # Comando de inicio
