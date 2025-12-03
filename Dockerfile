@@ -1,23 +1,20 @@
-# Usamos una imagen ligera de Node.js
 FROM node:20-alpine
 
-# Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de configuración primero para aprovechar caché
 COPY package*.json ./
 
-# Instalar todas las dependencias (incluyendo dev para construir)
+# Instalar todas las dependencias
 RUN npm install
 
-# Copiar el resto del código
 COPY . .
 
-# Construir la aplicación (Frontend + Backend)
+# Construir la aplicación (Frontend y Backend)
 RUN npm run build
 
-# Exponer el puerto
-EXPOSE 5000
+# Exponemos el puerto 8080 como buena práctica para Cloud Run
+# (Aunque tu app leerá la variable PORT automáticamente)
+EXPOSE 8080
 
-# Comando para iniciar
+# Comando de inicio
 CMD ["npm", "run", "start"]
