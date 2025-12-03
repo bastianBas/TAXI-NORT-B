@@ -2,23 +2,38 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import cookieParser from "cookie-parser"; 
+import cookieSession from "cookie-session"; // Usamos cookie-session
+import passport from "passport";
 import cors from "cors";
 
 const app = express();
 
-// 1. CONFIANZA EN PROXY (Vital para Render)
+// Confianza en proxy (Vital para Render)
 app.set("trust proxy", 1);
 
-// 2. MIDDLEWARES BÁSICOS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 3. PARSEADOR DE COOKIES (Vital para leer el Token JWT)
-app.use(cookieParser());
+// --- NUEVA CONFIGURACIÓN DE SESIÓN (COOKIE-SESSION) ---
+// Esto guarda los datos de sesión en la cookie misma.
+// Es mucho más estable para reinicios y proxies.
+app.use(
+  cookieSession({
+    name: "session",
+    keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
+    maxAge: 24 * 60 * 60 * 1000, // 24 horas
+    secure: process.env.NODE_ENV === "production", // True en Render
+    sameSite: "lax",
+    httpOnly: true,
+  })
+);
 
-// 4. LOGGING
+// Inicializar Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Middleware de Logging
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
