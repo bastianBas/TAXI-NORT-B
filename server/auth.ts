@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
 export function setupAuth(app: Express) {
-  // Configuración de la Estrategia Local (Login con usuario y contraseña)
+  // 1. Configuración de Passport (Estrategia Local)
   passport.use(
     new LocalStrategy(
       { usernameField: "email" },
@@ -37,16 +37,13 @@ export function setupAuth(app: Express) {
   );
 
   passport.serializeUser((user, done) => {
-    // Guardamos el ID en la sesión
     done(null, (user as User).id);
   });
   
   passport.deserializeUser(async (id: string, done) => {
     try {
-      // Recuperamos el usuario usando el ID
       const user = await storage.getUser(id);
       if (!user) {
-        console.warn(`⚠️ [Session] Usuario ID ${id} ya no existe en DB.`);
         return done(null, false);
       }
       done(null, user);
@@ -77,12 +74,10 @@ export function setupAuth(app: Express) {
       req.login(user, (err) => {
         if (err) return next(err);
         
-        // CAMBIO IMPORTANTE: Forzar guardado de sesión
-        req.session.save((err) => {
-          if (err) return next(err);
-          const { password, ...userWithoutPassword } = user;
-          res.status(201).json({ user: userWithoutPassword });
-        });
+        // CON COOKIE-SESSION NO NECESITAMOS req.session.save()
+        // La sesión se guarda automáticamente al enviar la respuesta.
+        const { password, ...userWithoutPassword } = user;
+        res.status(201).json({ user: userWithoutPassword });
       });
     } catch (err) {
       next(err);
@@ -98,16 +93,10 @@ export function setupAuth(app: Express) {
       req.login(user, (err) => {
         if (err) return next(err);
         
-        // CAMBIO IMPORTANTE: Forzar guardado de sesión antes de responder
-        req.session.save((err) => {
-          if (err) {
-            console.error("❌ Error guardando sesión:", err);
-            return next(err);
-          }
-          console.log(`✅ [Login] Sesión guardada y cookie enviada para ${user.email}`);
-          const { password, ...userWithoutPassword } = user;
-          res.json({ user: userWithoutPassword });
-        });
+        // CON COOKIE-SESSION NO NECESITAMOS req.session.save()
+        console.log(`✅ [Login] Sesión iniciada para ${user.email}`);
+        const { password, ...userWithoutPassword } = user;
+        res.json({ user: userWithoutPassword });
       });
     })(req, res, next);
   });
@@ -116,10 +105,10 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
-      req.session.save((err) => { // Aseguramos que el cierre se guarde
-        if (err) return next(err);
-        res.sendStatus(200);
-      });
+      // Limpiamos explícitamente la cookie poniendo la sesión en null
+      // Esto es específico para cookie-session
+      req.session = null;
+      res.sendStatus(200);
     });
   });
 
