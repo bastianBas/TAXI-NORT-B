@@ -2,21 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files first to leverage Docker cache
-COPY package*.json ./
+# Copiamos package.json
+COPY package.json ./
 
-# Install dependencies including devDependencies (needed for build tools like esbuild/vite)
-# We ensure NODE_ENV is NOT set to production here to force full install
+# Instalamos TODO (dependencies y devDependencies) para que el build funcione
 RUN npm install
 
-# Copy the rest of the application code
+# Copiamos el código
 COPY . .
 
-# Build the application (Frontend and Backend)
+# Construimos la web
 RUN npm run build
 
-# Expose port 8080 (Cloud Run default)
+# Exponemos puerto 8080
 EXPOSE 8080
 
-# Start the application
+# Arrancamos
 CMD ["npm", "run", "start"]
