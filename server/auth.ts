@@ -1,15 +1,14 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express, Request, Response, NextFunction } from "express";
+import { Express } from "express";
 import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
 export function setupAuth(app: Express) {
-  // 1. Configuración de Passport
   passport.use(
     new LocalStrategy(
-      { usernameField: "email" }, // IMPORTANTE: Le decimos que usamos 'email' en lugar de 'username'
+      { usernameField: "email" },
       async (email, password, done) => {
         try {
           const cleanEmail = email.trim();
@@ -17,7 +16,7 @@ export function setupAuth(app: Express) {
           
           const user = await storage.getUserByEmail(cleanEmail);
           if (!user) {
-            console.log(`❌ [Login] Usuario no encontrado.`);
+            console.log(`❌ [Login] Usuario no encontrado: ${cleanEmail}`);
             return done(null, false, { message: "Usuario no encontrado" });
           }
 
@@ -27,9 +26,10 @@ export function setupAuth(app: Express) {
             return done(null, false, { message: "Credenciales inválidas" });
           }
 
-          console.log(`✅ [Login] Éxito.`);
+          console.log(`✅ [Login] Credenciales válidas. Usuario ID: ${user.id}`);
           return done(null, user);
         } catch (err) {
+          console.error("❌ [Login] Error interno:", err);
           return done(err);
         }
       }
@@ -37,21 +37,29 @@ export function setupAuth(app: Express) {
   );
 
   passport.serializeUser((user, done) => {
+    // Guardamos el ID en la sesión
+    console.log(`💾 [Session] Serializando usuario ID: ${(user as User).id}`);
     done(null, (user as User).id);
   });
   
   passport.deserializeUser(async (id: string, done) => {
     try {
+      // Intentamos recuperar el usuario
+      // console.log(`📂 [Session] Deserializando usuario ID: ${id}`); // Descomentar si necesitas mucho detalle
       const user = await storage.getUser(id);
-      done(null, user || false); // Si no existe, devuelve false
+      if (!user) {
+        console.warn(`⚠️ [Session] Usuario ID ${id} no encontrado en DB (posiblemente borrado).`);
+        return done(null, false);
+      }
+      done(null, user);
     } catch (err) {
+      console.error(`❌ [Session] Error al deserializar:`, err);
       done(err);
     }
   });
 
   // --- RUTAS ---
 
-  // Registro
   app.post("/api/auth/register", async (req, res, next) => {
     try {
       const email = req.body.email.trim();
@@ -78,7 +86,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Login
   app.post("/api/auth/login", (req, res, next) => {
     passport.authenticate("local", (err: any, user: User, info: any) => {
       if (err) return next(err);
@@ -86,24 +93,27 @@ export function setupAuth(app: Express) {
       
       req.login(user, (err) => {
         if (err) return next(err);
+        
+        console.log(`✅ [Login] Sesión iniciada para ${user.email}. Cookie establecida.`);
         const { password, ...userWithoutPassword } = user;
         res.json({ user: userWithoutPassword });
       });
     })(req, res, next);
   });
 
-  // Logout
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
-      req.session = null; // Limpiar cookie
+      req.session = null; 
       res.sendStatus(200);
     });
   });
 
-  // Obtener usuario actual
   app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "No autenticado" });
+    if (!req.isAuthenticated()) {
+      // Si falla, los logs del middleware index.ts nos dirán si llegó la cookie o no
+      return res.status(401).json({ message: "No autenticado" });
+    }
     const { password, ...userWithoutPassword } = req.user as User;
     res.json(userWithoutPassword);
   });

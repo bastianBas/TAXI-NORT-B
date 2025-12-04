@@ -8,43 +8,48 @@ import cors from "cors";
 
 const app = express();
 
-// 1. CONFIANZA EN PROXY (CRÍTICO PARA CLOUD RUN)
-// 'true' le dice a Express que confíe en los encabezados del balanceador de carga de Google
-app.set("trust proxy", true);
+// Confianza en proxy (Vital para Cloud Run)
+app.set("trust proxy", 1);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 2. CONFIGURACIÓN DE SESIÓN PARA LA NUBE
-// Esta configuración es la más compatible para evitar bloqueos de cookies en dominios .run.app
+// Configuración de Sesión
+// Vamos a usar 'lax' que es más tolerante para navegación directa
+const isProduction = process.env.NODE_ENV === "production";
+
 app.use(
   cookieSession({
     name: "session",
     keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-    
-    // CONFIGURACIÓN CLAVE PARA CLOUD RUN:
-    // secure: true -> Requerido porque Cloud Run siempre es HTTPS.
-    // sameSite: 'none' -> Permite que la cookie funcione mejor en ciertos contextos de red/proxies.
-    secure: true, 
-    sameSite: "none",
+    // IMPORTANTE: secure: true en producción es necesario.
+    // Pero asegurémonos de que 'trust proxy' esté funcionando.
+    secure: isProduction, 
+    sameSite: "lax", // Cambiamos 'none' a 'lax' para probar compatibilidad estándar
     httpOnly: true,
+    path: "/",
   })
 );
 
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Middleware de Logging
+// Middleware de Logging detallado para depurar cookies
 app.use((req, res, next) => {
   const start = Date.now();
+  
+  // Log de entrada para ver si llegan cookies
+  if (req.path.startsWith("/api")) {
+    const hasSession = req.session && req.session.passport && req.session.passport.user;
+    console.log(`📥 [Request] ${req.method} ${req.path} - Cookie Session: ${hasSession ? 'SÍ (ID: ' + req.session.passport.user + ')' : 'NO'}`);
+  }
+
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (req.path.startsWith("/api")) {
-      // Logueamos si hay usuario para saber si la cookie funcionó
-      const userLog = req.user ? `[User: ${(req.user as any).email}]` : "[No User]";
-      console.log(`${req.method} ${req.path} ${res.statusCode} ${userLog} in ${duration}ms`);
+      console.log(`📤 [Response] ${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
     }
   });
   next();
@@ -73,10 +78,10 @@ app.use((req, res, next) => {
     const port = parseInt(process.env.PORT || '8080', 10);
     
     server.listen(port, '0.0.0.0', () => {
-      console.log(`🚀 [Startup] Servidor listo en puerto ${port}`);
+      console.log(`🚀 [Startup] Servidor web LISTO y escuchando en puerto ${port}`);
     });
   } catch (err) {
-    console.error("❌ [Startup] Error fatal:", err);
+    console.error("❌ [Startup] Error fatal al iniciar:", err);
     process.exit(1);
   }
 })();
