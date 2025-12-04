@@ -19,27 +19,27 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
-    staleTime: Infinity, // Importante para evitar refetching innecesario
+    staleTime: Infinity,
   });
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // Validar que la respuesta tenga el usuario
-      if (!res.user) {
-        throw new Error("Respuesta de login inválida");
+      // GUARDAR TOKEN EN LOCALSTORAGE
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
       }
       return res.user;
     },
     onSuccess: (user: User) => {
-      // Actualizar manualmente la cache de React Query con el usuario recibido
       queryClient.setQueryData(["/api/user"], user);
-      
       toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
+      setLocation("/");
     },
     onError: (error: Error) => {
       toast({
@@ -55,21 +55,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiRequestJson("/api/auth/logout", "POST");
     },
     onSuccess: () => {
+      // BORRAR TOKEN AL SALIR
+      localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
       queryClient.removeQueries({ queryKey: ["/api/drivers"] });
       queryClient.removeQueries({ queryKey: ["/api/vehicles"] });
       toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
+      setLocation("/login");
     },
   });
 
   const registerMutation = useMutation({
     mutationFn: async (newUser: InsertUser) => {
       const res = await apiRequestJson("/api/auth/register", "POST", newUser);
+      // GUARDAR TOKEN AL REGISTRARSE
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Cuenta creada", description: "Bienvenido a TaxiNort" });
+      setLocation("/");
     },
     onError: (error: Error) => {
       toast({
@@ -104,7 +112,6 @@ export function useAuth() {
   return context;
 }
 
-// --- ESTE ES EL COMPONENTE QUE FALTABA Y CAUSABA EL ERROR ---
 export function ProtectedRoute({
   path,
   component: Component,
@@ -129,8 +136,9 @@ export function ProtectedRoute({
     return (
       <Route path={path}>
         <div className="flex items-center justify-center min-h-screen">
-          Redirigiendo...
-          <RedirectToLogin setLocation={setLocation} />
+           Redirigiendo...
+           {/* Usamos un efecto para evitar problemas de renderizado */}
+           <RedirectToLogin setLocation={setLocation} />
         </div>
       </Route>
     );
@@ -139,7 +147,6 @@ export function ProtectedRoute({
   return <Route path={path} component={Component} />;
 }
 
-// Componente auxiliar para redirección segura
 function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
   useEffect(() => {
     setLocation("/login");

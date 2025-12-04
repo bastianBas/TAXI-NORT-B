@@ -1,14 +1,27 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// AHORA EXPORTAMOS ESTA FUNCIÓN PARA QUE OTROS ARCHIVOS LA PUEDAN USAR
+// Función para obtener el token guardado
+function getToken() {
+  return localStorage.getItem("auth_token");
+}
+
+// Función helper para headers
+function getAuthHeaders() {
+  const token = getToken();
+  return token ? { "Authorization": `Bearer ${token}` } : {};
+}
+
 export async function apiRequest({
   queryKey,
 }: {
   queryKey: readonly unknown[];
 }) {
   const [path] = queryKey as [string];
-  // IMPORTANTE: credentials: 'include' permite enviar la cookie de sesión
-  const res = await fetch(path, { credentials: 'include' });
+  
+  // Enviamos el token en el header Authorization
+  const res = await fetch(path, {
+    headers: { ...getAuthHeaders() }
+  });
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -25,7 +38,7 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: apiRequest as QueryFunction,
       refetchOnWindowFocus: false,
-      retry: false, // No reintentar si falla por auth
+      retry: false, 
     },
     mutations: {
       retry: false,
@@ -42,20 +55,21 @@ export async function apiRequestJson(
     method,
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders() // Inyectamos el token aquí también
     },
     body: body ? JSON.stringify(body) : undefined,
-    credentials: "include", // IMPORTANTE: Enviar cookies
   });
 
   if (!res.ok) {
     if (res.status === 401) {
+      // Si falla por auth, borramos el token local para limpiar estado
+      localStorage.removeItem("auth_token");
       throw new Error("No autenticado");
     }
     const data = await res.json().catch(() => ({}));
     throw new Error(data.message || `Error ${res.status}`);
   }
 
-  // Si no hay contenido (ej. logout), retornar null
   if (res.status === 204) return null;
   
   return res.json().catch(() => null);
