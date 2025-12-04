@@ -2,54 +2,39 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import cookieSession from "cookie-session";
-import passport from "passport";
+import cookieParser from "cookie-parser"; 
 import cors from "cors";
 
 const app = express();
 
-// Confianza en proxy (Vital para Cloud Run)
-app.set("trust proxy", 1);
+// 1. CONFIANZA EN PROXY (Vital para Cloud Run)
+app.set("trust proxy", true);
 
+// 2. MIDDLEWARES BÁSICOS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Configuración de Sesión
-// Vamos a usar 'lax' que es más tolerante para navegación directa
-const isProduction = process.env.NODE_ENV === "production";
+// 3. PARSEADOR DE COOKIES (Vital para leer el Token JWT)
+app.use(cookieParser());
 
-app.use(
-  cookieSession({
-    name: "session",
-    keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
-    maxAge: 24 * 60 * 60 * 1000, // 24 horas
-    // IMPORTANTE: secure: true en producción es necesario.
-    // Pero asegurémonos de que 'trust proxy' esté funcionando.
-    secure: isProduction, 
-    sameSite: "lax", // Cambiamos 'none' a 'lax' para probar compatibilidad estándar
-    httpOnly: true,
-    path: "/",
-  })
-);
-
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Middleware de Logging detallado para depurar cookies
+// 4. LOGGING
 app.use((req, res, next) => {
   const start = Date.now();
-  
-  // Log de entrada para ver si llegan cookies
-  if (req.path.startsWith("/api")) {
-    const hasSession = req.session && req.session.passport && req.session.passport.user;
-    console.log(`📥 [Request] ${req.method} ${req.path} - Cookie Session: ${hasSession ? 'SÍ (ID: ' + req.session.passport.user + ')' : 'NO'}`);
-  }
-
+  const path = req.path;
+  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (req.path.startsWith("/api")) {
-      console.log(`📤 [Response] ${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
+    if (path.startsWith("/api")) {
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (logLine.length > 80) logLine = logLine.slice(0, 79) + "…";
+      console.log(logLine); 
     }
   });
   next();

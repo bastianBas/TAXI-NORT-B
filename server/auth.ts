@@ -1,69 +1,60 @@
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-export function setupAuth(app: Express) {
-  passport.use(
-    new LocalStrategy(
-      { usernameField: "email" },
-      async (email, password, done) => {
-        try {
-          const cleanEmail = email.trim();
-          console.log(`🔍 [Login] Intentando: ${cleanEmail}`);
-          
-          const user = await storage.getUserByEmail(cleanEmail);
-          if (!user) {
-            console.log(`❌ [Login] Usuario no encontrado: ${cleanEmail}`);
-            return done(null, false, { message: "Usuario no encontrado" });
-          }
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_super_secret";
 
-          const isValid = await bcrypt.compare(password, user.password);
-          if (!isValid) {
-            console.log(`❌ [Login] Password incorrecto.`);
-            return done(null, false, { message: "Credenciales inválidas" });
-          }
+// Middleware para verificar JWT
+export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
+  // Intentar leer el token de la cookie
+  const token = req.cookies?.token;
 
-          console.log(`✅ [Login] Credenciales válidas. Usuario ID: ${user.id}`);
-          return done(null, user);
-        } catch (err) {
-          console.error("❌ [Login] Error interno:", err);
-          return done(err);
-        }
-      }
-    )
-  );
+  if (!token) {
+    return res.status(401).json({ message: "No autenticado (Sin token)" });
+  }
 
-  passport.serializeUser((user, done) => {
-    // Guardamos el ID en la sesión
-    console.log(`💾 [Session] Serializando usuario ID: ${(user as User).id}`);
-    done(null, (user as User).id);
-  });
-  
-  passport.deserializeUser(async (id: string, done) => {
-    try {
-      // Intentamos recuperar el usuario
-      // console.log(`📂 [Session] Deserializando usuario ID: ${id}`); // Descomentar si necesitas mucho detalle
-      const user = await storage.getUser(id);
-      if (!user) {
-        console.warn(`⚠️ [Session] Usuario ID ${id} no encontrado en DB (posiblemente borrado).`);
-        return done(null, false);
-      }
-      done(null, user);
-    } catch (err) {
-      console.error(`❌ [Session] Error al deserializar:`, err);
-      done(err);
+  try {
+    // Verificar y decodificar token
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    
+    // Buscar usuario en DB
+    const user = await storage.getUser(decoded.id);
+    
+    if (!user) {
+      return res.status(401).json({ message: "Usuario inválido" });
     }
-  });
 
-  // --- RUTAS ---
+    // Inyectar usuario en la request
+    (req as any).user = user;
+    (req as any).isAuthenticated = () => true;
+    next();
+  } catch (error) {
+    console.error("JWT Error:", error);
+    return res.status(401).json({ message: "Token inválido o expirado" });
+  }
+}
 
-  app.post("/api/auth/register", async (req, res, next) => {
+// Extender tipos de Express para TypeScript
+declare global {
+  namespace Express {
+    interface Request {
+      user?: User;
+      isAuthenticated(): boolean;
+    }
+  }
+}
+
+export function setupAuth(app: Express) {
+  // --- RUTAS DE AUTENTICACIÓN ---
+
+  // Registro
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      const email = req.body.email.trim();
+      const email = req.body.email.trim().toLowerCase();
       const existingUser = await storage.getUserByEmail(email);
+      
       if (existingUser) {
         return res.status(400).json({ message: "El email ya está registrado" });
       }
@@ -76,45 +67,97 @@ export function setupAuth(app: Express) {
         role: "driver" 
       });
 
-      req.login(user, (err) => {
-        if (err) return next(err);
-        const { password, ...userWithoutPassword } = user;
-        res.status(201).json({ user: userWithoutPassword });
+      // Crear Token JWT
+      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "24h" });
+
+      // Enviar Cookie (Configuración ULTRA compatible)
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // Para evitar problemas con proxies que terminan SSL
+        sameSite: "lax",
+        maxAge: 24 * 60 * 60 * 1000
       });
+
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json({ user: userWithoutPassword });
     } catch (err) {
-      next(err);
+      res.status(500).json({ message: "Error en registro" });
     }
   });
 
-  app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: User, info: any) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Error de autenticación" });
+  // Login
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const email = req.body.email.trim().toLowerCase();
+      console.log(`🔍 [JWT Login] Intentando: ${email}`);
       
-      req.login(user, (err) => {
-        if (err) return next(err);
-        
-        console.log(`✅ [Login] Sesión iniciada para ${user.email}. Cookie establecida.`);
-        const { password, ...userWithoutPassword } = user;
-        res.json({ user: userWithoutPassword });
+      const user = await storage.getUserByEmail(email);
+
+      if (!user) {
+        console.log("❌ Usuario no encontrado");
+        return res.status(401).json({ message: "Usuario no encontrado" });
+      }
+
+      const isValid = await bcrypt.compare(req.body.password, user.password);
+      if (!isValid) {
+        console.log("❌ Contraseña incorrecta");
+        return res.status(401).json({ message: "Contraseña incorrecta" });
+      }
+
+      // Crear Token JWT
+      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "24h" });
+
+      // Enviar Cookie
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // Importante para Cloud Run
+        sameSite: "lax",
+        maxAge: 24 * 60 * 60 * 1000
       });
-    })(req, res, next);
-  });
 
-  app.post("/api/auth/logout", (req, res, next) => {
-    req.logout((err) => {
-      if (err) return next(err);
-      req.session = null; 
-      res.sendStatus(200);
-    });
-  });
+      console.log(`✅ [JWT Login] Éxito para ${email}`);
+      const { password, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
 
-  app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) {
-      // Si falla, los logs del middleware index.ts nos dirán si llegó la cookie o no
-      return res.status(401).json({ message: "No autenticado" });
+    } catch (err) {
+      console.error("Login error:", err);
+      res.status(500).json({ message: "Error interno" });
     }
-    const { password, ...userWithoutPassword } = req.user as User;
+  });
+
+  // Logout
+  app.post("/api/auth/logout", (req, res) => {
+    res.clearCookie("token"); // Borrar la cookie
+    res.sendStatus(200);
+  });
+
+  // User info (Usando middleware verifyAuth)
+  app.get("/api/user", verifyAuth, (req, res) => {
+    const { password, ...userWithoutPassword } = req.user!;
     res.json(userWithoutPassword);
+  });
+  
+  // Middleware global para inyectar usuario en otras rutas
+  app.use("/api/*", async (req, res, next) => {
+    if (req.path.startsWith("/api/auth") || req.path === "/api/user") return next();
+    
+    const token = req.cookies?.token;
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+            const user = await storage.getUser(decoded.id);
+            if (user) {
+                req.user = user;
+                req.isAuthenticated = () => true;
+            } else {
+                req.isAuthenticated = () => false;
+            }
+        } catch {
+            req.isAuthenticated = () => false;
+        }
+    } else {
+        req.isAuthenticated = () => false;
+    }
+    next();
   });
 }
