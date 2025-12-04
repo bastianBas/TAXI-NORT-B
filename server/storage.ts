@@ -1,219 +1,204 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import { createPool } from "mysql2/promise";
-import * as schema from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { users, drivers, vehicles, routeSlips, payments, auditLogs } from "@shared/schema";
+import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { firebaseDb } from "./firebase"; // Importamos la conexión a Firebase
+import { firebaseDb } from "./firebase";
 
-import type {
-  User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle,
-  RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog,
-  VehicleLocation // Asegúrate de tener este tipo en schema.ts
-} from "@shared/schema";
-
-// 1. CONFIGURACIÓN DE LA CONEXIÓN A AIVEN (RELACIONAL)
-const connection = createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: Number(process.env.DB_PORT || 3306), 
-  ssl: { rejectUnauthorized: false }, // Necesario para Aiven
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
-
-export const db = drizzle(connection, { schema, mode: "default" });
-
-// 2. INTERFAZ DE ALMACENAMIENTO
 export interface IStorage {
-  // Usuarios y Roles
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
 
-  // Conductores
   getDriver(id: string): Promise<Driver | undefined>;
   getAllDrivers(): Promise<Driver[]>;
   createDriver(driver: InsertDriver): Promise<Driver>;
   updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
   deleteDriver(id: string): Promise<boolean>;
 
-  // Vehículos
   getVehicle(id: string): Promise<Vehicle | undefined>;
   getAllVehicles(): Promise<Vehicle[]>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: string, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
   deleteVehicle(id: string): Promise<boolean>;
 
-  // Hojas de Ruta
   getRouteSlip(id: string): Promise<RouteSlip | undefined>;
   getAllRouteSlips(): Promise<RouteSlip[]>;
   createRouteSlip(slip: InsertRouteSlip): Promise<RouteSlip>;
   checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
 
-  // Pagos
   getPayment(id: string): Promise<Payment | undefined>;
   getAllPayments(): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
 
-  // Auditoría
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
 
-  // --- NUEVO: UBICACIÓN EN TIEMPO REAL (FIREBASE) ---
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
   getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
 }
 
-// 3. IMPLEMENTACIÓN HÍBRIDA (MySQL + Firebase)
 export class DatabaseStorage implements IStorage {
-  // --- Users ---
+  // --- USERS ---
   async getUser(id: string): Promise<User | undefined> {
-    return db.query.users.findFirst({ where: eq(schema.users.id, id) });
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return db.query.users.findFirst({ where: eq(schema.users.email, email) });
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    await db.insert(schema.users).values({ ...insertUser, id });
-    return (await this.getUser(id))!;
+    const newUser = { ...insertUser, id, createdAt: new Date() };
+    await db.insert(users).values(newUser);
+    return newUser;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return db.query.users.findMany();
+    return await db.select().from(users);
   }
 
-  // --- Drivers ---
+  // --- DRIVERS ---
   async getDriver(id: string): Promise<Driver | undefined> {
-    return db.query.drivers.findFirst({ where: eq(schema.drivers.id, id) });
+    const [driver] = await db.select().from(drivers).where(eq(drivers.id, id));
+    return driver;
   }
 
   async getAllDrivers(): Promise<Driver[]> {
-    return db.query.drivers.findMany();
+    return await db.select().from(drivers);
   }
 
   async createDriver(insertDriver: InsertDriver): Promise<Driver> {
     const id = randomUUID();
-    await db.insert(schema.drivers).values({ ...insertDriver, id });
-    return (await this.getDriver(id))!;
+    const newDriver = { ...insertDriver, id, createdAt: new Date() };
+    await db.insert(drivers).values(newDriver);
+    return newDriver;
   }
 
-  async updateDriver(id: string, driverData: Partial<InsertDriver>): Promise<Driver | undefined> {
-    await db.update(schema.drivers).set(driverData).where(eq(schema.drivers.id, id));
+  async updateDriver(id: string, insertDriver: Partial<InsertDriver>): Promise<Driver | undefined> {
+    await db.update(drivers).set(insertDriver).where(eq(drivers.id, id));
     return this.getDriver(id);
   }
 
   async deleteDriver(id: string): Promise<boolean> {
-    const [result] = await db.delete(schema.drivers).where(eq(schema.drivers.id, id));
+    const [result] = await db.delete(drivers).where(eq(drivers.id, id));
     return (result as any).affectedRows > 0;
   }
 
-  // --- Vehicles ---
+  // --- VEHICLES ---
   async getVehicle(id: string): Promise<Vehicle | undefined> {
-    return db.query.vehicles.findFirst({ where: eq(schema.vehicles.id, id) });
+    const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id));
+    return vehicle;
   }
 
   async getAllVehicles(): Promise<Vehicle[]> {
-    return db.query.vehicles.findMany();
+    return await db.select().from(vehicles);
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
     const id = randomUUID();
-    await db.insert(schema.vehicles).values({ ...insertVehicle, id });
-    return (await this.getVehicle(id))!;
+    const newVehicle = { ...insertVehicle, id, createdAt: new Date() };
+    await db.insert(vehicles).values(newVehicle);
+    return newVehicle;
   }
 
-  async updateVehicle(id: string, vehicleData: Partial<InsertVehicle>): Promise<Vehicle | undefined> {
-    await db.update(schema.vehicles).set(vehicleData).where(eq(schema.vehicles.id, id));
+  async updateVehicle(id: string, insertVehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined> {
+    await db.update(vehicles).set(insertVehicle).where(eq(vehicles.id, id));
     return this.getVehicle(id);
   }
 
   async deleteVehicle(id: string): Promise<boolean> {
-    const [result] = await db.delete(schema.vehicles).where(eq(schema.vehicles.id, id));
+    const [result] = await db.delete(vehicles).where(eq(vehicles.id, id));
     return (result as any).affectedRows > 0;
   }
 
-  // --- Route Slips ---
+  // --- ROUTE SLIPS ---
   async getRouteSlip(id: string): Promise<RouteSlip | undefined> {
-    return db.query.routeSlips.findFirst({ where: eq(schema.routeSlips.id, id) });
+    const [slip] = await db.select().from(routeSlips).where(eq(routeSlips.id, id));
+    return slip;
   }
 
   async getAllRouteSlips(): Promise<RouteSlip[]> {
-    return db.query.routeSlips.findMany({ orderBy: desc(schema.routeSlips.createdAt) });
+    return await db.select().from(routeSlips).orderBy(desc(routeSlips.createdAt));
   }
 
   async checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean> {
-    const existing = await db.query.routeSlips.findFirst({
-      where: and(
-        eq(schema.routeSlips.driverId, driverId),
-        eq(schema.routeSlips.vehicleId, vehicleId),
-        eq(schema.routeSlips.date, date)
+    const [existing] = await db.select().from(routeSlips).where(
+      and(
+        eq(routeSlips.driverId, driverId),
+        eq(routeSlips.vehicleId, vehicleId),
+        eq(routeSlips.date, date)
       )
-    });
+    );
     return !!existing;
   }
 
   async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> {
     const id = randomUUID();
-    const isDuplicate = await this.checkDuplicateRouteSlip(
-      insertSlip.driverId, insertSlip.vehicleId, insertSlip.date
-    );
+    const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date);
     
-    await db.insert(schema.routeSlips).values({ 
-      ...insertSlip, 
-      id, 
-      isDuplicate 
-    });
-    return (await this.getRouteSlip(id))!;
+    const newSlip = { ...insertSlip, id, isDuplicate, createdAt: new Date() };
+    await db.insert(routeSlips).values(newSlip);
+    return newSlip;
   }
 
-  // --- Payments ---
+  // --- PAYMENTS ---
   async getPayment(id: string): Promise<Payment | undefined> {
-    return db.query.payments.findFirst({ where: eq(schema.payments.id, id) });
+    const [payment] = await db.select().from(payments).where(eq(payments.id, id));
+    return payment;
   }
 
   async getAllPayments(): Promise<Payment[]> {
-    return db.query.payments.findMany({ orderBy: desc(schema.payments.createdAt) });
+    return await db.select().from(payments).orderBy(desc(payments.createdAt));
   }
 
   async createPayment(insertPayment: InsertPayment): Promise<Payment> {
     const id = randomUUID();
-    await db.insert(schema.payments).values({ ...insertPayment, id });
-    return (await this.getPayment(id))!;
+    const newPayment = { ...insertPayment, id, createdAt: new Date() };
+    await db.insert(payments).values(newPayment);
+    return newPayment;
   }
 
-  // --- Audit Logs ---
+  // --- AUDIT LOGS ---
   async getAllAuditLogs(): Promise<AuditLog[]> {
-    return db.query.auditLogs.findMany({ orderBy: desc(schema.auditLogs.timestamp) });
+    return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp));
   }
 
   async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> {
     const id = randomUUID();
-    await db.insert(schema.auditLogs).values({ ...insertLog, id });
-    const log = await db.query.auditLogs.findFirst({ where: eq(schema.auditLogs.id, id) });
-    return log!;
+    const newLog = { ...insertLog, id, timestamp: new Date() };
+    await db.insert(auditLogs).values(newLog);
+    return newLog;
   }
 
-  // --- FIREBASE IMPLEMENTATION (Ubicación GPS) ---
+  // --- GPS ---
   async updateVehicleLocation(location: VehicleLocation): Promise<void> {
-    // Guardamos en la ruta 'locations/{vehicleId}'
-    const ref = firebaseDb.ref(`locations/${location.vehicleId}`);
-    await ref.set({
-      ...location,
-      timestamp: Date.now() // Actualizamos el timestamp al servidor
-    });
+    if (!firebaseDb) return;
+    try {
+      const ref = firebaseDb.ref(`locations/${location.vehicleId}`);
+      await ref.set({
+        ...location,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      console.error("Error actualizando ubicación en Firebase:", error);
+    }
   }
 
   async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> {
-    const ref = firebaseDb.ref(`locations/${vehicleId}`);
-    const snapshot = await ref.once('value');
-    return snapshot.val() as VehicleLocation | null;
+    if (!firebaseDb) return null;
+    try {
+      const ref = firebaseDb.ref(`locations/${vehicleId}`);
+      const snapshot = await ref.once('value');
+      return snapshot.val() as VehicleLocation | null;
+    } catch (error) {
+      console.error("Error obteniendo ubicación de Firebase:", error);
+      return null;
+    }
   }
 }
 

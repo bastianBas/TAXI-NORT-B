@@ -1,24 +1,22 @@
 import { defineConfig } from "drizzle-kit";
-import 'dotenv/config'; // Aseguramos que cargue las variables de entorno
+import "dotenv/config";
 
-// Verificamos que las variables críticas existan (igual que en tu script de prueba)
-if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME) {
-  throw new Error("Faltan variables de entorno. Asegúrate de tener DB_HOST, DB_USER, DB_PASSWORD y DB_NAME configurados.");
+if (!process.env.DB_HOST) {
+  throw new Error("Faltan variables de entorno de la base de datos (DB_HOST).");
 }
 
 export default defineConfig({
   out: "./migrations",
   schema: "./shared/schema.ts",
-  dialect: "mysql", // Cambio crucial para Aiven (MySQL)
+  dialect: "mysql",
   dbCredentials: {
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     port: Number(process.env.DB_PORT) || 3306,
-    // Aiven requiere SSL. drizzle-kit pasará estas opciones al driver mysql2
-    ssl: { 
-      rejectUnauthorized: false 
-    },
+    // La configuración SSL es crucial para conectarse a Cloud SQL desde fuera de Google Cloud
+    // 'rejectUnauthorized: false' permite certificados autofirmados que Cloud SQL a veces usa por defecto en conexiones públicas
+    ssl: { rejectUnauthorized: false }, 
   },
 });

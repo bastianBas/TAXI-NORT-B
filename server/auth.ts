@@ -1,36 +1,35 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
 export function setupAuth(app: Express) {
-  // 1. Configuración de Passport (Estrategia Local)
+  // 1. Configuración de Passport
   passport.use(
     new LocalStrategy(
-      { usernameField: "email" },
+      { usernameField: "email" }, // IMPORTANTE: Le decimos que usamos 'email' en lugar de 'username'
       async (email, password, done) => {
         try {
           const cleanEmail = email.trim();
-          console.log(`🔍 [Login] Intentando autenticar: ${cleanEmail}`);
+          console.log(`🔍 [Login] Intentando: ${cleanEmail}`);
           
           const user = await storage.getUserByEmail(cleanEmail);
           if (!user) {
-            console.log(`❌ [Login] Usuario no encontrado: ${cleanEmail}`);
+            console.log(`❌ [Login] Usuario no encontrado.`);
             return done(null, false, { message: "Usuario no encontrado" });
           }
 
           const isValid = await bcrypt.compare(password, user.password);
           if (!isValid) {
-            console.log(`❌ [Login] Contraseña incorrecta para: ${cleanEmail}`);
+            console.log(`❌ [Login] Password incorrecto.`);
             return done(null, false, { message: "Credenciales inválidas" });
           }
 
-          console.log(`✅ [Login] Credenciales válidas. Usuario ID: ${user.id}`);
+          console.log(`✅ [Login] Éxito.`);
           return done(null, user);
         } catch (err) {
-          console.error("❌ [Login] Error interno:", err);
           return done(err);
         }
       }
@@ -44,16 +43,13 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: string, done) => {
     try {
       const user = await storage.getUser(id);
-      if (!user) {
-        return done(null, false);
-      }
-      done(null, user);
+      done(null, user || false); // Si no existe, devuelve false
     } catch (err) {
       done(err);
     }
   });
 
-  // --- RUTAS DE AUTENTICACIÓN ---
+  // --- RUTAS ---
 
   // Registro
   app.post("/api/auth/register", async (req, res, next) => {
@@ -69,12 +65,11 @@ export function setupAuth(app: Express) {
         name: req.body.name,
         email: email,
         password: hashedPassword,
-        role: "driver" // Rol fijo por seguridad
+        role: "driver" 
       });
 
       req.login(user, (err) => {
         if (err) return next(err);
-        console.log(`✅ [Register] Nuevo usuario registrado y logueado: ${email}`);
         const { password, ...userWithoutPassword } = user;
         res.status(201).json({ user: userWithoutPassword });
       });
@@ -87,13 +82,10 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/login", (req, res, next) => {
     passport.authenticate("local", (err: any, user: User, info: any) => {
       if (err) return next(err);
-      if (!user) {
-        return res.status(401).json({ message: info?.message || "Error de autenticación" });
-      }
+      if (!user) return res.status(401).json({ message: info?.message || "Error de autenticación" });
       
       req.login(user, (err) => {
         if (err) return next(err);
-        console.log(`✅ [Login] Sesión iniciada exitosamente para ${user.email}`);
         const { password, ...userWithoutPassword } = user;
         res.json({ user: userWithoutPassword });
       });
@@ -104,18 +96,14 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
-      req.session = null; // Limpieza explícita de cookie
-      console.log("👋 [Logout] Sesión cerrada.");
+      req.session = null; // Limpiar cookie
       res.sendStatus(200);
     });
   });
 
   // Obtener usuario actual
   app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) {
-      // No logueamos error aquí para no llenar la consola de ruido en cada carga
-      return res.status(401).json({ message: "No autenticado" });
-    }
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "No autenticado" });
     const { password, ...userWithoutPassword } = req.user as User;
     res.json(userWithoutPassword);
   });

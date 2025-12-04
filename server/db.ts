@@ -12,15 +12,13 @@ const dbConfig: mysql.PoolOptions = {
   queueLimit: 0,
 };
 
-// LÓGICA DE CONEXIÓN HÍBRIDA
+// LÓGICA INTELIGENTE GOOGLE CLOUD
 if (process.env.INSTANCE_CONNECTION_NAME) {
-  // ☁️ MODO NUBE (Cloud Run)
-  // Usamos el Socket Unix que Google inyecta automáticamente
+  // ☁️ Estamos en Cloud Run -> Usamos Socket Unix
   console.log(`🔌 Conectando a Cloud SQL vía Socket: /cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`);
   dbConfig.socketPath = `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`;
 } else {
-  // 🏠 MODO LOCAL (Tu PC)
-  // Usamos la IP pública y el puerto estándar
+  // 🏠 Estamos en Local -> Usamos IP TCP
   if (!process.env.DB_HOST) {
     throw new Error("❌ Faltan credenciales: DB_HOST o INSTANCE_CONNECTION_NAME");
   }
@@ -28,7 +26,7 @@ if (process.env.INSTANCE_CONNECTION_NAME) {
   dbConfig.host = process.env.DB_HOST;
   dbConfig.port = Number(process.env.DB_PORT) || 3306;
   
-  // SSL opcional para local
+  // SSL solo si no es localhost
   if (process.env.DB_HOST !== 'localhost') {
       dbConfig.ssl = { rejectUnauthorized: false };
   }
