@@ -8,28 +8,21 @@ import cors from "cors";
 
 const app = express();
 
-// 1. CONFIANZA EN PROXY (CRÍTICO PARA CLOUD RUN)
-// Cloud Run usa un balanceador de carga que termina el SSL.
-// 'true' le dice a Express que confíe en las cabeceras X-Forwarded-Proto
+// Confianza en proxy
 app.set("trust proxy", true);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 2. CONFIGURACIÓN DE SESIÓN PARA LA NUBE
-// Esta configuración es la más compatible para evitar bloqueos de cookies.
+// Configuración de Sesión
 app.use(
   cookieSession({
     name: "session",
     keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
-    maxAge: 24 * 60 * 60 * 1000, // 24 horas
-    
-    // CONFIGURACIÓN CLAVE PARA CLOUD RUN:
-    // secure: true -> Requerido porque Cloud Run siempre es HTTPS.
-    // sameSite: 'none' -> Permite que la cookie funcione mejor en ciertos contextos de red.
-    secure: true, 
-    sameSite: "none",
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     httpOnly: true,
   })
 );
@@ -37,7 +30,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Middleware de Logging
+// Logging
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
@@ -53,7 +46,6 @@ app.use((req, res, next) => {
   try {
     const server = await registerRoutes(app);
 
-    // Manejo de errores global
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
@@ -67,13 +59,13 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    // CLOUD RUN PORT
-    const port = parseInt(process.env.PORT || '5000', 10);
+    // PUERTO CLOUD RUN: Usar PORT o 8080 por defecto
+    const port = parseInt(process.env.PORT || '8080', 10);
     server.listen(port, '0.0.0.0', () => {
       console.log(`🚀 Servidor escuchando en puerto ${port}`);
     });
   } catch (err) {
     console.error("❌ Error fatal al iniciar:", err);
-    process.exit(1);
+    process.exit(1); // Salir con error para que Cloud Run reinicie
   }
 })();
