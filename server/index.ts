@@ -2,54 +2,48 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import cookieSession from "cookie-session"; // USAMOS ESTA LIBRERÍA AHORA
+import cookieSession from "cookie-session";
 import passport from "passport";
 import cors from "cors";
 
 const app = express();
 
-// Confianza en proxy (Vital para Render/Cloud Run)
-app.set("trust proxy", 1);
+// 1. CONFIANZA EN PROXY (CRÍTICO PARA CLOUD RUN)
+// Cloud Run usa un balanceador de carga que termina el SSL.
+// 'true' le dice a Express que confíe en las cabeceras X-Forwarded-Proto
+app.set("trust proxy", true);
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// --- NUEVA CONFIGURACIÓN DE SESIÓN (COOKIE-SESSION) ---
-// Esto guarda los datos de sesión en la cookie misma, en lugar de en la memoria del servidor.
-// Es mucho más estable para reinicios y proxies.
+// 2. CONFIGURACIÓN DE SESIÓN PARA LA NUBE
+// Esta configuración es la más compatible para evitar bloqueos de cookies.
 app.use(
   cookieSession({
     name: "session",
     keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-    secure: process.env.NODE_ENV === "production", // True en Producción
-    sameSite: "lax",
+    
+    // CONFIGURACIÓN CLAVE PARA CLOUD RUN:
+    // secure: true -> Requerido porque Cloud Run siempre es HTTPS.
+    // sameSite: 'none' -> Permite que la cookie funcione mejor en ciertos contextos de red.
+    secure: true, 
+    sameSite: "none",
     httpOnly: true,
   })
 );
 
-// Mantenemos passport igual, pero ahora se engancha a la nueva cookie
 app.use(passport.initialize());
 app.use(passport.session());
 
 // Middleware de Logging
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      if (logLine.length > 80) logLine = logLine.slice(0, 79) + "…";
-      log(logLine);
+    if (req.path.startsWith("/api")) {
+      console.log(`${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
     }
   });
   next();
@@ -73,11 +67,13 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
+    // CLOUD RUN PORT
     const port = parseInt(process.env.PORT || '5000', 10);
     server.listen(port, '0.0.0.0', () => {
-      log(`🚀 Servidor escuchando en http://0.0.0.0:${port}`);
+      console.log(`🚀 Servidor escuchando en puerto ${port}`);
     });
   } catch (err) {
     console.error("❌ Error fatal al iniciar:", err);
+    process.exit(1);
   }
 })();
