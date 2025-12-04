@@ -2,55 +2,43 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import cookieSession from "cookie-session"; // Usamos cookie-session
+import cookieSession from "cookie-session";
 import passport from "passport";
 import cors from "cors";
 
 const app = express();
 
-// Confianza en proxy (Vital para Render y Cloud Run)
-app.set("trust proxy", 1);
+// 1. CONFIANZA EN PROXY (Vital para Cloud Run)
+app.set("trust proxy", true);
 
+// 2. MIDDLEWARES BÁSICOS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// --- NUEVA CONFIGURACIÓN DE SESIÓN (COOKIE-SESSION) ---
-// Esto guarda los datos de sesión en la cookie misma, en lugar de en la memoria del servidor.
-// Es mucho más estable para reinicios y proxies.
+// 3. CONFIGURACIÓN DE SESIÓN (COOKIE-SESSION)
 app.use(
   cookieSession({
     name: "session",
     keys: [process.env.SESSION_SECRET || "taxinort_secret_key"],
     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-    secure: process.env.NODE_ENV === "production", // True en Producción (Render/Cloud Run)
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     httpOnly: true,
   })
 );
 
 // Inicializar Passport
-// Mantenemos passport igual, pero ahora se engancha a la nueva cookie
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Middleware de Logging
+// 4. LOGGING DE ARRANQUE Y TRÁFICO
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      if (logLine.length > 80) logLine = logLine.slice(0, 79) + "…";
-      log(logLine);
+    if (req.path.startsWith("/api")) {
+      console.log(`${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
     }
   });
   next();
@@ -58,6 +46,8 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    console.log("🚀 [Startup] Iniciando configuración del servidor...");
+    
     const server = await registerRoutes(app);
 
     // Manejo de errores global
@@ -74,12 +64,16 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    // Escuchamos en el puerto definido por el entorno o 5000 por defecto
-    const port = parseInt(process.env.PORT || '5000', 10);
-    server.listen(port, '0.0.0.0', () => {
-      log(`🚀 Servidor escuchando en http://0.0.0.0:${port}`);
+    // 5. PUERTO CLOUD RUN (CRÍTICO)
+    // Cloud Run inyecta la variable PORT. Si no existe, usamos 8080 (estándar de Google).
+    // NO usamos 5000 en producción.
+    const PORT = parseInt(process.env.PORT || '8080', 10);
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 [Startup] Servidor web LISTO y escuchando en puerto ${PORT}`);
     });
   } catch (err) {
-    console.error("❌ Error fatal al iniciar:", err);
+    console.error("❌ [Startup] Error fatal al iniciar:", err);
+    process.exit(1);
   }
 })();
