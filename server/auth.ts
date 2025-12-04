@@ -12,24 +12,25 @@ export function setupAuth(app: Express) {
       { usernameField: "email" },
       async (email, password, done) => {
         try {
-          const cleanEmail = email.trim(); // Limpiamos espacios
-          console.log(`🔍 [Login] Intentando: ${cleanEmail}`);
+          const cleanEmail = email.trim();
+          console.log(`🔍 [Login] Intentando autenticar: ${cleanEmail}`);
           
           const user = await storage.getUserByEmail(cleanEmail);
           if (!user) {
-            console.log(`❌ [Login] Usuario no encontrado.`);
+            console.log(`❌ [Login] Usuario no encontrado: ${cleanEmail}`);
             return done(null, false, { message: "Usuario no encontrado" });
           }
 
           const isValid = await bcrypt.compare(password, user.password);
           if (!isValid) {
-            console.log(`❌ [Login] Password incorrecto.`);
+            console.log(`❌ [Login] Contraseña incorrecta para: ${cleanEmail}`);
             return done(null, false, { message: "Credenciales inválidas" });
           }
 
-          console.log(`✅ [Login] Credenciales válidas.`);
+          console.log(`✅ [Login] Credenciales válidas. Usuario ID: ${user.id}`);
           return done(null, user);
         } catch (err) {
+          console.error("❌ [Login] Error interno:", err);
           return done(err);
         }
       }
@@ -73,9 +74,7 @@ export function setupAuth(app: Express) {
 
       req.login(user, (err) => {
         if (err) return next(err);
-        
-        // CON COOKIE-SESSION NO NECESITAMOS req.session.save()
-        // La sesión se guarda automáticamente al enviar la respuesta.
+        console.log(`✅ [Register] Nuevo usuario registrado y logueado: ${email}`);
         const { password, ...userWithoutPassword } = user;
         res.status(201).json({ user: userWithoutPassword });
       });
@@ -88,13 +87,13 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/login", (req, res, next) => {
     passport.authenticate("local", (err: any, user: User, info: any) => {
       if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Error de autenticación" });
+      if (!user) {
+        return res.status(401).json({ message: info?.message || "Error de autenticación" });
+      }
       
       req.login(user, (err) => {
         if (err) return next(err);
-        
-        // CON COOKIE-SESSION NO NECESITAMOS req.session.save()
-        console.log(`✅ [Login] Sesión iniciada para ${user.email}`);
+        console.log(`✅ [Login] Sesión iniciada exitosamente para ${user.email}`);
         const { password, ...userWithoutPassword } = user;
         res.json({ user: userWithoutPassword });
       });
@@ -105,16 +104,18 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
-      // Limpiamos explícitamente la cookie poniendo la sesión en null
-      // Esto es específico para cookie-session
-      req.session = null;
+      req.session = null; // Limpieza explícita de cookie
+      console.log("👋 [Logout] Sesión cerrada.");
       res.sendStatus(200);
     });
   });
 
   // Obtener usuario actual
   app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "No autenticado" });
+    if (!req.isAuthenticated()) {
+      // No logueamos error aquí para no llenar la consola de ruido en cada carga
+      return res.status(401).json({ message: "No autenticado" });
+    }
     const { password, ...userWithoutPassword } = req.user as User;
     res.json(userWithoutPassword);
   });
