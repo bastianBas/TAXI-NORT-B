@@ -21,15 +21,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  // Intentar cargar usuario si hay un token guardado en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
+    // Solo hacemos la petición si existe el token
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
+      // GUARDAR TOKEN: Si el servidor devuelve un token, lo guardamos
       if (res.token) {
         localStorage.setItem("auth_token", res.token);
       }
@@ -47,12 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      // Borramos el token localmente PRIMERO
       localStorage.removeItem("auth_token");
-      await apiRequestJson("/api/auth/logout", "POST");
+      // Intentamos avisar al servidor (opcional con JWT stateless)
+      try {
+        await apiRequestJson("/api/auth/logout", "POST");
+      } catch (e) {
+        // Ignoramos error de logout en servidor, lo importante es borrar el token local
+      }
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/user"], null);
-      queryClient.clear();
+      queryClient.clear(); // Limpiar toda la caché
       setLocation("/login");
       toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
     },
@@ -61,16 +70,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerMutation = useMutation({
     mutationFn: async (newUser: InsertUser) => {
       const res = await apiRequestJson("/api/auth/register", "POST", newUser);
-      if (res.token) localStorage.setItem("auth_token", res.token);
+      // GUARDAR TOKEN: Si el registro devuelve token, lo guardamos para auto-login
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       setLocation("/");
-      toast({ title: "Cuenta creada" });
+      toast({ title: "Cuenta creada", description: "Bienvenido a TaxiNort" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error de registro", description: error.message, variant: "destructive" });
     },
   });
 
@@ -91,17 +103,26 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
 
   if (!user) {
-    return <Route path={path}><RedirectToLogin /></Route>;
+    return (
+      <Route path={path}>
+        <div className="flex items-center justify-center min-h-screen">
+           Redirigiendo...
+           {/* Usamos un componente auxiliar para el efecto de redirección */}
+           <RedirectToLogin setLocation={setLocation} />
+        </div>
+      </Route>
+    );
   }
 
   return <Route path={path} component={Component} />;
 }
 
-function RedirectToLogin() {
-  const [, setLocation] = useLocation();
-  useEffect(() => setLocation("/login"), [setLocation]);
+function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
+  useEffect(() => {
+    setLocation("/login");
+  }, [setLocation]);
   return null;
 }
