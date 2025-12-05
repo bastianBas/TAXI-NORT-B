@@ -4,8 +4,8 @@ import { z } from "zod";
 
 // --- USUARIOS ---
 export const users = mysqlTable("users", {
-  id: varchar("id", { length: 36 }).primaryKey(), // UUID
-  // Removed 'username' to align with auth logic
+  id: varchar("id", { length: 36 }).primaryKey(),
+  // IMPORTANTE: Eliminamos 'username'. Usamos solo 'email' como identificador único.
   email: varchar("email", { length: 255 }).notNull().unique(),
   password: text("password").notNull(),
   role: varchar("role", { length: 50 }).notNull().default("driver"),
@@ -77,7 +77,7 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
-// --- SCHEMAS ZOD ---
+// --- SCHEMAS DE VALIDACIÓN ---
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
@@ -85,7 +85,7 @@ export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: t
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
 
-// --- TIPOS ---
+// --- TIPOS EXPORTADOS ---
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Driver = typeof drivers.$inferSelect;

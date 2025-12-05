@@ -1,11 +1,12 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import multer from "multer";
 import path from "path";
 import { storage } from "./storage";
-import { setupAuth } from "./auth";
+import { setupAuth, verifyAuth } from "./auth";
 import { seedData } from "./seed";
-import type { User } from "@shared/schema";
+import type { VehicleLocation, User } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -21,19 +22,21 @@ const upload = multer({
       cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+  },
 });
 
-function isAuthenticated(req: any, res: any, next: any) {
-  if (req.isAuthenticated()) return next();
-  res.status(401).json({ message: "No autenticado" });
-}
-
+// Middleware auxiliar para verificar roles usando la info del Token
 function hasRole(...roles: string[]) {
-  return (req: any, res: any, next: any) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "No autenticado" });
-    const user = req.user as User;
-    if (!roles.includes(user.role)) return res.status(403).json({ message: "No tienes permisos" });
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user as User;
+    
+    if (!user) return res.status(401).json({ message: "No autenticado" });
+    
+    if (!roles.includes(user.role)) {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
     next();
   };
 }
@@ -41,11 +44,10 @@ function hasRole(...roles: string[]) {
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
-  // Intentar seed en segundo plano
+  // Seed en segundo plano
   seedData().catch(console.error);
 
-  // --- RUTA DE EMERGENCIA (LA SOLUCIÓN) ---
-  // Esta ruta fuerza el cambio de contraseña a 'admin123'
+  // --- RUTA DE EMERGENCIA (RESET ADMIN) ---
   app.get("/api/emergency-reset-admin", async (req, res) => {
     try {
       const email = "admin@taxinort.cl";
@@ -53,14 +55,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`🚨 RESTABLECIENDO contraseña para ${email}...`);
 
-      // Encriptamos 'admin123' con la configuración REAL de este servidor
+      const existing = await storage.getUserByEmail(email);
       const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-      // Verificamos si existe
-      const existing = await storage.getUserByEmail(email);
-
       if (!existing) {
-        // Si no existe, lo creamos
         await storage.createUser({
           name: "Administrador Principal",
           email,
@@ -69,7 +67,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         return res.json({ status: "CREATED", message: "Usuario Admin creado. Usa: admin123" });
       } else {
-        // Si existe (tu caso), SOBRESCRIBIMOS la contraseña
         await db.update(users)
           .set({ password: hashedPassword, role: "admin" })
           .where(eq(users.email, email));
@@ -82,28 +79,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // --- RESTO DE RUTAS ---
+  // --- RUTAS API PROTEGIDAS POR JWT ---
   
-  app.get("/api/drivers", isAuthenticated, async (req, res) => {
+  // Drivers
+  app.get("/api/drivers", verifyAuth, async (req, res) => {
     const drivers = await storage.getAllDrivers();
     res.json(drivers);
   });
 
-  app.post("/api/drivers", hasRole("admin", "operator"), async (req, res) => {
+  app.post("/api/drivers", verifyAuth, hasRole("admin", "operator"), async (req, res) => {
     const driver = await storage.createDriver(req.body);
     res.json(driver);
   });
 
-  app.get("/api/vehicles", isAuthenticated, async (req, res) => {
+  app.put("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => {
+    const driver = await storage.updateDriver(req.params.id, req.body);
+    res.json(driver);
+  });
+
+  app.delete("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => {
+    await storage.deleteDriver(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Vehicles
+  app.get("/api/vehicles", verifyAuth, async (req, res) => {
     const vehicles = await storage.getAllVehicles();
     res.json(vehicles);
   });
 
-  app.post("/api/vehicles", hasRole("admin", "operator"), async (req, res) => {
+  app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => {
     const vehicle = await storage.createVehicle(req.body);
     res.json(vehicle);
   });
 
+  // GPS Update (Pública o con token de dispositivo)
   app.post("/api/vehicles/:id/location", async (req, res) => {
      const { lat, lng, status } = req.body;
      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
@@ -115,23 +125,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
      res.json({ success: true });
   });
 
-  app.get("/api/route-slips", isAuthenticated, async (req, res) => {
+  // Route Slips
+  app.get("/api/route-slips", verifyAuth, async (req, res) => {
       const slips = await storage.getAllRouteSlips();
       res.json(slips);
   });
   
-  app.post("/api/route-slips", isAuthenticated, async (req, res) => {
+  app.post("/api/route-slips", verifyAuth, async (req, res) => {
       const slip = await storage.createRouteSlip(req.body);
       res.json(slip);
   });
 
-  app.get("/api/payments", isAuthenticated, async (req, res) => {
+  // Payments
+  app.get("/api/payments", verifyAuth, async (req, res) => {
       const payments = await storage.getAllPayments();
       res.json(payments);
   });
 
-  app.post("/api/payments", hasRole("admin", "finance"), upload.single("file"), async (req, res) => {
-      // Simplificado para evitar errores de validación aquí, la lógica real está en storage
+  app.post("/api/payments", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => {
       const paymentData = { ...req.body, amount: parseInt(req.body.amount), proofOfPayment: req.file?.filename || "" };
       const payment = await storage.createPayment(paymentData);
       res.json(payment);

@@ -1,30 +1,24 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// Función para obtener el token guardado
 function getToken() {
   return localStorage.getItem("auth_token");
 }
 
-// Función helper para headers
 function getAuthHeaders() {
   const token = getToken();
   return token ? { "Authorization": `Bearer ${token}` } : {};
 }
 
-export async function apiRequest({
-  queryKey,
-}: {
-  queryKey: readonly unknown[];
-}) {
+export async function apiRequest({ queryKey }: { queryKey: readonly unknown[] }) {
   const [path] = queryKey as [string];
   
-  // Enviamos el token en el header Authorization
   const res = await fetch(path, {
     headers: { ...getAuthHeaders() }
   });
 
   if (!res.ok) {
     if (res.status === 401) {
+      localStorage.removeItem("auth_token");
       throw new Error("No autenticado");
     }
     throw new Error(`Error ${res.status}: ${res.statusText}`);
@@ -40,29 +34,22 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: false, 
     },
-    mutations: {
-      retry: false,
-    },
+    mutations: { retry: false },
   },
 });
 
-export async function apiRequestJson(
-  path: string,
-  method: string = "GET",
-  body?: any
-) {
+export async function apiRequestJson(path: string, method: string = "GET", body?: any) {
   const res = await fetch(path, {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders() // Inyectamos el token aquí también
+      ...getAuthHeaders()
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
   if (!res.ok) {
     if (res.status === 401) {
-      // Si falla por auth, borramos el token local para limpiar estado
       localStorage.removeItem("auth_token");
       throw new Error("No autenticado");
     }
@@ -71,6 +58,5 @@ export async function apiRequestJson(
   }
 
   if (res.status === 204) return null;
-  
   return res.json().catch(() => null);
 }
