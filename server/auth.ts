@@ -4,17 +4,25 @@ import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
 
-// Middleware: Verifica que el token venga en el Header "Authorization"
+// Middleware para verificar Token (Busca en Header y Cookie)
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "No autenticado (Falta token)" });
+  let token;
+
+  // 1. Intentar leer del Header "Authorization: Bearer <token>"
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  } 
+  // 2. Fallback: Intentar leer de la cookie (por si acaso)
+  else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
   }
 
-  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "No autenticado (Falta token)" });
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
@@ -42,7 +50,7 @@ declare global {
 
 export function setupAuth(app: Express) {
   
-  // LOGIN
+  // LOGIN: Genera y devuelve el token
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -51,11 +59,13 @@ export function setupAuth(app: Express) {
       const user = await storage.getUserByEmail(email);
 
       if (!user) {
+        console.log("❌ Usuario no encontrado");
         return res.status(401).json({ message: "Usuario no encontrado" });
       }
 
       const isValid = await bcrypt.compare(req.body.password, user.password);
       if (!isValid) {
+        console.log("❌ Contraseña incorrecta");
         return res.status(401).json({ message: "Contraseña incorrecta" });
       }
 
@@ -65,7 +75,14 @@ export function setupAuth(app: Express) {
       console.log(`✅ [Login] Éxito. Token generado.`);
       const { password, ...userWithoutPassword } = user;
       
-      // Enviamos el token al frontend
+      // Enviamos el token al frontend (JSON) y en Cookie (backup)
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // 'false' para evitar problemas con proxies que terminan SSL en Cloud Run
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000
+      });
+      
       res.json({ user: userWithoutPassword, token });
 
     } catch (err) {
@@ -94,6 +111,13 @@ export function setupAuth(app: Express) {
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
 
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000
+      });
+
       const { password, ...userWithoutPassword } = user;
       res.status(201).json({ user: userWithoutPassword, token });
     } catch (err) {
@@ -101,12 +125,13 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // LOGOUT (El cliente solo borra el token)
+  // LOGOUT
   app.post("/api/auth/logout", (req, res) => {
+    res.clearCookie("token");
     res.sendStatus(200);
   });
 
-  // OBTENER USUARIO
+  // OBTENER USUARIO (Requiere token)
   app.get("/api/user", verifyAuth, (req, res) => {
     const { password, ...userWithoutPassword } = (req as any).user;
     res.json(userWithoutPassword);

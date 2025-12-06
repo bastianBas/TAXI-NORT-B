@@ -3,18 +3,20 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 
 const app = express();
 
-// Confianza en proxy (Necesario para Cloud Run)
+// 1. Confianza en el Proxy de Google Cloud Run (Obligatorio)
 app.set("trust proxy", true);
 
-// Configuración CORS y JSON
+// 2. Configuración Básica
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
 
-// Logs de peticiones
+// 3. Logging de Tráfico
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
@@ -45,13 +47,14 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    // Puerto 8080 es el estándar de Cloud Run
+    // IMPORTANTE: Usar el puerto que Cloud Run inyecta (PORT)
     const port = parseInt(process.env.PORT || '8080', 10);
+    
     server.listen(port, '0.0.0.0', () => {
-      console.log(`🚀 Servidor escuchando en puerto ${port}`);
+      console.log(`🚀 [Startup] Servidor web LISTO y escuchando en puerto ${port}`);
     });
   } catch (err) {
-    console.error("❌ Error fatal al iniciar:", err);
+    console.error("❌ [Startup] Error fatal al iniciar:", err);
     process.exit(1);
   }
 })();

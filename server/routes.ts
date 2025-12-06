@@ -38,51 +38,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
   seedData().catch(console.error);
 
-  // RUTA DE EMERGENCIA MEJORADA
   app.get("/api/emergency-reset-admin", async (req, res) => {
     try {
       const email = "admin@taxinort.cl";
       const newPassword = "admin123";
-      
-      console.log(`🚨 [EMERGENCY] Intentando crear/resetear admin: ${email}`);
-
-      // Generar hash
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      console.log(`🔑 [EMERGENCY] Hash generado correctamente.`);
-
-      // Verificar si existe
+      console.log(`🚨 RESTABLECIENDO contraseña para ${email}...`);
       const existing = await storage.getUserByEmail(email);
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-      if (existing) {
-        console.log(`ℹ️ [EMERGENCY] El usuario ya existe. Actualizando contraseña...`);
-        await db.update(users)
-          .set({ password: hashedPassword, role: "admin" })
-          .where(eq(users.email, email));
-        
-        return res.json({ 
-          status: "UPDATED", 
-          message: "Usuario Admin ACTUALIZADO. Usa: admin@taxinort.cl / admin123" 
-        });
-      } else {
-        console.log(`🌱 [EMERGENCY] El usuario no existe. Creando nuevo...`);
+      if (!existing) {
         await storage.createUser({
           name: "Administrador Principal",
           email,
           password: hashedPassword,
           role: "admin"
         });
-        
-        return res.json({ 
-          status: "CREATED", 
-          message: "Usuario Admin CREADO. Usa: admin@taxinort.cl / admin123" 
-        });
+        return res.json({ status: "CREATED", message: "Admin creado" });
+      } else {
+        await db.update(users).set({ password: hashedPassword, role: "admin" }).where(eq(users.email, email));
+        return res.json({ status: "RESET_SUCCESS", message: "Contraseña reseteada" });
       }
     } catch (error) {
-      console.error("❌ [EMERGENCY] Error fatal:", error);
-      res.status(500).json({ 
-        error: "Error interno al crear admin", 
-        details: String(error) 
-      });
+      res.status(500).json({ error: String(error) });
     }
   });
 

@@ -1,22 +1,25 @@
 import { defineConfig } from "drizzle-kit";
 import "dotenv/config";
 
-// Verificamos que la variable de entorno exista antes de empezar
-if (!process.env.DB_HOST) {
-  throw new Error("❌ Faltan variables de entorno (DB_HOST). Asegúrate de tener el archivo .env configurado.");
+// Verificación de seguridad previa
+if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
+  throw new Error("❌ Faltan variables de entorno en .env. Revisa DB_HOST, DB_USER, DB_PASSWORD, DB_NAME.");
 }
 
 export default defineConfig({
   out: "./migrations",
   schema: "./shared/schema.ts",
-  dialect: "mysql", // Nos aseguramos de que diga 'mysql'
+  dialect: "mysql",
   dbCredentials: {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    // El signo '!' al final le asegura a TypeScript que la variable existe (gracias al if de arriba)
+    host: process.env.DB_HOST!,
+    user: process.env.DB_USER!,
+    password: process.env.DB_PASSWORD!,
+    database: process.env.DB_NAME!,
     port: Number(process.env.DB_PORT) || 3306,
-    // ESTO ES CLAVE: SSL es obligatorio para conectarse a Cloud SQL desde tu PC
-    ssl: { rejectUnauthorized: false }, 
+    
+    // 'as any' silencia el error de tipo en SSL, pero mantiene la funcionalidad
+    // necesaria para conectar a Google Cloud SQL desde fuera.
+    ssl: { rejectUnauthorized: false } as any, 
   },
 });

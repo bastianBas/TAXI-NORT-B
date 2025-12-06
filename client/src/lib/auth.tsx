@@ -24,7 +24,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
-    // Solo cargamos si hay un token guardado
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
@@ -102,8 +101,9 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   return <Route path={path} component={Component} />;
 }
 
-function RedirectToLogin() {
-  const [, setLocation] = useLocation();
-  useEffect(() => setLocation("/login"), [setLocation]);
+function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
+  useEffect(() => {
+    setLocation("/login");
+  }, [setLocation]);
   return null;
 }
