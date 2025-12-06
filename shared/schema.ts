@@ -37,11 +37,4 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 
-export type VehicleLocation = {
-  vehicleId: string;
-  plate: string;
-  lat: number;
-  lng: number;
-  status: string;
-  timestamp: number;
-};
+export type VehicleLocation = { vehicleId: string; plate: string; lat: number; lng: number; status: string; timestamp: number; };

@@ -31,9 +31,7 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
 
 declare global {
   namespace Express {
-    interface Request {
-      user?: User;
-    }
+    interface Request { user?: User; }
   }
 }
 
@@ -49,7 +47,6 @@ export function setupAuth(app: Express) {
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
       
-      // Enviar cookie como respaldo (Secure: false para evitar problemas de proxy)
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
       
       const { password, ...userWithoutPassword } = user;
