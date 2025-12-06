@@ -30,6 +30,7 @@ const upload = multer({
 // Middleware auxiliar para verificar roles usando la info del Token
 function hasRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
+    // verifyAuth ya inyectó el usuario en req.user
     const user = (req as any).user as User;
     
     if (!user) return res.status(401).json({ message: "No autenticado" });
@@ -148,6 +149,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(payment);
   });
 
+  // Audit logs routes
+  app.get("/api/audit", verifyAuth, hasRole("admin"), async (req, res) => {
+      const logs = await storage.getAllAuditLogs();
+      res.json(logs);
+  });
+
   const httpServer = createServer(app);
+
+  // WebSocket server (Opcional, si lo usas)
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  wss.on("connection", (ws: WebSocket) => {
+      // Lógica de WS...
+  });
+
   return httpServer;
 }

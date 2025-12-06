@@ -1,9 +1,11 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Obtener token del almacenamiento local
 function getToken() {
   return localStorage.getItem("auth_token");
 }
 
+// Crear headers con token
 function getAuthHeaders() {
   const token = getToken();
   return token ? { "Authorization": `Bearer ${token}` } : {};
@@ -18,7 +20,7 @@ export async function apiRequest({ queryKey }: { queryKey: readonly unknown[] })
 
   if (!res.ok) {
     if (res.status === 401) {
-      localStorage.removeItem("auth_token");
+      localStorage.removeItem("auth_token"); // Si falla, borramos el token viejo
       throw new Error("No autenticado");
     }
     throw new Error(`Error ${res.status}: ${res.statusText}`);
