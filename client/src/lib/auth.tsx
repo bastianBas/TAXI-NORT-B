@@ -24,22 +24,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
-    // Solo cargamos si hay un token guardado
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // GUARDAR TOKEN
-      if (res.token) {
-        localStorage.setItem("auth_token", res.token);
-      }
+      if (res.token) localStorage.setItem("auth_token", res.token);
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
+      toast({ title: "Bienvenido", description: `Hola, ${user.name}` });
       setLocation("/");
     },
     onError: (error: Error) => {
@@ -56,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
       setLocation("/login");
-      toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
+      toast({ title: "Sesión cerrada" });
     },
   });
 
@@ -72,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast({ title: "Cuenta creada" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error de registro", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -93,17 +89,15 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   if (!user) {
     return <Route path={path}><RedirectToLogin /></Route>;
   }
-
   return <Route path={path} component={Component} />;
 }
 
-function RedirectToLogin() {
-  const [, setLocation] = useLocation();
+function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
   useEffect(() => setLocation("/login"), [setLocation]);
   return null;
 }

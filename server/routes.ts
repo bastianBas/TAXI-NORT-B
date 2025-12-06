@@ -22,67 +22,45 @@ const upload = multer({
       cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
     },
   }),
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB max
-  },
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-// Middleware auxiliar para verificar roles usando la info del Token
 function hasRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    // verifyAuth ya inyectó el usuario en req.user
     const user = (req as any).user as User;
-    
     if (!user) return res.status(401).json({ message: "No autenticado" });
-    
-    if (!roles.includes(user.role)) {
-      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
-    }
+    if (!roles.includes(user.role)) return res.status(403).json({ message: "No tienes permisos" });
     next();
   };
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
-
-  // Seed en segundo plano
   seedData().catch(console.error);
 
-  // --- RUTA DE EMERGENCIA (RESET ADMIN) ---
   app.get("/api/emergency-reset-admin", async (req, res) => {
     try {
       const email = "admin@taxinort.cl";
       const newPassword = "admin123";
-      
-      console.log(`🚨 RESTABLECIENDO contraseña para ${email}...`);
-
       const existing = await storage.getUserByEmail(email);
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-
       if (!existing) {
         await storage.createUser({
-          name: "Administrador Principal",
+          name: "Administrador",
           email,
           password: hashedPassword,
           role: "admin"
         });
-        return res.json({ status: "CREATED", message: "Usuario Admin creado. Usa: admin123" });
+        return res.json({ status: "CREATED", message: "Admin creado" });
       } else {
-        await db.update(users)
-          .set({ password: hashedPassword, role: "admin" })
-          .where(eq(users.email, email));
-          
-        return res.json({ status: "RESET_SUCCESS", message: "Contraseña actualizada a: admin123" });
+        await db.update(users).set({ password: hashedPassword, role: "admin" }).where(eq(users.email, email));
+        return res.json({ status: "RESET_SUCCESS", message: "Contraseña reseteada" });
       }
     } catch (error) {
-      console.error("Reset error:", error);
       res.status(500).json({ error: String(error) });
     }
   });
 
-  // --- RUTAS API PROTEGIDAS POR JWT ---
-  
-  // Drivers
   app.get("/api/drivers", verifyAuth, async (req, res) => {
     const drivers = await storage.getAllDrivers();
     res.json(drivers);
@@ -103,7 +81,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
-  // Vehicles
   app.get("/api/vehicles", verifyAuth, async (req, res) => {
     const vehicles = await storage.getAllVehicles();
     res.json(vehicles);
@@ -114,7 +91,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(vehicle);
   });
 
-  // GPS Update (Pública o con token de dispositivo)
   app.post("/api/vehicles/:id/location", async (req, res) => {
      const { lat, lng, status } = req.body;
      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
@@ -126,7 +102,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
      res.json({ success: true });
   });
 
-  // Route Slips
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
       const slips = await storage.getAllRouteSlips();
       res.json(slips);
@@ -137,7 +112,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(slip);
   });
 
-  // Payments
   app.get("/api/payments", verifyAuth, async (req, res) => {
       const payments = await storage.getAllPayments();
       res.json(payments);
@@ -149,19 +123,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(payment);
   });
 
-  // Audit logs routes
   app.get("/api/audit", verifyAuth, hasRole("admin"), async (req, res) => {
       const logs = await storage.getAllAuditLogs();
       res.json(logs);
   });
 
   const httpServer = createServer(app);
-
-  // WebSocket server (Opcional, si lo usas)
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
-  wss.on("connection", (ws: WebSocket) => {
-      // Lógica de WS...
-  });
-
   return httpServer;
 }

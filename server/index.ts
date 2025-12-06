@@ -2,21 +2,21 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import cors from "cors";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 
 const app = express();
 
-// 1. Confianza en Proxy
+// Confianza en Proxy
 app.set("trust proxy", true);
 
-// 2. Configuración Básica
+// Middlewares
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// 3. Logging
+// Logging
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
@@ -30,10 +30,9 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    console.log("🚀 [Startup] Iniciando servidor TaxiNort (Modo JWT)...");
+    console.log("🚀 [Startup] Iniciando servidor TaxiNort...");
     const server = await registerRoutes(app);
 
-    // Manejo de errores global
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
@@ -47,13 +46,12 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    // Puerto dinámico
     const port = parseInt(process.env.PORT || '8080', 10);
     server.listen(port, '0.0.0.0', () => {
-      console.log(`🚀 [Startup] Servidor escuchando en puerto ${port}`);
+      console.log(`🚀 Servidor escuchando en puerto ${port}`);
     });
   } catch (err) {
-    console.error("❌ [Startup] Error fatal al iniciar:", err);
+    console.error("❌ Error fatal:", err);
     process.exit(1);
   }
 })();

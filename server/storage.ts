@@ -71,4 +71,5 @@ export class DatabaseStorage implements IStorage {
   async updateVehicleLocation(location: VehicleLocation): Promise<void> { if (!firebaseDb) return; try { const ref = firebaseDb.ref(`locations/${location.vehicleId}`); await ref.set({ ...location, timestamp: Date.now() }); } catch (error) { console.error("Error actualizando ubicación en Firebase:", error); } }
   async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> { if (!firebaseDb) return null; try { const ref = firebaseDb.ref(`locations/${vehicleId}`); const snapshot = await ref.once('value'); return snapshot.val() as VehicleLocation | null; } catch (error) { console.error("Error obteniendo ubicación de Firebase:", error); return null; } }
 }
+
 export const storage = new DatabaseStorage();
