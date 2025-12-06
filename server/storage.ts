@@ -10,31 +10,25 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
-
   getDriver(id: string): Promise<Driver | undefined>;
   getAllDrivers(): Promise<Driver[]>;
   createDriver(driver: InsertDriver): Promise<Driver>;
   updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
   deleteDriver(id: string): Promise<boolean>;
-
   getVehicle(id: string): Promise<Vehicle | undefined>;
   getAllVehicles(): Promise<Vehicle[]>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: string, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
   deleteVehicle(id: string): Promise<boolean>;
-
   getRouteSlip(id: string): Promise<RouteSlip | undefined>;
   getAllRouteSlips(): Promise<RouteSlip[]>;
   createRouteSlip(slip: InsertRouteSlip): Promise<RouteSlip>;
   checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
-
   getPayment(id: string): Promise<Payment | undefined>;
   getAllPayments(): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
-
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
-
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
   getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
 }
@@ -50,7 +44,6 @@ export class DatabaseStorage implements IStorage {
   }
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    // No username
     const newUser = { ...insertUser, id, createdAt: new Date() };
     await db.insert(users).values(newUser);
     return newUser;

@@ -4,28 +4,19 @@ import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware para verificar Token (Header Authorization o Cookie)
+// Middleware: Verifica que el token venga en el Header "Authorization"
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  let token;
-
-  // Prioridad 1: Header Authorization "Bearer <token>"
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.split(" ")[1];
-  } 
-  // Prioridad 2: Cookie (por si acaso el cliente la envía)
-  else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
-
-  if (!token) {
+  
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "No autenticado (Falta token)" });
   }
 
+  const token = authHeader.split(" ")[1];
+
   try {
-    // Verificar y decodificar el token
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
     const user = await storage.getUser(decoded.id);
     
@@ -33,7 +24,6 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
       return res.status(401).json({ message: "Usuario inválido" });
     }
 
-    // Inyectar el usuario en la request para usarlo en las rutas
     (req as any).user = user;
     next();
   } catch (error) {
@@ -41,7 +31,7 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
   }
 }
 
-// Extender tipos de Express para TypeScript
+// Extender tipos
 declare global {
   namespace Express {
     interface Request {
@@ -52,7 +42,7 @@ declare global {
 
 export function setupAuth(app: Express) {
   
-  // LOGIN: Genera y devuelve el token
+  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -61,31 +51,21 @@ export function setupAuth(app: Express) {
       const user = await storage.getUserByEmail(email);
 
       if (!user) {
-        console.log("❌ Usuario no encontrado");
         return res.status(401).json({ message: "Usuario no encontrado" });
       }
 
       const isValid = await bcrypt.compare(req.body.password, user.password);
       if (!isValid) {
-        console.log("❌ Contraseña incorrecta");
         return res.status(401).json({ message: "Contraseña incorrecta" });
       }
 
-      // Crear Token (Válido por 30 días)
+      // Crear Token (Dura 30 días)
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
 
       console.log(`✅ [Login] Éxito. Token generado.`);
       const { password, ...userWithoutPassword } = user;
       
-      // Enviamos el token en el cuerpo JSON (para localStorage)
-      // Y también en cookie como respaldo con configuración muy permisiva
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: false, // IMPORTANTE: 'false' para evitar problemas con proxies que terminan SSL
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000
-      });
-
+      // Enviamos el token al frontend
       res.json({ user: userWithoutPassword, token });
 
     } catch (err) {
@@ -114,9 +94,6 @@ export function setupAuth(app: Express) {
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
 
-      // Enviamos cookie de respaldo
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
-
       const { password, ...userWithoutPassword } = user;
       res.status(201).json({ user: userWithoutPassword, token });
     } catch (err) {
@@ -124,13 +101,12 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // LOGOUT
+  // LOGOUT (El cliente solo borra el token)
   app.post("/api/auth/logout", (req, res) => {
-    res.clearCookie("token");
     res.sendStatus(200);
   });
 
-  // OBTENER USUARIO (Requiere token)
+  // OBTENER USUARIO
   app.get("/api/user", verifyAuth, (req, res) => {
     const { password, ...userWithoutPassword } = (req as any).user;
     res.json(userWithoutPassword);

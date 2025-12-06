@@ -2,20 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# 1. Copiamos SOLO el package.json
+# Copiar package.json primero para aprovechar caché
 COPY package.json ./
 
-# 2. Instalación limpia (sin package-lock)
+# Instalar TODO
 RUN npm install
 
-# 3. Copiamos el resto del código
+# Copiar código
 COPY . .
 
-# 4. Construimos la aplicación
+# Construir
 RUN npm run build
 
-# 5. Exponemos el puerto 8080
+# Exponer puerto 8080
 EXPOSE 8080
 
-# 6. Comando de inicio
+# Iniciar
 CMD ["npm", "run", "start"]
