@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import * as schema from "@shared/schema";
 import "dotenv/config";
 
+// Configuración base
 const dbConfig: mysql.PoolOptions = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
@@ -12,25 +13,31 @@ const dbConfig: mysql.PoolOptions = {
   queueLimit: 0,
 };
 
-// LÓGICA INTELIGENTE GOOGLE CLOUD
+// Lógica de Conexión Inteligente
+// Google Cloud Run inyecta automáticamente INSTANCE_CONNECTION_NAME si se configura la conexión SQL.
 if (process.env.INSTANCE_CONNECTION_NAME) {
-  // ☁️ Estamos en Cloud Run -> Usamos Socket Unix
-  console.log(`🔌 Conectando a Cloud SQL vía Socket: /cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`);
+  // ☁️ MODO NUBE (Cloud Run)
+  // Usamos el Socket Unix para una conexión interna, segura y rápida sin salir a internet.
+  console.log(`🔌 [DB] Conectando a Cloud SQL vía Socket: /cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`);
   dbConfig.socketPath = `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`;
 } else {
-  // 🏠 Estamos en Local -> Usamos IP TCP
+  // 🏠 MODO LOCAL (Tu PC)
+  // Usamos la conexión TCP estándar con la IP pública.
   if (!process.env.DB_HOST) {
-    throw new Error("❌ Faltan credenciales: DB_HOST o INSTANCE_CONNECTION_NAME");
-  }
-  console.log(`🔌 Conectando vía TCP: ${process.env.DB_HOST}`);
-  dbConfig.host = process.env.DB_HOST;
-  dbConfig.port = Number(process.env.DB_PORT) || 3306;
-  
-  // SSL solo si no es localhost
-  if (process.env.DB_HOST !== 'localhost') {
-      dbConfig.ssl = { rejectUnauthorized: false };
+    console.warn("⚠️ Advertencia: DB_HOST no definido. La conexión local fallará.");
+  } else {
+    console.log(`🔌 [DB] Conectando vía TCP: ${process.env.DB_HOST}`);
+    dbConfig.host = process.env.DB_HOST;
+    dbConfig.port = Number(process.env.DB_PORT) || 3306;
+    
+    // SSL es necesario para conectarse desde fuera de Google Cloud
+    // (a menos que estés usando el Cloud SQL Auth Proxy localmente)
+    if (process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') {
+        dbConfig.ssl = { rejectUnauthorized: false };
+    }
   }
 }
 
 export const poolConnection = mysql.createPool(dbConfig);
+
 export const db = drizzle(poolConnection, { schema, mode: "default" });
