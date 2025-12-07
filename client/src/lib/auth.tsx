@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  // Cargar usuario si existe token
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
@@ -30,10 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // GUARDAR TOKEN
-      if (res.token) {
-        localStorage.setItem("auth_token", res.token);
-      }
+      if (res.token) localStorage.setItem("auth_token", res.token);
       return res.user;
     },
     onSuccess: (user: User) => {
@@ -48,14 +46,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      // 1. Borrar token localmente PRIMERO (Lo más importante)
       localStorage.removeItem("auth_token");
-      await apiRequestJson("/api/auth/logout", "POST");
+      
+      // 2. Avisar al servidor (opcional con JWT, pero bueno para cookies backup)
+      try {
+        await apiRequestJson("/api/auth/logout", "POST");
+      } catch (e) {
+        // Ignoramos error de red al salir
+        console.warn("Logout server warning:", e);
+      }
     },
     onSuccess: () => {
+      // 3. Limpiar estado de React Query
       queryClient.setQueryData(["/api/user"], null);
-      queryClient.clear();
+      queryClient.clear(); 
+      
+      // 4. Redirigir
       setLocation("/login");
       toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
+    },
+    onError: () => {
+      // Incluso si falla, forzamos la salida visual
+      localStorage.removeItem("auth_token");
+      queryClient.setQueryData(["/api/user"], null);
+      setLocation("/login");
     },
   });
 
@@ -101,7 +116,8 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   return <Route path={path} component={Component} />;
 }
 
-function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
+function RedirectToLogin() {
+  const [, setLocation] = useLocation();
   useEffect(() => {
     setLocation("/login");
   }, [setLocation]);

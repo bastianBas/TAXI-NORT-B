@@ -56,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ status: "CREATED", message: "Admin creado" });
       } else {
         await db.update(users).set({ password: hashedPassword, role: "admin" }).where(eq(users.email, email));
-        return res.json({ status: "RESET_SUCCESS", message: "Contraseña reseteada" });
+        return res.json({ status: "RESET_SUCCESS", message: "Pass reseteada" });
       }
     } catch (error) {
       res.status(500).json({ error: String(error) });
