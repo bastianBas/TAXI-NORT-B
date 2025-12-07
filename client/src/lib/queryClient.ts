@@ -1,12 +1,11 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// Función para obtener el token guardado en localStorage
+// Función para obtener el token guardado
 function getToken() {
   return localStorage.getItem("auth_token");
 }
 
 // Función helper para crear headers con autenticación
-// Se usa Record<string, string> para que TypeScript sepa que siempre devuelve un objeto válido
 function getAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { "Authorization": `Bearer ${token}` } : {};

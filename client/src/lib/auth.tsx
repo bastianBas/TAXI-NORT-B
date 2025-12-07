@@ -51,20 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutationFn: async () => {
       // 1. Borrar token localmente PRIMERO
       localStorage.removeItem("auth_token");
-      
-      // 2. Avisar al servidor
-      try {
-        await apiRequestJson("/api/auth/logout", "POST");
-      } catch (e) {
-        console.warn("Logout server warning:", e);
-      }
+      try { await apiRequestJson("/api/auth/logout", "POST"); } catch(e) {}
     },
     onSuccess: () => {
-      // 3. Limpiar estado
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear(); 
-      
-      // 4. Redirigir
       setLocation("/login");
       toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
     },
@@ -109,15 +100,15 @@ export function useAuth() {
 
 export function ProtectedRoute({ path, component: Component }: { path: string; component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   if (!user) {
     return (
       <Route path={path}>
         <div className="flex items-center justify-center min-h-screen">
            Redirigiendo...
-           {/* Corrección: Ya no pasamos props, el componente maneja su propia redirección */}
            <RedirectToLogin />
         </div>
       </Route>
@@ -127,7 +118,7 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   return <Route path={path} component={Component} />;
 }
 
-// Componente auxiliar corregido: Obtiene setLocation internamente
+// Componente auxiliar corregido para evitar problemas de tipos
 function RedirectToLogin() {
   const [, setLocation] = useLocation();
   

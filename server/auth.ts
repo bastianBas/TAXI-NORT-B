@@ -50,7 +50,7 @@ declare global {
 
 export function setupAuth(app: Express) {
   
-  // LOGIN: Genera y devuelve el token
+  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -59,14 +59,11 @@ export function setupAuth(app: Express) {
       const user = await storage.getUserByEmail(email);
 
       if (!user) {
-        console.log("❌ Usuario no encontrado");
         return res.status(401).json({ message: "Usuario no encontrado" });
       }
 
-      // Verificación de contraseña con bcrypt
       const isValid = await bcrypt.compare(req.body.password, user.password);
       if (!isValid) {
-        console.log("❌ Contraseña incorrecta");
         return res.status(401).json({ message: "Contraseña incorrecta" });
       }
 
@@ -122,7 +119,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // LOGOUT (El cliente borra el token)
+  // LOGOUT
   app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("token");
     res.sendStatus(200);
