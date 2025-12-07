@@ -53,12 +53,12 @@ export class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    // CORRECCIÓN: Asignamos 'driver' por defecto si role es undefined
+    // CORRECCIÓN: Asignamos explícitamente el valor por defecto si no viene
     const newUser: User = { 
       ...insertUser, 
       id, 
       createdAt: new Date(),
-      role: insertUser.role || "driver" 
+      role: insertUser.role ?? "driver" 
     };
     await db.insert(users).values(newUser);
     return newUser;
@@ -80,12 +80,12 @@ export class DatabaseStorage implements IStorage {
 
   async createDriver(insertDriver: InsertDriver): Promise<Driver> {
     const id = randomUUID();
-    // CORRECCIÓN: Asignamos 'active' por defecto
+    // CORRECCIÓN: Default status
     const newDriver: Driver = { 
       ...insertDriver, 
       id, 
       createdAt: new Date(),
-      status: insertDriver.status || "active" 
+      status: insertDriver.status ?? "active"
     };
     await db.insert(drivers).values(newDriver);
     return newDriver;
@@ -113,12 +113,12 @@ export class DatabaseStorage implements IStorage {
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
     const id = randomUUID();
-    // CORRECCIÓN: Asignamos 'active' por defecto
+    // CORRECCIÓN: Default status
     const newVehicle: Vehicle = { 
       ...insertVehicle, 
       id, 
       createdAt: new Date(),
-      status: insertVehicle.status || "active" 
+      status: insertVehicle.status ?? "active"
     };
     await db.insert(vehicles).values(newVehicle);
     return newVehicle;
@@ -159,18 +159,18 @@ export class DatabaseStorage implements IStorage {
     const id = randomUUID();
     const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date);
     
-    // CORRECCIÓN: Rellenamos todos los valores por defecto manualmente
+    // CORRECCIÓN: Default values para todos los campos opcionales
     const newSlip: RouteSlip = { 
       ...insertSlip, 
       id, 
       isDuplicate, 
       createdAt: new Date(),
-      paymentStatus: insertSlip.paymentStatus || "pending",
-      notes: insertSlip.notes || null,
-      signature: insertSlip.signature || null,
-      totalAmount: insertSlip.totalAmount || 0,
-      expenses: insertSlip.expenses || 0,
-      netAmount: insertSlip.netAmount || 0
+      paymentStatus: insertSlip.paymentStatus ?? "pending",
+      notes: insertSlip.notes ?? null,
+      signature: insertSlip.signature ?? null,
+      totalAmount: insertSlip.totalAmount ?? 0,
+      expenses: insertSlip.expenses ?? 0,
+      netAmount: insertSlip.netAmount ?? 0
     };
     await db.insert(routeSlips).values(newSlip);
     return newSlip;
@@ -188,13 +188,13 @@ export class DatabaseStorage implements IStorage {
 
   async createPayment(insertPayment: InsertPayment): Promise<Payment> {
     const id = randomUUID();
-    // CORRECCIÓN: Valores por defecto
+    // CORRECCIÓN: Default values
     const newPayment: Payment = { 
       ...insertPayment, 
       id, 
       createdAt: new Date(),
-      status: insertPayment.status || "pending",
-      proofOfPayment: insertPayment.proofOfPayment || null
+      status: insertPayment.status ?? "pending",
+      proofOfPayment: insertPayment.proofOfPayment ?? null
     };
     await db.insert(payments).values(newPayment);
     return newPayment;
@@ -207,13 +207,13 @@ export class DatabaseStorage implements IStorage {
 
   async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> {
     const id = randomUUID();
-    // CORRECCIÓN: Valores por defecto y nulos
+    // CORRECCIÓN: Default values
     const newLog: AuditLog = { 
       ...insertLog, 
       id, 
       timestamp: new Date(),
-      entityId: insertLog.entityId || null,
-      details: insertLog.details || null
+      entityId: insertLog.entityId ?? null,
+      details: insertLog.details ?? null
     };
     await db.insert(auditLogs).values(newLog);
     return newLog;
