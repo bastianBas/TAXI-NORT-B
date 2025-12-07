@@ -1,25 +1,37 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Función para obtener el token guardado en localStorage
 function getToken() {
   return localStorage.getItem("auth_token");
 }
 
-function getAuthHeaders() {
+// Función helper para crear headers con autenticación
+function getAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { "Authorization": `Bearer ${token}` } : {};
 }
 
-export async function apiRequest({ queryKey }: { queryKey: readonly unknown[] }) {
+export async function apiRequest({
+  queryKey,
+}: {
+  queryKey: readonly unknown[];
+}) {
   const [path] = queryKey as [string];
-  const res = await fetch(path, { headers: { ...getAuthHeaders() } });
+  
+  // Enviamos el token en el header Authorization
+  const res = await fetch(path, {
+    headers: getAuthHeaders() // Simplificado para evitar error de tipos
+  });
 
   if (!res.ok) {
     if (res.status === 401) {
+      // Si el token es inválido, lo borramos para limpiar el estado
       localStorage.removeItem("auth_token");
       throw new Error("No autenticado");
     }
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
+
   return res.json();
 }
 
@@ -30,14 +42,23 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: false, 
     },
-    mutations: { retry: false },
+    mutations: {
+      retry: false,
+    },
   },
 });
 
-export async function apiRequestJson(path: string, method: string = "GET", body?: any) {
+export async function apiRequestJson(
+  path: string,
+  method: string = "GET",
+  body?: any
+) {
   const res = await fetch(path, {
     method,
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders() // Aquí TypeScript ya aceptará la mezcla correctamente
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -51,5 +72,6 @@ export async function apiRequestJson(path: string, method: string = "GET", body?
   }
 
   if (res.status === 204) return null;
+  
   return res.json().catch(() => null);
 }
