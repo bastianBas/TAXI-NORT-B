@@ -44,7 +44,6 @@ app.use((req, res, next) => {
     }
 
     const port = parseInt(process.env.PORT || '8080', 10);
-    
     server.listen(port, '0.0.0.0', () => {
       console.log(`🚀 Servidor escuchando en puerto ${port}`);
     });

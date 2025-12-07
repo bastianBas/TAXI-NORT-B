@@ -16,7 +16,7 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
     token = req.cookies.token;
   }
 
-  if (!token) return res.status(401).json({ message: "No autenticado" });
+  if (!token) return res.status(401).json({ message: "No autenticado (Falta token)" });
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
