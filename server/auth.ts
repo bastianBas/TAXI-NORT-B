@@ -6,7 +6,7 @@ import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
 
-// Middleware para verificar Token (Busca en Header y Cookie)
+// Middleware para verificar Token (Header Authorization)
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
@@ -78,7 +78,7 @@ export function setupAuth(app: Express) {
       // Enviamos el token al frontend (JSON) y en Cookie (backup)
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false, // 'false' para evitar problemas con proxies que terminan SSL en Cloud Run
+        secure: false, // IMPORTANTE: 'false' para evitar problemas con proxies SSL en Cloud Run
         sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000
       });
@@ -111,12 +111,8 @@ export function setupAuth(app: Express) {
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
 
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: false,
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000
-      });
+      // Cookie backup
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
 
       const { password, ...userWithoutPassword } = user;
       res.status(201).json({ user: userWithoutPassword, token });
@@ -125,7 +121,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // LOGOUT
+  // LOGOUT (El cliente borra el token)
   app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("token");
     res.sendStatus(200);

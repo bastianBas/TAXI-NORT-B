@@ -31,7 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      if (res.token) localStorage.setItem("auth_token", res.token);
+      // GUARDAR TOKEN EN LOCALSTORAGE
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
       return res.user;
     },
     onSuccess: (user: User) => {
@@ -77,16 +80,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerMutation = useMutation({
     mutationFn: async (newUser: InsertUser) => {
       const res = await apiRequestJson("/api/auth/register", "POST", newUser);
-      if (res.token) localStorage.setItem("auth_token", res.token);
+      // GUARDAR TOKEN AL REGISTRARSE
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       setLocation("/");
-      toast({ title: "Cuenta creada" });
+      toast({ title: "Cuenta creada", description: "Bienvenido a TaxiNort" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error de registro", description: error.message, variant: "destructive" });
     },
   });
 
@@ -110,14 +116,20 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   if (!user) {
-    return <Route path={path}><RedirectToLogin /></Route>;
+    return (
+      <Route path={path}>
+        <div className="flex items-center justify-center min-h-screen">
+           Redirigiendo...
+           <RedirectToLogin setLocation={setLocation} />
+        </div>
+      </Route>
+    );
   }
 
   return <Route path={path} component={Component} />;
 }
 
-function RedirectToLogin() {
-  const [, setLocation] = useLocation();
+function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
   useEffect(() => {
     setLocation("/login");
   }, [setLocation]);

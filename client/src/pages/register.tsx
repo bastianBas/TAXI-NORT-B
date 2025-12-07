@@ -21,12 +21,10 @@ export default function Register() {
   const { registerMutation, user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  // Estado local para manejar la carga si la mutación no responde rápido
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (user) {
-      console.log("Usuario detectado, redirigiendo al dashboard...");
       setLocation("/");
     }
   }, [user, setLocation]);
@@ -41,34 +39,12 @@ export default function Register() {
   });
 
   async function onSubmit(values: z.infer<typeof registerSchema>) {
-    console.log("1. Intentando registrar usuario:", values);
     setIsSubmitting(true);
-
     try {
-      // Usamos mutateAsync para poder capturar el error con try/catch aquí mismo
       await registerMutation.mutateAsync(values);
-      
-      console.log("2. Registro exitoso (respuesta recibida)");
-      toast({
-        title: "¡Cuenta creada!",
-        description: "Bienvenido a TaxiNort. Redirigiendo...",
-      });
-      
-      // La redirección la maneja el useEffect, pero podemos forzarla si tarda
-      setTimeout(() => setLocation("/"), 1000);
-
-    } catch (error: any) {
-      console.error("3. Error en el registro:", error);
-      
-      // Mostrar el error en una alerta visible por si el toast falla
-      const mensajeError = error.message || "Error desconocido al conectar con el servidor";
-      alert(`Error al registrarse: ${mensajeError}`);
-
-      toast({
-        title: "Error al registrarse",
-        description: mensajeError,
-        variant: "destructive",
-      });
+      // La redirección se maneja en el onSuccess del AuthProvider
+    } catch (error) {
+      console.error("Error en submit:", error);
     } finally {
       setIsSubmitting(false);
     }
