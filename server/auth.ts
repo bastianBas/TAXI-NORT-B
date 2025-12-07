@@ -6,6 +6,7 @@ import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
+// Middleware: Verifica token
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
@@ -32,30 +33,30 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
 declare global { namespace Express { interface Request { user?: User; } } }
 
 export function setupAuth(app: Express) {
+  
+  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
-      console.log(`🔍 [Login] Intentando: ${email}`);
       const user = await storage.getUserByEmail(email);
 
       if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
-        console.log("❌ Credenciales inválidas");
         return res.status(401).json({ message: "Credenciales inválidas" });
       }
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
       
-      // Cookie de respaldo (Secure false para evitar problemas de proxy SSL)
+      // Cookie de respaldo
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
       
-      const { password, ...userData } = user;
-      res.json({ user: userData, token });
+      const { password, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword, token });
     } catch (err) {
-      console.error("Login Error:", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
 
+  // REGISTRO
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -74,8 +75,8 @@ export function setupAuth(app: Express) {
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
 
-      const { password, ...userData } = user;
-      res.status(201).json({ user: userData, token });
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json({ user: userWithoutPassword, token });
     } catch (err) {
       res.status(500).json({ message: "Error registro" });
     }
@@ -87,7 +88,7 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/user", verifyAuth, (req, res) => {
-    const { password, ...userData } = (req as any).user;
-    res.json(userData);
+    const { password, ...userWithoutPassword } = (req as any).user;
+    res.json(userWithoutPassword);
   });
 }
