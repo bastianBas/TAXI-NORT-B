@@ -10,7 +10,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-// Esquema de validación
 const registerSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
   email: z.string().email("Email inválido"),
@@ -42,7 +41,6 @@ export default function Register() {
     setIsSubmitting(true);
     try {
       await registerMutation.mutateAsync(values);
-      // La redirección se maneja en el onSuccess del AuthProvider
     } catch (error) {
       console.error("Error en submit:", error);
     } finally {
@@ -62,7 +60,6 @@ export default function Register() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              
               <FormField
                 control={form.control}
                 name="name"
@@ -76,7 +73,6 @@ export default function Register() {
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="email"
@@ -90,7 +86,6 @@ export default function Register() {
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="password"
@@ -104,7 +99,6 @@ export default function Register() {
                   </FormItem>
                 )}
               />
-
               <Button 
                 type="submit" 
                 className="w-full bg-slate-900 hover:bg-slate-800"

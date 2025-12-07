@@ -6,7 +6,6 @@ import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware: Verifica token
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
@@ -33,8 +32,6 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
 declare global { namespace Express { interface Request { user?: User; } } }
 
 export function setupAuth(app: Express) {
-  
-  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -45,8 +42,6 @@ export function setupAuth(app: Express) {
       }
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      
-      // Cookie de respaldo
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
       
       const { password, ...userWithoutPassword } = user;
@@ -56,7 +51,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // REGISTRO
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();

@@ -1,6 +1,8 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-function getToken() { return localStorage.getItem("auth_token"); }
+function getToken() {
+  return localStorage.getItem("auth_token");
+}
 
 function getAuthHeaders() {
   const token = getToken();
@@ -18,7 +20,6 @@ export async function apiRequest({ queryKey }: { queryKey: readonly unknown[] })
     }
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
-
   return res.json();
 }
 

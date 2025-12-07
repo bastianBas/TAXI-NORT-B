@@ -21,7 +21,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Intentamos cargar el usuario solo si existe un token guardado
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
@@ -31,10 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // GUARDAR TOKEN AL INICIAR SESIÓN
-      if (res.token) {
-        localStorage.setItem("auth_token", res.token);
-      }
+      if (res.token) localStorage.setItem("auth_token", res.token);
       return res.user;
     },
     onSuccess: (user: User) => {
@@ -49,27 +45,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. ELIMINAR TOKEN LOCALMENTE (Lo más importante)
       localStorage.removeItem("auth_token");
-      
-      // 2. Avisar al servidor (opcional, para borrar cookies si las hubiera)
-      try {
-        await apiRequestJson("/api/auth/logout", "POST");
-      } catch (e) {
-        console.warn("Logout server error (ignorable):", e);
-      }
+      try { await apiRequestJson("/api/auth/logout", "POST"); } catch(e) {}
     },
     onSuccess: () => {
-      // 3. Limpiar estado de la aplicación
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear(); 
-      
-      // 4. Redirigir al login
       setLocation("/login");
       toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
     },
     onError: () => {
-      // Incluso si falla la petición al servidor, forzamos la salida local
       localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
       setLocation("/login");
@@ -79,10 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerMutation = useMutation({
     mutationFn: async (newUser: InsertUser) => {
       const res = await apiRequestJson("/api/auth/register", "POST", newUser);
-      // GUARDAR TOKEN AL REGISTRARSE
-      if (res.token) {
-        localStorage.setItem("auth_token", res.token);
-      }
+      if (res.token) localStorage.setItem("auth_token", res.token);
       return res.user;
     },
     onSuccess: (user: User) => {
@@ -112,7 +94,7 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
   if (!user) {
     return (
