@@ -27,7 +27,7 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    console.log("🚀 [Startup] Iniciando servidor TaxiNort...");
+    console.log("🚀 [Startup] Iniciando servidor TaxiNort (JWT Mode)...");
     const server = await registerRoutes(app);
 
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

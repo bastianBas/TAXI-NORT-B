@@ -109,7 +109,7 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
       <Route path={path}>
         <div className="flex items-center justify-center min-h-screen">
            Redirigiendo...
-           <RedirectToLogin />
+           <RedirectToLogin setLocation={setLocation} />
         </div>
       </Route>
     );
@@ -118,13 +118,9 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   return <Route path={path} component={Component} />;
 }
 
-// Componente auxiliar corregido para evitar problemas de tipos
-function RedirectToLogin() {
-  const [, setLocation] = useLocation();
-  
+function RedirectToLogin({ setLocation }: { setLocation: (path: string) => void }) {
   useEffect(() => {
     setLocation("/login");
   }, [setLocation]);
-  
   return null;
 }

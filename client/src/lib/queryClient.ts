@@ -1,6 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// Función para obtener el token guardado
+// Función para obtener el token guardado en localStorage
 function getToken() {
   return localStorage.getItem("auth_token");
 }
@@ -20,7 +20,7 @@ export async function apiRequest({
   
   // Enviamos el token en el header Authorization
   const res = await fetch(path, {
-    headers: getAuthHeaders() // Simplificado para evitar error de tipos
+    headers: getAuthHeaders() 
   });
 
   if (!res.ok) {
@@ -57,7 +57,7 @@ export async function apiRequestJson(
     method,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders() // Aquí TypeScript ya aceptará la mezcla correctamente
+      ...getAuthHeaders() 
     },
     body: body ? JSON.stringify(body) : undefined,
   });
