@@ -1,91 +1,61 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcrypt"; // Cambiado a bcrypt nativo si bcryptjs da problemas, o viceversa según package.json
-// Si tu package.json usa bcryptjs, cambia esta línea a: import bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs"; // Usamos bcryptjs
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware para verificar Token (Header Authorization o Cookie)
+// Middleware: Verifica que el token venga en el Header
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
 
-  // 1. Intentar leer del Header "Authorization: Bearer <token>"
+  // 1. Buscamos en Header "Authorization: Bearer <token>"
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.split(" ")[1];
   } 
-  // 2. Fallback: Intentar leer de la cookie (por si acaso)
+  // 2. Respaldo: Cookie (por si acaso)
   else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
-  if (!token) {
-    return res.status(401).json({ message: "No autenticado (Falta token)" });
-  }
+  if (!token) return res.status(401).json({ message: "No autenticado (Falta token)" });
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
     const user = await storage.getUser(decoded.id);
-    
-    if (!user) {
-      return res.status(401).json({ message: "Usuario inválido" });
-    }
-
-    // Agregamos el usuario a la request para usarlo en otras rutas
+    if (!user) return res.status(401).json({ message: "Usuario inválido" });
     (req as any).user = user;
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Token expirado o inválido" });
+    return res.status(401).json({ message: "Token inválido" });
   }
 }
 
-// Extender tipos de Express para TypeScript
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-    }
-  }
-}
+declare global { namespace Express { interface Request { user?: User; } } }
 
 export function setupAuth(app: Express) {
   
-  // LOGIN: Genera y devuelve el token
+  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
-      console.log(`🔍 [Login] Intentando: ${email}`);
-      
       const user = await storage.getUserByEmail(email);
 
-      if (!user) {
-        console.log("❌ Usuario no encontrado");
-        return res.status(401).json({ message: "Usuario no encontrado" });
+      if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
+        return res.status(401).json({ message: "Credenciales inválidas" });
       }
 
-      const isValid = await bcrypt.compare(req.body.password, user.password);
-      if (!isValid) {
-        console.log("❌ Contraseña incorrecta");
-        return res.status(401).json({ message: "Contraseña incorrecta" });
-      }
-
-      // Crear Token (Dura 30 días)
+      // Crear Token
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-
-      console.log(`✅ [Login] Éxito. Token generado.`);
-      const { password, ...userWithoutPassword } = user;
       
-      // Enviamos el token al frontend (JSON) y en Cookie (backup)
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: false, // IMPORTANTE: 'false' para evitar problemas con proxies que terminan SSL
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000
-      });
+      // Cookie de respaldo
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
       
-      res.json({ user: userWithoutPassword, token });
+      const { password, ...userData } = user;
+      // IMPORTANTE: Devolvemos el token en el JSON
+      res.json({ user: userData, token });
 
     } catch (err) {
       console.error("Login error:", err);
@@ -97,41 +67,35 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
-      const existingUser = await storage.getUserByEmail(email);
-      
-      if (existingUser) {
-        return res.status(400).json({ message: "El email ya está registrado" });
+      if (await storage.getUserByEmail(email)) {
+        return res.status(400).json({ message: "Email registrado" });
       }
 
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
       const user = await storage.createUser({
         name: req.body.name,
-        email: email,
+        email,
         password: hashedPassword,
-        role: "driver" 
+        role: "driver"
       });
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
 
-      // Cookie backup
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
-
-      const { password, ...userWithoutPassword } = user;
-      res.status(201).json({ user: userWithoutPassword, token });
+      const { password, ...userData } = user;
+      res.status(201).json({ user: userData, token });
     } catch (err) {
       res.status(500).json({ message: "Error en registro" });
     }
   });
 
-  // LOGOUT
   app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("token");
     res.sendStatus(200);
   });
 
-  // OBTENER USUARIO (Requiere token)
   app.get("/api/user", verifyAuth, (req, res) => {
-    const { password, ...userWithoutPassword } = (req as any).user;
-    res.json(userWithoutPassword);
+    const { password, ...userData } = (req as any).user;
+    res.json(userData);
   });
 }
