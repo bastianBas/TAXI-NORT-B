@@ -6,15 +6,7 @@ import type { User, InsertUser } from "@shared/schema";
 import { Loader2 } from "lucide-react";
 import { Route, useLocation } from "wouter";
 
-type AuthContextType = {
-  user: User | null;
-  isLoading: boolean;
-  error: Error | null;
-  loginMutation: any;
-  logoutMutation: any;
-  registerMutation: any;
-};
-
+type AuthContextType = { user: User | null; isLoading: boolean; error: Error | null; loginMutation: any; logoutMutation: any; registerMutation: any; };
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -30,10 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      toast({ title: "Bienvenido", description: `Hola, ${user.name}` });
+      toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
       setLocation("/");
     },
-    onError: (error: Error) => { toast({ title: "Error", description: error.message, variant: "destructive" }); },
+    onError: (error: Error) => { toast({ title: "Error de acceso", description: error.message, variant: "destructive" }); },
   });
 
   const logoutMutation = useMutation({
@@ -45,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
       setLocation("/login");
-      toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
+      toast({ title: "Sesión cerrada" });
     },
     onError: () => { localStorage.removeItem("auth_token"); queryClient.setQueryData(["/api/user"], null); setLocation("/login"); },
   });
@@ -59,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       setLocation("/");
-      toast({ title: "Cuenta creada", description: "Bienvenido a TaxiNort" });
+      toast({ title: "Cuenta creada" });
     },
     onError: (error: Error) => { toast({ title: "Error", description: error.message, variant: "destructive" }); },
   });
