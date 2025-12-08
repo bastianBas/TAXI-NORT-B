@@ -6,7 +6,15 @@ import type { User, InsertUser } from "@shared/schema";
 import { Loader2 } from "lucide-react";
 import { Route, useLocation } from "wouter";
 
-type AuthContextType = { user: User | null; isLoading: boolean; error: Error | null; loginMutation: any; logoutMutation: any; registerMutation: any; };
+type AuthContextType = {
+  user: User | null;
+  isLoading: boolean;
+  error: Error | null;
+  loginMutation: any;
+  logoutMutation: any;
+  registerMutation: any;
+};
+
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -51,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       setLocation("/");
-      toast({ title: "Cuenta creada" });
+      toast({ title: "Cuenta creada", description: "Bienvenido a TaxiNort" });
     },
     onError: (error: Error) => { toast({ title: "Error", description: error.message, variant: "destructive" }); },
   });
