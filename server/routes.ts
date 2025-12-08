@@ -1,27 +1,19 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { WebSocketServer, WebSocket } from "ws";
 import multer from "multer";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, verifyAuth } from "./auth";
 import { seedData } from "./seed";
-import type { VehicleLocation, User } from "@shared/schema";
+import type { User } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs"; // JS version
+import { WebSocketServer, WebSocket } from "ws";
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, "uploads/");
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
-    },
-  }),
+  storage: multer.diskStorage({ destination: (req, file, cb) => cb(null, "uploads/"), filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)) }),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
@@ -42,21 +34,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const email = "admin@taxinort.cl";
       const newPassword = "admin123";
-      console.log(`🚨 RESTABLECIENDO contraseña para ${email}...`);
+      console.log(`🚨 RESTABLECIENDO contraseña...`);
       const existing = await storage.getUserByEmail(email);
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       if (!existing) {
-        await storage.createUser({ name: "Administrador", email, password: hashedPassword, role: "admin" });
+        await storage.createUser({ name: "Admin", email, password: hashedPassword, role: "admin" });
         return res.json({ status: "CREATED", message: "Admin creado" });
       } else {
         await db.update(users).set({ password: hashedPassword, role: "admin" }).where(eq(users.email, email));
-        return res.json({ status: "RESET_SUCCESS", message: "Contraseña reseteada" });
+        return res.json({ status: "RESET_SUCCESS", message: "Pass reseteada" });
       }
     } catch (error) {
       res.status(500).json({ error: String(error) });
     }
   });
 
+  // (Resto de rutas igual)
   app.get("/api/drivers", verifyAuth, async (req, res) => { res.json(await storage.getAllDrivers()); });
   app.post("/api/drivers", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createDriver(req.body)); });
   app.put("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateDriver(req.params.id, req.body)); });
@@ -78,5 +71,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/audit", verifyAuth, hasRole("admin"), async (req, res) => { res.json(await storage.getAllAuditLogs()); });
 
   const httpServer = createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  wss.on("connection", (ws: WebSocket) => {});
+
   return httpServer;
 }
