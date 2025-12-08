@@ -12,12 +12,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-
-  const { data: user, error, isLoading } = useQuery<User | null>({
-    queryKey: ["/api/user"],
-    retry: false,
-    enabled: !!localStorage.getItem("auth_token"), 
-  });
+  const { data: user, error, isLoading } = useQuery<User | null>({ queryKey: ["/api/user"], retry: false, enabled: !!localStorage.getItem("auth_token") });
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
@@ -35,7 +30,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // BORRAR TOKEN LOCAL
       localStorage.removeItem("auth_token");
       try { await apiRequestJson("/api/auth/logout", "POST"); } catch(e) {}
     },
@@ -43,13 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
       setLocation("/login");
-      toast({ title: "Sesión cerrada" });
+      toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
     },
-    onError: () => { 
-        localStorage.removeItem("auth_token"); 
-        queryClient.setQueryData(["/api/user"], null); 
-        setLocation("/login"); 
-    },
+    onError: () => { localStorage.removeItem("auth_token"); queryClient.setQueryData(["/api/user"], null); setLocation("/login"); },
   });
 
   const registerMutation = useMutation({
@@ -74,27 +64,9 @@ export function useAuth() { const context = useContext(AuthContext); if (!contex
 export function ProtectedRoute({ path, component: Component }: { path: string; component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
-
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-
-  if (!user) {
-    return (
-      <Route path={path}>
-        <div className="flex items-center justify-center min-h-screen">
-           Redirigiendo...
-           <RedirectToLogin />
-        </div>
-      </Route>
-    );
-  }
-
+  if (!user) return <Route path={path}><RedirectToLogin /></Route>;
   return <Route path={path} component={Component} />;
 }
 
-function RedirectToLogin() {
-  const [, setLocation] = useLocation();
-  useEffect(() => {
-    setLocation("/login");
-  }, [setLocation]);
-  return null;
-}
+function RedirectToLogin() { const [, setLocation] = useLocation(); useEffect(() => setLocation("/login"), [setLocation]); return null; }

@@ -10,7 +10,7 @@ import type { VehicleLocation, User } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs"; // Importante: usar bcryptjs
+import bcrypt from "bcrypt";
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -50,7 +50,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ status: "CREATED", message: "Admin creado" });
       } else {
         await db.update(users).set({ password: hashedPassword, role: "admin" }).where(eq(users.email, email));
-        return res.json({ status: "RESET_SUCCESS", message: "Pass reseteada" });
+        return res.json({ status: "RESET_SUCCESS", message: "Contraseña reseteada" });
       }
     } catch (error) {
       res.status(500).json({ error: String(error) });

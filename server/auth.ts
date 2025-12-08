@@ -1,22 +1,19 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; // Usamos bcryptjs
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware: Verifica que el token venga en el Header
+// Middleware: Verifica token
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
 
-  // 1. Buscamos en Header "Authorization: Bearer <token>"
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.split(" ")[1];
-  } 
-  // 2. Respaldo: Cookie (por si acaso)
-  else if (req.cookies && req.cookies.token) {
+  } else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
@@ -36,34 +33,28 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
 declare global { namespace Express { interface Request { user?: User; } } }
 
 export function setupAuth(app: Express) {
-  
-  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
+      console.log(`🔍 [Login] Intentando: ${email}`);
       const user = await storage.getUserByEmail(email);
 
       if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
         return res.status(401).json({ message: "Credenciales inválidas" });
       }
 
-      // Crear Token
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
       
       // Cookie de respaldo
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
       
       const { password, ...userData } = user;
-      // IMPORTANTE: Devolvemos el token en el JSON
       res.json({ user: userData, token });
-
     } catch (err) {
-      console.error("Login error:", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
 
-  // REGISTRO
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -85,7 +76,7 @@ export function setupAuth(app: Express) {
       const { password, ...userData } = user;
       res.status(201).json({ user: userData, token });
     } catch (err) {
-      res.status(500).json({ message: "Error en registro" });
+      res.status(500).json({ message: "Error registro" });
     }
   });
 

@@ -10,12 +10,8 @@ function getAuthHeaders(): Record<string, string> {
 export async function apiRequest({ queryKey }: { queryKey: readonly unknown[] }) {
   const [path] = queryKey as [string];
   const res = await fetch(path, { headers: getAuthHeaders() });
-  
   if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem("auth_token");
-      throw new Error("No autenticado");
-    }
+    if (res.status === 401) { localStorage.removeItem("auth_token"); throw new Error("No autenticado"); }
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
   return res.json();
@@ -31,12 +27,8 @@ export async function apiRequestJson(path: string, method: string = "GET", body?
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
-
   if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem("auth_token");
-      throw new Error("No autenticado");
-    }
+    if (res.status === 401) { localStorage.removeItem("auth_token"); throw new Error("No autenticado"); }
     const data = await res.json().catch(() => ({}));
     throw new Error(data.message || `Error ${res.status}`);
   }
