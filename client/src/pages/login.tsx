@@ -51,7 +51,7 @@ export default function Login() {
                   <FormItem>
                     <FormLabel>Correo Electrónico</FormLabel>
                     <FormControl>
-                      <Input placeholder="admin@taxinort.cl" {...field} />
+                      <Input placeholder="juan.lopez@taxinort.cl" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
