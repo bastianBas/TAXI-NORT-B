@@ -1,19 +1,22 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; // Importación corregida para evitar línea roja
+import bcrypt from "bcryptjs"; // Importación correcta
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware para verificar Token
+// Middleware para verificar Token (Header Authorization o Cookie)
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
 
+  // 1. Buscamos en Header "Authorization: Bearer <token>"
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.split(" ")[1];
-  } else if (req.cookies && req.cookies.token) {
+  } 
+  // 2. Respaldo: Cookie
+  else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
@@ -29,6 +32,7 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
       return res.status(401).json({ message: "Usuario inválido" });
     }
 
+    // Agregamos el usuario a la request para usarlo en las rutas
     (req as any).user = user;
     next();
   } catch (error) {
@@ -36,9 +40,18 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
   }
 }
 
-declare global { namespace Express { interface Request { user?: User; } } }
+// Extender tipos de Express
+declare global {
+  namespace Express {
+    interface Request {
+      user?: User;
+    }
+  }
+}
 
 export function setupAuth(app: Express) {
+  
+  // LOGIN
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -56,11 +69,20 @@ export function setupAuth(app: Express) {
         return res.status(401).json({ message: "Contraseña incorrecta" });
       }
 
+      // Crear Token
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
       
-      const { password, ...userData } = user;
-      res.json({ user: userData, token });
+      // Cookie de respaldo
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // Permisivo para evitar bloqueos de proxy en Cloud Run
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000
+      });
+
+      // Enviamos el token en JSON para localStorage
+      const { password, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword, token });
 
     } catch (err) {
       console.error("Login error:", err);
@@ -68,38 +90,47 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // REGISTRO
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
       if (await storage.getUserByEmail(email)) {
-        return res.status(400).json({ message: "El email ya está registrado" });
+        return res.status(400).json({ message: "Email registrado" });
       }
 
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
       const user = await storage.createUser({
         name: req.body.name,
-        email: email,
+        email,
         password: hashedPassword,
-        role: "driver" 
+        role: "driver"
       });
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
+      
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000
+      });
 
-      const { password, ...userData } = user;
-      res.status(201).json({ user: userData, token });
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json({ user: userWithoutPassword, token });
     } catch (err) {
       res.status(500).json({ message: "Error en registro" });
     }
   });
 
+  // LOGOUT
   app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("token");
     res.sendStatus(200);
   });
 
+  // OBTENER USUARIO
   app.get("/api/user", verifyAuth, (req, res) => {
-    const { password, ...userData } = (req as any).user;
-    res.json(userData);
+    const { password, ...userWithoutPassword } = (req as any).user;
+    res.json(userWithoutPassword);
   });
 }

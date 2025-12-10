@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  // Cargar usuario si existe token
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
@@ -46,7 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
-      // Redirección forzada para asegurar limpieza de estado
       window.location.href = "/";
     },
     onError: (error: Error) => {
@@ -54,22 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  // --- LOGOUT ARREGLADO ---
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. ELIMINAR TOKEN LOCALMENTE (INMEDIATO)
       localStorage.removeItem("auth_token");
-      
-      // 2. Intentar avisar al servidor (sin bloquear)
-      apiRequestJson("/api/auth/logout", "POST").catch(() => {});
-      
-      return true;
+      try {
+        await apiRequestJson("/api/auth/logout", "POST");
+      } catch (e) {
+        console.warn("Logout server error (ignorable):", e);
+      }
     },
     onSuccess: () => {
-      // 3. LIMPIEZA TOTAL Y RECARGA
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      // Forzamos al navegador a ir al login limpiando memoria
       window.location.href = "/login";
     },
     onError: () => {
