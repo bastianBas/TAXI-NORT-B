@@ -18,12 +18,14 @@ export async function apiRequest({
 }) {
   const [path] = queryKey as [string];
   
+  // Enviamos el token en el header Authorization
   const res = await fetch(path, {
-    headers: getAuthHeaders() // Enviamos el token aquí
+    headers: getAuthHeaders() // Simplificado para evitar error de tipos
   });
 
   if (!res.ok) {
     if (res.status === 401) {
+      // Si el token es inválido, lo borramos y redirigimos
       localStorage.removeItem("auth_token");
       if (window.location.pathname !== "/login") {
          window.location.href = "/login";
@@ -58,7 +60,7 @@ export async function apiRequestJson(
     method,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders() // Y aquí también
+      ...getAuthHeaders() // Aquí TypeScript ya aceptará la mezcla correctamente
     },
     body: body ? JSON.stringify(body) : undefined,
   });

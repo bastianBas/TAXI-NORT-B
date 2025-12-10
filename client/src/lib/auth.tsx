@@ -21,15 +21,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Intentamos cargar el usuario al iniciar la app si existe un token
-  // Si la petición falla (401), el queryClient borrará el token automáticamente (ver queryClient.ts)
+  // Cargar usuario si existe token en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
-    enabled: !!localStorage.getItem("auth_token"), // Solo ejecuta si hay token
+    enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Efecto para manejar errores de autenticación globales
+  // Si el token es inválido (error 401), limpiar automáticamente
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -40,18 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // GUARDAR TOKEN (CRÍTICO)
       if (res.token) {
         localStorage.setItem("auth_token", res.token);
-      } else {
-        throw new Error("No se recibió token del servidor");
       }
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
-      setLocation("/");
+      // Redirección forzada para limpiar estado
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({ title: "Error de acceso", description: error.message, variant: "destructive" });
@@ -60,31 +57,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. ELIMINAR TOKEN LOCALMENTE (Lo más importante para JWT)
+      // 1. ELIMINAR TOKEN LOCALMENTE (VITAL)
       localStorage.removeItem("auth_token");
       
-      // 2. Intentar avisar al servidor (opcional, para borrar cookies si las hubiera)
+      // 2. Intentar avisar al servidor (sin esperar respuesta estricta)
       try {
         await apiRequestJson("/api/auth/logout", "POST");
       } catch (e) {
-        console.warn("Logout server error (ignorable):", e);
+        console.warn("Logout server warning:", e);
       }
     },
     onSuccess: () => {
-      // 3. Limpiar todo el estado de React Query
-      queryClient.setQueryData(["/api/user"], null);
-      queryClient.clear(); 
-      
-      // 4. Redirigir al login
-      setLocation("/login");
-      toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
-    },
-    onError: () => {
-      // Incluso si falla la petición al servidor, forzamos la salida local
-      localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      setLocation("/login");
+      // 3. FORZAR RECARGA AL LOGIN
+      window.location.href = "/login";
+    },
+    onError: () => {
+      // Incluso si falla, forzar la salida
+      localStorage.removeItem("auth_token");
+      window.location.href = "/login";
     },
   });
 
@@ -98,8 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      setLocation("/");
       toast({ title: "Cuenta creada con éxito", description: "Bienvenido a TaxiNort" });
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({ title: "Error de registro", description: error.message, variant: "destructive" });
@@ -121,14 +113,13 @@ export function useAuth() {
 
 export function ProtectedRoute({ path, component: Component }: { path: string; component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
 
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
 
   if (!user) {
-    // Si no hay usuario, redirigimos
     return (
       <Route path={path}>
+        {/* Redirección simple */}
         <RedirectToLogin />
       </Route>
     );
@@ -138,9 +129,10 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
 }
 
 function RedirectToLogin() {
-  const [, setLocation] = useLocation();
   useEffect(() => {
-    setLocation("/login");
-  }, [setLocation]);
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+  }, []);
   return null;
 }
