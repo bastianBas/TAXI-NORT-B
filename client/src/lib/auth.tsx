@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si hay error al cargar usuario (token inválido), limpiar todo
+  // Si el token es inválido, limpiar automáticamente
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -46,8 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      toast({ title: "Bienvenido", description: `Hola, ${user.name}` });
-      // Usamos href para asegurar recarga limpia al entrar
+      toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
+      // Redirección forzada para limpiar estado
       window.location.href = "/";
     },
     onError: (error: Error) => {
@@ -57,19 +57,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. Borrar token localmente PRIMERO
+      // 1. LOGOUT AGRESIVO: Borrar todo inmediatamente
       localStorage.removeItem("auth_token");
-      try { await apiRequestJson("/api/auth/logout", "POST"); } catch(e) {}
+      queryClient.setQueryData(["/api/user"], null);
+      queryClient.clear();
+      
+      // 2. Avisar al servidor en segundo plano (sin await, "fire and forget")
+      apiRequestJson("/api/auth/logout", "POST").catch(() => {});
+      
+      return true; // Retornamos éxito inmediato
     },
     onSuccess: () => {
-      queryClient.clear(); 
-      // 2. Redirección FUERTE
+      // 3. Forzar redirección al login
       window.location.href = "/login";
     },
     onError: () => {
-      localStorage.removeItem("auth_token");
+      // Si algo falla, forzamos la salida igual
       window.location.href = "/login";
-    },
+    }
   });
 
   const registerMutation = useMutation({
@@ -109,16 +114,17 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
 
   if (!user) {
-    return <Route path={path}><RedirectToLogin /></Route>;
+    return <Route path={path}><div className="flex items-center justify-center min-h-screen">Redirigiendo...<RedirectToLogin /></div></Route>;
   }
 
   return <Route path={path} component={Component} />;
 }
 
 function RedirectToLogin() {
-  // Redirección simple sin useEffect complejo
-  if (typeof window !== "undefined") {
+  useEffect(() => {
+    if (window.location.pathname !== "/login") {
       window.location.href = "/login";
-  }
+    }
+  }, []);
   return null;
 }

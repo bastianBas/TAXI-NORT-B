@@ -1,9 +1,11 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Función para obtener el token guardado
 function getToken() {
   return localStorage.getItem("auth_token");
 }
 
+// Función helper para crear headers con autenticación
 function getAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { "Authorization": `Bearer ${token}` } : {};
@@ -17,13 +19,12 @@ export async function apiRequest({
   const [path] = queryKey as [string];
   
   const res = await fetch(path, {
-    headers: getAuthHeaders()
+    headers: getAuthHeaders() // Enviamos el token aquí
   });
 
   if (!res.ok) {
     if (res.status === 401) {
       localStorage.removeItem("auth_token");
-      // Forzar recarga si la sesión expiró
       if (window.location.pathname !== "/login") {
          window.location.href = "/login";
       }
@@ -57,7 +58,7 @@ export async function apiRequestJson(
     method,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders()
+      ...getAuthHeaders() // Y aquí también
     },
     body: body ? JSON.stringify(body) : undefined,
   });
