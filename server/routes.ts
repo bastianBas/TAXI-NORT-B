@@ -6,11 +6,11 @@ import path from "path";
 import { storage } from "./storage";
 import { setupAuth, verifyAuth } from "./auth";
 import { seedData } from "./seed";
-import type { User } from "@shared/schema";
+import type { VehicleLocation, User } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import * as bcrypt from "bcryptjs"; // Corrección de importación
+import * as bcrypt from "bcryptjs"; // Importación correcta
 
 const upload = multer({
   storage: multer.diskStorage({

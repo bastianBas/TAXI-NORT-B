@@ -70,14 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 3. Limpiar estado y redirigir
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      setLocation("/login");
-      toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
+      // Forzar recarga para asegurar limpieza total
+      window.location.href = "/login";
     },
     onError: () => {
       // Incluso si falla la red, forzamos la salida local
       localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
-      setLocation("/login");
+      window.location.href = "/login";
     },
   });
 
