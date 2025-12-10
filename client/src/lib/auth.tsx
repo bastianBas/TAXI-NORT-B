@@ -21,14 +21,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Cargar usuario solo si hay token
+  // Cargar usuario si existe token
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
-    enabled: !!localStorage.getItem("auth_token"),
+    enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si el token no es válido, lo borramos automáticamente
+  // Si hay error al cargar usuario (token inválido), limpiar todo
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -39,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // GUARDAR TOKEN (CRÍTICO)
       if (res.token) {
         localStorage.setItem("auth_token", res.token);
       }
@@ -48,8 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Bienvenido", description: `Hola, ${user.name}` });
-      // Redirección forzada para asegurar que cargue todo
-      window.location.href = "/"; 
+      // Usamos href para asegurar recarga limpia al entrar
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({ title: "Error de acceso", description: error.message, variant: "destructive" });
@@ -58,18 +57,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. Borrar token
+      // 1. Borrar token localmente PRIMERO
       localStorage.removeItem("auth_token");
-      // 2. Avisar al servidor (opcional)
       try { await apiRequestJson("/api/auth/logout", "POST"); } catch(e) {}
     },
     onSuccess: () => {
-      // 3. Limpiar y Forzar recarga a la página de login
-      queryClient.clear();
+      queryClient.clear(); 
+      // 2. Redirección FUERTE
       window.location.href = "/login";
     },
     onError: () => {
-      // Si falla, forzamos la salida igual
       localStorage.removeItem("auth_token");
       window.location.href = "/login";
     },
@@ -109,11 +106,19 @@ export function useAuth() {
 export function ProtectedRoute({ path, component: Component }: { path: string; component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
 
   if (!user) {
-    return <Route path={path}><div className="flex items-center justify-center min-h-screen">Redirigiendo...</div></Route>;
+    return <Route path={path}><RedirectToLogin /></Route>;
   }
 
   return <Route path={path} component={Component} />;
+}
+
+function RedirectToLogin() {
+  // Redirección simple sin useEffect complejo
+  if (typeof window !== "undefined") {
+      window.location.href = "/login";
+  }
+  return null;
 }
