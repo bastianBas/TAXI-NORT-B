@@ -21,13 +21,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  // Cargar usuario si existe token
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
-    enabled: !!localStorage.getItem("auth_token"),
+    enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si el token caducó, limpiamos automáticamente
+  // Si hay error de autenticación, limpiar todo
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -38,57 +39,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      if (res.token) localStorage.setItem("auth_token", res.token);
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      toast({ title: "Bienvenido", description: `Hola, ${user.name}` });
-      // Forzamos recarga para asegurar un estado limpio
-      window.location.href = "/";
+      toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
+      setLocation("/");
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error de acceso", description: error.message, variant: "destructive" });
     },
   });
 
-  // --- AQUÍ ESTÁ LA SOLUCIÓN DEL LOGOUT ---
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. Borramos el token INMEDIATAMENTE
+      // 1. Borrar token localmente PRIMERO (Esto asegura que salgamos)
       localStorage.removeItem("auth_token");
       
-      // 2. Intentamos avisar al servidor pero sin esperar (fire and forget)
-      apiRequestJson("/api/auth/logout", "POST").catch(console.error);
-      
-      return true;
+      // 2. Intentar avisar al servidor (opcional)
+      try {
+        await apiRequestJson("/api/auth/logout", "POST");
+      } catch (e) {
+        console.warn("Logout server error (ignorable):", e);
+      }
     },
     onSuccess: () => {
-      // 3. Limpiamos la memoria de la app
+      // 3. Limpiar estado y redirigir
+      queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      // 4. FORZAMOS la recarga de la página hacia el login
-      window.location.href = "/login";
+      setLocation("/login");
+      toast({ title: "Sesión cerrada", description: "Has salido exitosamente" });
     },
     onError: () => {
-      // Si algo falla, forzamos la salida igual
+      // Incluso si falla la red, forzamos la salida local
       localStorage.removeItem("auth_token");
-      window.location.href = "/login";
-    }
+      queryClient.setQueryData(["/api/user"], null);
+      setLocation("/login");
+    },
   });
 
   const registerMutation = useMutation({
     mutationFn: async (newUser: InsertUser) => {
       const res = await apiRequestJson("/api/auth/register", "POST", newUser);
-      if (res.token) localStorage.setItem("auth_token", res.token);
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
       return res.user;
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      toast({ title: "Cuenta creada", description: "Bienvenido" });
-      window.location.href = "/";
+      setLocation("/");
+      toast({ title: "Cuenta creada con éxito", description: "Bienvenido a TaxiNort" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error de registro", description: error.message, variant: "destructive" });
     },
   });
 
@@ -101,20 +108,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth error");
+  if (!context) throw new Error("useAuth debe usarse dentro de un AuthProvider");
   return context;
 }
 
 export function ProtectedRoute({ path, component: Component }: { path: string; component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  if (!user) return <Route path={path}><RedirectToLogin /></Route>;
+  const [, setLocation] = useLocation();
+
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
+
+  if (!user) {
+    return (
+      <Route path={path}>
+        {/* Usamos un componente auxiliar para manejar la redirección de forma limpia */}
+        <RedirectToLogin />
+      </Route>
+    );
+  }
+
   return <Route path={path} component={Component} />;
 }
 
+// Componente auxiliar para redirección
 function RedirectToLogin() {
+  const [, setLocation] = useLocation();
+  
   useEffect(() => {
-    if (window.location.pathname !== "/login") window.location.href = "/login";
-  }, []);
+    setLocation("/login");
+  }, [setLocation]);
+  
   return null;
 }
