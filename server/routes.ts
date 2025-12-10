@@ -10,7 +10,7 @@ import type { VehicleLocation, User } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import * as bcrypt from "bcryptjs"; // Importación correcta
+import bcrypt from "bcryptjs"; // Importación correcta
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -42,11 +42,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const email = "admin@taxinort.cl";
       const newPassword = "admin123";
-      console.log(`🚨 RESTABLECIENDO contraseña para ${email}...`);
+      console.log(`🚨 RESTABLECIENDO contraseña...`);
       const existing = await storage.getUserByEmail(email);
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       if (!existing) {
-        await storage.createUser({ name: "Administrador", email, password: hashedPassword, role: "admin" });
+        await storage.createUser({ name: "Admin", email, password: hashedPassword, role: "admin" });
         return res.json({ status: "CREATED", message: "Admin creado" });
       } else {
         await db.update(users).set({ password: hashedPassword, role: "admin" }).where(eq(users.email, email));
@@ -57,6 +57,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Rutas con verifyAuth
   app.get("/api/drivers", verifyAuth, async (req, res) => { res.json(await storage.getAllDrivers()); });
   app.post("/api/drivers", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createDriver(req.body)); });
   app.put("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateDriver(req.params.id, req.body)); });

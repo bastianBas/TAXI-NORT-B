@@ -21,14 +21,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Cargar usuario si existe token
+  // Cargar usuario si existe token en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si hay error de autenticación, limpiar todo
+  // Si el token es inválido (error 401), limpiar automáticamente
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -47,36 +47,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
-      setLocation("/");
+      // Redirección forzada para limpiar estado
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({ title: "Error de acceso", description: error.message, variant: "destructive" });
     },
   });
 
+  // --- LOGOUT ARREGLADO (MODO INSTANTÁNEO) ---
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. Borrar token localmente PRIMERO (Esto asegura que salgamos)
+      // 1. ELIMINAR TOKEN LOCALMENTE (VITAL)
       localStorage.removeItem("auth_token");
       
-      // 2. Intentar avisar al servidor (opcional)
+      // 2. Intentar avisar al servidor (sin esperar respuesta estricta)
       try {
         await apiRequestJson("/api/auth/logout", "POST");
       } catch (e) {
-        console.warn("Logout server error (ignorable):", e);
+        console.warn("Logout server warning:", e);
       }
     },
     onSuccess: () => {
-      // 3. Limpiar estado y redirigir
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      // Forzar recarga para asegurar limpieza total
+      // 3. FORZAR RECARGA AL LOGIN (Solución definitiva al botón pegado)
       window.location.href = "/login";
     },
     onError: () => {
-      // Incluso si falla la red, forzamos la salida local
+      // Incluso si falla, forzamos la salida
       localStorage.removeItem("auth_token");
-      queryClient.setQueryData(["/api/user"], null);
       window.location.href = "/login";
     },
   });
@@ -91,8 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      setLocation("/");
       toast({ title: "Cuenta creada con éxito", description: "Bienvenido a TaxiNort" });
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({ title: "Error de registro", description: error.message, variant: "destructive" });
@@ -114,14 +114,12 @@ export function useAuth() {
 
 export function ProtectedRoute({ path, component: Component }: { path: string; component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
 
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-border" /></div>;
 
   if (!user) {
     return (
       <Route path={path}>
-        {/* Usamos un componente auxiliar para manejar la redirección de forma limpia */}
         <RedirectToLogin />
       </Route>
     );
@@ -130,13 +128,11 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   return <Route path={path} component={Component} />;
 }
 
-// Componente auxiliar para redirección
 function RedirectToLogin() {
-  const [, setLocation] = useLocation();
-  
   useEffect(() => {
-    setLocation("/login");
-  }, [setLocation]);
-  
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+  }, []);
   return null;
 }

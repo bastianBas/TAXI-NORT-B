@@ -25,8 +25,11 @@ export async function apiRequest({
 
   if (!res.ok) {
     if (res.status === 401) {
-      // Si el token es inválido, lo borramos para limpiar el estado
+      // Si el token es inválido, lo borramos y redirigimos
       localStorage.removeItem("auth_token");
+      if (window.location.pathname !== "/login") {
+         window.location.href = "/login";
+      }
       throw new Error("No autenticado");
     }
     throw new Error(`Error ${res.status}: ${res.statusText}`);
@@ -65,6 +68,9 @@ export async function apiRequestJson(
   if (!res.ok) {
     if (res.status === 401) {
       localStorage.removeItem("auth_token");
+      if (window.location.pathname !== "/login") {
+         window.location.href = "/login";
+      }
       throw new Error("No autenticado");
     }
     const data = await res.json().catch(() => ({}));
