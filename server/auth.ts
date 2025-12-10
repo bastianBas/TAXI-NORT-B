@@ -1,12 +1,11 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; // Usamos bcryptjs
+import * as bcrypt from "bcryptjs"; // Corrección de importación
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware: Verifica token
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
@@ -17,7 +16,7 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
     token = req.cookies.token;
   }
 
-  if (!token) return res.status(401).json({ message: "No autenticado (Falta token)" });
+  if (!token) return res.status(401).json({ message: "No autenticado" });
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
@@ -36,7 +35,6 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
-      console.log(`🔍 [Login] Intentando: ${email}`);
       const user = await storage.getUserByEmail(email);
 
       if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
@@ -49,7 +47,6 @@ export function setupAuth(app: Express) {
       const { password, ...userData } = user;
       res.json({ user: userData, token });
     } catch (err) {
-      console.error("Login Error:", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
