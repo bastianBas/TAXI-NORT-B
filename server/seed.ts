@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import bcrypt from "bcrypt";
+import * as bcrypt from "bcryptjs";
 import type { InsertUser } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
