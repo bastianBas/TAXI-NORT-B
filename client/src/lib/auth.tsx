@@ -50,15 +50,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      // 1. Borrar token inmediatamente
       localStorage.removeItem("auth_token");
-      try { await apiRequestJson("/api/auth/logout", "POST"); } catch(e) {}
+      
+      // 2. Enviar petición al servidor en segundo plano (sin bloquear la UI)
+      apiRequestJson("/api/auth/logout", "POST").catch(() => {});
+      
+      // Retornar éxito inmediato para que onSuccess se ejecute ya
+      return Promise.resolve();
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
+      // 3. Forzar redirección al login
       window.location.href = "/login";
     },
-    onError: () => { localStorage.removeItem("auth_token"); window.location.href = "/login"; },
+    onError: () => { 
+      // Fallback por seguridad
+      localStorage.removeItem("auth_token"); 
+      window.location.href = "/login"; 
+    },
   });
 
   const registerMutation = useMutation({
@@ -69,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
-      toast({ title: "Cuenta creada", description: "Bienvenido" });
+      toast({ title: "Cuenta creada con éxito", description: "Bienvenido a TaxiNort" });
       window.location.href = "/";
     },
     onError: (error: Error) => { toast({ title: "Error", description: error.message, variant: "destructive" }); },
