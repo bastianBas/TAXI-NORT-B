@@ -18,7 +18,6 @@ export async function apiRequest({
 }) {
   const [path] = queryKey as [string];
   
-  // Enviamos el token en el header Authorization
   const res = await fetch(path, {
     headers: getAuthHeaders() // Simplificado para evitar error de tipos
   });
