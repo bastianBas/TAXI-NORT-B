@@ -21,14 +21,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Cargar usuario si existe token en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si el token es inválido (error 401), limpiar automáticamente
+  // Si el token es inválido, limpiar automáticamente
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -47,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
-      // Redirección forzada para limpiar estado
+      // Redirección forzada para asegurar limpieza de estado
       window.location.href = "/";
     },
     onError: (error: Error) => {
@@ -55,27 +54,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  // --- LOGOUT ARREGLADO (MODO INSTANTÁNEO) ---
+  // --- LOGOUT ARREGLADO ---
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. ELIMINAR TOKEN LOCALMENTE (VITAL)
+      // 1. ELIMINAR TOKEN LOCALMENTE (INMEDIATO)
       localStorage.removeItem("auth_token");
       
-      // 2. Intentar avisar al servidor (sin esperar respuesta estricta)
-      try {
-        await apiRequestJson("/api/auth/logout", "POST");
-      } catch (e) {
-        console.warn("Logout server warning:", e);
-      }
+      // 2. Intentar avisar al servidor (sin bloquear)
+      apiRequestJson("/api/auth/logout", "POST").catch(() => {});
+      
+      return true;
     },
     onSuccess: () => {
+      // 3. LIMPIEZA TOTAL Y RECARGA
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      // 3. FORZAR RECARGA AL LOGIN (Solución definitiva al botón pegado)
+      // Forzamos al navegador a ir al login limpiando memoria
       window.location.href = "/login";
     },
     onError: () => {
-      // Incluso si falla, forzamos la salida
       localStorage.removeItem("auth_token");
       window.location.href = "/login";
     },

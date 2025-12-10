@@ -1,34 +1,38 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; // Importación correcta para evitar errores
+import bcrypt from "bcryptjs"; // Importación corregida para evitar línea roja
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
 
+// Middleware para verificar Token
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
 
-  // 1. Header
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.split(" ")[1];
-  } 
-  // 2. Cookie
-  else if (req.cookies && req.cookies.token) {
+  } else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
-  if (!token) return res.status(401).json({ message: "No autenticado (Falta token)" });
+  if (!token) {
+    return res.status(401).json({ message: "No autenticado (Falta token)" });
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
     const user = await storage.getUser(decoded.id);
-    if (!user) return res.status(401).json({ message: "Usuario inválido" });
+    
+    if (!user) {
+      return res.status(401).json({ message: "Usuario inválido" });
+    }
+
     (req as any).user = user;
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Token inválido" });
+    return res.status(401).json({ message: "Token expirado o inválido" });
   }
 }
 
@@ -41,15 +45,23 @@ export function setupAuth(app: Express) {
       console.log(`🔍 [Login] Intentando: ${email}`);
       const user = await storage.getUserByEmail(email);
 
-      if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
-        return res.status(401).json({ message: "Credenciales inválidas" });
+      if (!user) {
+        console.log("❌ Usuario no encontrado");
+        return res.status(401).json({ message: "Usuario no encontrado" });
+      }
+
+      const isValid = await bcrypt.compare(req.body.password, user.password);
+      if (!isValid) {
+        console.log("❌ Contraseña incorrecta");
+        return res.status(401).json({ message: "Contraseña incorrecta" });
       }
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
       
       const { password, ...userData } = user;
       res.json({ user: userData, token });
+
     } catch (err) {
       console.error("Login error:", err);
       res.status(500).json({ message: "Error interno" });
@@ -60,21 +72,24 @@ export function setupAuth(app: Express) {
     try {
       const email = req.body.email.trim().toLowerCase();
       if (await storage.getUserByEmail(email)) {
-        return res.status(400).json({ message: "Email registrado" });
+        return res.status(400).json({ message: "El email ya está registrado" });
       }
+
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
       const user = await storage.createUser({
         name: req.body.name,
-        email,
+        email: email,
         password: hashedPassword,
-        role: "driver"
+        role: "driver" 
       });
+
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
+
       const { password, ...userData } = user;
       res.status(201).json({ user: userData, token });
     } catch (err) {
-      res.status(500).json({ message: "Error registro" });
+      res.status(500).json({ message: "Error en registro" });
     }
   });
 
