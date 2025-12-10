@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Cargar usuario solo si existe un token en localStorage
+  // Cargar usuario solo si existe token en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
@@ -72,11 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      // 3. FORZAR RECARGA AL LOGIN
+      // 3. FORZAR RECARGA AL LOGIN (Solución definitiva al botón pegado)
       window.location.href = "/login";
     },
     onError: () => {
-      // Incluso si falla, forzar la salida
+      // Incluso si falla, forzamos la salida
       localStorage.removeItem("auth_token");
       window.location.href = "/login";
     },
