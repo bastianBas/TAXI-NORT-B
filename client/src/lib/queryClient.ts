@@ -77,3 +77,44 @@ export async function apiRequestJson(
   
   return res.json().catch(() => null);
 }
+
+// --- NUEVA FUNCIÓN AGREGADA ---
+export async function apiRequestFormData(
+  url: string,
+  method: string,
+  formData: FormData
+): Promise<any> {
+  const token = getToken();
+  const headers: HeadersInit = {};
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  // NOTA: No establecemos 'Content-Type' manualmente, 
+  // el navegador lo hace automáticamente para FormData (incluyendo el boundary)
+
+  const res = await fetch(url, {
+    method,
+    headers, 
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("auth_token");
+    if (window.location.pathname !== "/login") {
+       window.location.href = "/login";
+    }
+    throw new Error("Sesión expirada. Por favor, inicia sesión nuevamente.");
+  }
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Error ${res.status}: ${res.statusText}`);
+  }
+
+  if (res.status === 204) {
+    return null;
+  }
+
+  return res.json();
+}

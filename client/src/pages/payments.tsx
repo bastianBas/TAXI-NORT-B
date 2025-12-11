@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequestFormData } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,34 +69,24 @@ export default function Payments() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
+      const formDataObj = new FormData();
+      
+      formDataObj.append("type", data.type);
+      formDataObj.append("amount", data.amount.toString());
+      formDataObj.append("driverId", data.driverId);
+      formDataObj.append("vehicleId", data.vehicleId);
+      formDataObj.append("date", data.date);
+      
+      // CORRECCIÓN: Usamos el operador ?? para asegurar un valor por defecto
+      formDataObj.append("status", data.status ?? "pending");
+
       if (selectedFile) {
-        const formDataObj = new FormData();
         formDataObj.append("file", selectedFile);
-        formDataObj.append("type", data.type);
-        formDataObj.append("amount", data.amount.toString());
-        formDataObj.append("driverId", data.driverId);
-        formDataObj.append("vehicleId", data.vehicleId);
-        formDataObj.append("date", data.date);
-        formDataObj.append("status", data.status);
-
-        const response = await fetch("/api/payments", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          body: formDataObj,
-        });
-
-        if (!response.ok) {
-          throw new Error("Error al crear el pago");
-        }
-
-        return response.json();
       }
-      return apiRequest("POST", "/api/payments", data);
+
+      return apiRequestFormData("/api/payments", "POST", formDataObj);
     },
     onSuccess: (created) => {
-      // cerrar diálogo / limpiar formulario
       setIsDialogOpen(false);
       resetForm();
       toast({
@@ -104,16 +94,6 @@ export default function Payments() {
         description: "El pago ha sido registrado exitosamente",
       });
 
-      // actualizar caché optimista si la API devuelve el objeto creado
-      try {
-        queryClientLocal.setQueryData<Payment[] | undefined>(["/api/payments"], (old) =>
-          old ? [...old, created as Payment] : [created as Payment]
-        );
-      } catch {
-        /* noop */
-      }
-
-      // asegurar refetch desde el servidor
       queryClientLocal.invalidateQueries({ queryKey: ["/api/payments"] });
     },
     onError: (error: Error) => {
