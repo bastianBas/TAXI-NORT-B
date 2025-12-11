@@ -1,11 +1,12 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; // Usamos bcryptjs por compatibilidad
+import bcrypt from "bcryptjs"; // Importación corregida
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
 
+// Middleware para verificar Token
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
@@ -16,16 +17,22 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
     token = req.cookies.token;
   }
 
-  if (!token) return res.status(401).json({ message: "No autenticado" });
+  if (!token) {
+    return res.status(401).json({ message: "No autenticado (Falta token)" });
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
     const user = await storage.getUser(decoded.id);
-    if (!user) return res.status(401).json({ message: "Usuario inválido" });
+    
+    if (!user) {
+      return res.status(401).json({ message: "Usuario inválido" });
+    }
+
     (req as any).user = user;
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Token inválido" });
+    return res.status(401).json({ message: "Token expirado o inválido" });
   }
 }
 
@@ -35,17 +42,26 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
+      console.log(`🔍 [Login] Intentando: ${email}`);
       const user = await storage.getUserByEmail(email);
 
-      if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
-        return res.status(401).json({ message: "Credenciales inválidas" });
+      if (!user) {
+        return res.status(401).json({ message: "Usuario no encontrado" });
+      }
+
+      const isValid = await bcrypt.compare(req.body.password, user.password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Contraseña incorrecta" });
       }
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
-      const { password, ...userData } = user;
-      res.json({ user: userData, token });
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword, token });
+
     } catch (err) {
+      console.error("Login error:", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
@@ -54,7 +70,7 @@ export function setupAuth(app: Express) {
     try {
       const email = req.body.email.trim().toLowerCase();
       if (await storage.getUserByEmail(email)) {
-        return res.status(400).json({ message: "Email registrado" });
+        return res.status(400).json({ message: "El email ya está registrado" });
       }
 
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
@@ -62,15 +78,18 @@ export function setupAuth(app: Express) {
         name: req.body.name,
         email,
         password: hashedPassword,
-        role: "driver"
+        role: "driver" 
       });
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax" });
-      const { password, ...userData } = user;
-      res.status(201).json({ user: userData, token });
+
+      // Cookie backup
+      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
+
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json({ user: userWithoutPassword, token });
     } catch (err) {
-      res.status(500).json({ message: "Error registro" });
+      res.status(500).json({ message: "Error en registro" });
     }
   });
 
@@ -80,7 +99,7 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/user", verifyAuth, (req, res) => {
-    const { password, ...userData } = (req as any).user;
-    res.json(userData);
+    const { password, ...userWithoutPassword } = (req as any).user;
+    res.json(userWithoutPassword);
   });
 }

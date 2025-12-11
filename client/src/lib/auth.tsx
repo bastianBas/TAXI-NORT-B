@@ -21,14 +21,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Cargar usuario si existe un token guardado
+  // Cargar usuario solo si existe un token en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si hay error al cargar usuario (token inválido), limpiar todo
+  // Si el token es inválido (error 401), limpiar automáticamente
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -70,15 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     onSuccess: () => {
-      // 3. LIMPIEZA TOTAL Y RECARGA
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      
-      // FORZAR RECARGA AL LOGIN (Solución definitiva al botón pegado)
+      // 3. FORZAR RECARGA AL LOGIN (Solución definitiva al botón pegado)
       window.location.href = "/login";
     },
     onError: () => {
-      // Incluso si falla, forzar la salida
+      // Incluso si falla, forzamos la salida
       localStorage.removeItem("auth_token");
       window.location.href = "/login";
     },
