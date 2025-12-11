@@ -1,5 +1,4 @@
-// client/src/components/app-sidebar.tsx
-import { Home, Users, Truck, FileText, LogOut, Settings, ShieldCheck } from "lucide-react";
+import { Home, Users, Truck, FileText, LogOut, ShieldCheck, DollarSign } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import {
   Sidebar,
@@ -12,23 +11,24 @@ import {
   SidebarMenuItem,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { useAuth } from "@/lib/auth"; // Importamos el hook de autenticación
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
-// Definición de ítems del menú (mantenlos como los tenías)
+// ACTUALIZACIÓN DE ITEMS: Usamos "roles" (array) para permitir múltiples accesos
 const items = [
-  { title: "Dashboard", url: "/", icon: Home },
-  { title: "Conductores", url: "/drivers", icon: Users },
-  { title: "Vehículos", url: "/vehicles", icon: Truck },
-  { title: "Hojas de Ruta", url: "/route-slips", icon: FileText },
-  { title: "Auditoría", url: "/audit", icon: ShieldCheck, role: "admin" },
+  { title: "Dashboard", url: "/", icon: Home, roles: [] }, // [] vacío significa todos
+  { title: "Conductores", url: "/drivers", icon: Users, roles: ["admin", "operator"] },
+  { title: "Vehículos", url: "/vehicles", icon: Truck, roles: ["admin", "operator"] },
+  { title: "Hojas de Ruta", url: "/route-slips", icon: FileText, roles: ["admin", "operator", "driver", "finance"] },
+  // AQUÍ ESTÁ EL NUEVO LINK DE PAGOS:
+  { title: "Pagos", url: "/payments", icon: DollarSign, roles: ["admin", "finance"] },
+  { title: "Auditoría", url: "/audit", icon: ShieldCheck, roles: ["admin"] },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user, logoutMutation } = useAuth(); // Obtenemos la función de logout
+  const { user, logoutMutation } = useAuth();
 
-  // Función para manejar el cierre de sesión
   const handleLogout = () => {
     logoutMutation.mutate();
   };
@@ -41,8 +41,12 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => {
-                // Filtrar por rol si es necesario
-                if (item.role && user?.role !== item.role) return null;
+                // FILTRADO MEJORADO:
+                // Si roles tiene elementos y el rol del usuario NO está incluido, no mostramos el item.
+                // Si roles está vacío [], es público para todos los logueados.
+                if (item.roles.length > 0 && user?.role && !item.roles.includes(user.role)) {
+                  return null;
+                }
                 
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -74,7 +78,7 @@ export function AppSidebar() {
           <Button 
             variant="outline" 
             className="w-full justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={handleLogout} // Conectamos el botón aquí
+            onClick={handleLogout}
             disabled={logoutMutation.isPending}
           >
             <LogOut className="h-4 w-4" />

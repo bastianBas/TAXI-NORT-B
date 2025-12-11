@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, FileText, CheckCircle, AlertCircle, Info } from "lucide-react";
+// IMPORTANTE: Importamos el diálogo nuevo
+import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
 
 export default function RouteSlips() {
   const { user } = useAuth();
@@ -44,9 +46,11 @@ export default function RouteSlips() {
       return true;
     }
     // 2. Si es Conductor, SOLO ve las hojas asignadas a su ID.
-    // Esto asegura que no vea lo de sus compañeros.
-    return slip.driverId === user?.id; // Nota: user.id debe coincidir con el ID del driver
+    return slip.driverId === user?.id; 
   });
+
+  // Solo admins y operadores pueden crear hojas nuevas
+  const canCreate = ["admin", "operator"].includes(user?.role || "");
 
   return (
     <div className="space-y-6 p-4 md:p-8 pt-6">
@@ -59,6 +63,8 @@ export default function RouteSlips() {
               : "Historial completo de la flota"}
           </p>
         </div>
+        {/* BOTÓN NUEVO AQUÍ: Se muestra solo si tiene permiso */}
+        {canCreate && <RouteSlipDialog />}
       </div>
 
       <Card>
@@ -75,7 +81,7 @@ export default function RouteSlips() {
               <p>No tienes hojas de ruta registradas.</p>
               {user?.role === "driver" && (
                 <p className="text-xs text-gray-400 max-w-xs text-center">
-                  Si crees que esto es un error, contacta al administrador para que te asigne una hoja de ruta.
+                  Si crees que esto es un error, contacta al administrador.
                 </p>
               )}
             </div>
