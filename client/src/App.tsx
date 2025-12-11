@@ -58,6 +58,12 @@ function AppRouter() {
           <main className="flex-1 overflow-y-auto p-6">
             <Switch>
               <Route path="/" component={Dashboard} />
+              
+              {/* 🟢 CORRECCIÓN: Si un usuario logueado va a /login, lo mandamos al inicio */}
+              <Route path="/login">
+                <Redirect to="/" />
+              </Route>
+
               <Route path="/drivers">
                 <ProtectedRoute allowedRoles={["admin", "operator"]}>
                   <Drivers />
@@ -69,7 +75,7 @@ function AppRouter() {
                 </ProtectedRoute>
               </Route>
               <Route path="/route-slips">
-                <ProtectedRoute allowedRoles={["admin", "operator", "driver"]}>
+                <ProtectedRoute allowedRoles={["admin", "operator", "driver", "finance"]}>
                   <RouteSlips />
                 </ProtectedRoute>
               </Route>

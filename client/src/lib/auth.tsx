@@ -29,7 +29,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryKey: ["/api/user"],
     queryFn: async () => {
       const token = localStorage.getItem("auth_token");
-      // Si no hay token, no intentamos verificar sesión
       if (!token) return null;
 
       const res = await fetch("/api/user", {
@@ -37,7 +36,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (res.status === 401) {
-        // Token inválido o expirado
         localStorage.removeItem("auth_token");
         return null;
       }
@@ -53,7 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
-      // CORREGIDO: Ruta coincide con server/auth.ts
       const data = await apiRequestJson("/api/auth/login", "POST", credentials);
       if (data.token) {
         localStorage.setItem("auth_token", data.token);
@@ -66,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         title: "Bienvenido",
         description: `Hola de nuevo, ${user.name}`,
       });
+      // 🟢 CORRECCIÓN: Redirigir al Dashboard inmediatamente
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({
@@ -78,7 +77,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
-      // CORREGIDO: Ruta coincide con server/auth.ts
       const data = await apiRequestJson("/api/auth/register", "POST", credentials);
       if (data.token) {
         localStorage.setItem("auth_token", data.token);
@@ -91,6 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         title: "Registro exitoso",
         description: "Tu cuenta ha sido creada.",
       });
+      // 🟢 CORRECCIÓN: Redirigir al Dashboard también al registrarse
+      window.location.href = "/";
     },
     onError: (error: Error) => {
       toast({
@@ -103,18 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // CORREGIDO: Ruta coincide con server/auth.ts
       await apiRequestJson("/api/auth/logout", "POST");
     },
     onSuccess: () => {
-      // SOLUCIÓN LOGIN: Limpiamos token y estado
       localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
-      // Redirección opcional, aunque App.tsx lo manejará al detectar user null
       window.location.href = "/login";
     },
     onError: (error: Error) => {
-      // Fallback: Limpiamos localmente aunque falle el server
       localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
       window.location.href = "/login";
@@ -145,7 +141,6 @@ export function useAuth() {
   return context;
 }
 
-// RESTAURADO: El componente ProtectedRoute necesario para App.tsx
 export function ProtectedRoute({ 
   children, 
   allowedRoles 
@@ -167,9 +162,7 @@ export function ProtectedRoute({
     return <Redirect to="/login" />;
   }
 
-  // Verificación de roles (si se especifican)
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Si no tiene permiso, redirigimos al inicio
     return <Redirect to="/" />;
   }
 
