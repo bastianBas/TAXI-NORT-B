@@ -1,140 +1,86 @@
-import { Link, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
-import {
-  LayoutDashboard,
-  Users,
-  Truck,
-  FileText,
-  CreditCard,
-  ClipboardList,
-  LogOut,
-  User,
-} from "lucide-react";
+// client/src/components/app-sidebar.tsx
+import { Home, Users, Truck, FileText, LogOut, Settings, ShieldCheck } from "lucide-react";
+import { useLocation, Link } from "wouter";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/lib/auth"; // Importamos el hook de autenticación
 import { Button } from "@/components/ui/button";
 
+// Definición de ítems del menú (mantenlos como los tenías)
+const items = [
+  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Conductores", url: "/drivers", icon: Users },
+  { title: "Vehículos", url: "/vehicles", icon: Truck },
+  { title: "Hojas de Ruta", url: "/route-slips", icon: FileText },
+  { title: "Auditoría", url: "/audit", icon: ShieldCheck, role: "admin" },
+];
+
 export function AppSidebar() {
-  const { user, logout } = useAuth();
   const [location] = useLocation();
+  const { user, logoutMutation } = useAuth(); // Obtenemos la función de logout
 
-  const menuItems = [
-    {
-      title: "Dashboard",
-      url: "/",
-      icon: LayoutDashboard,
-      roles: ["admin", "operator", "finance", "driver"],
-    },
-    {
-      title: "Conductores",
-      url: "/drivers",
-      icon: Users,
-      roles: ["admin", "operator"],
-    },
-    {
-      title: "Vehículos",
-      url: "/vehicles",
-      icon: Truck,
-      roles: ["admin", "operator"],
-    },
-    {
-      title: "Hojas de Ruta",
-      url: "/route-slips",
-      icon: FileText,
-      roles: ["admin", "operator", "driver"],
-    },
-    {
-      title: "Pagos",
-      url: "/payments",
-      icon: CreditCard,
-      roles: ["admin", "finance"],
-    },
-    {
-      title: "Auditoría",
-      url: "/audit",
-      icon: ClipboardList,
-      roles: ["admin"],
-    },
-  ];
-
-  const filteredMenuItems = menuItems.filter((item) =>
-    item.roles.includes(user?.role || "")
-  );
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
+  // Función para manejar el cierre de sesión
+  const handleLogout = () => {
+    logoutMutation.mutate();
   };
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b p-4">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Truck className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-sm">Taxi Nort S.A.</h2>
-            <p className="text-xs text-muted-foreground">Gestión de Flotas</p>
-          </div>
-        </div>
-      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menú Principal</SidebarGroupLabel>
+          <SidebarGroupLabel>Taxi Nort Admin</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredMenuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <Link href={item.url}>
-                    <SidebarMenuButton isActive={location === item.url} data-testid={`link-${item.url.slice(1) || 'dashboard'}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+              {items.map((item) => {
+                // Filtrar por rol si es necesario
+                if (item.role && user?.role !== item.role) return null;
+                
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location === item.url}>
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
                     </SidebarMenuButton>
-                  </Link>
-                </SidebarMenuItem>
-              ))}
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary/10 text-primary text-sm">
-              {user ? getInitials(user.name) : "U"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+
+      <SidebarFooter className="p-4 border-t">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2 px-2">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{user?.name}</span>
+              <span className="text-xs text-muted-foreground capitalize">
+                {user?.role}
+              </span>
+            </div>
           </div>
+          
+          <Button 
+            variant="outline" 
+            className="w-full justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={handleLogout} // Conectamos el botón aquí
+            disabled={logoutMutation.isPending}
+          >
+            <LogOut className="h-4 w-4" />
+            <span>{logoutMutation.isPending ? "Saliendo..." : "Cerrar Sesión"}</span>
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
-          onClick={logout}
-          data-testid="button-logout"
-        >
-          <LogOut className="h-4 w-4 mr-2" />
-          Cerrar Sesión
-        </Button>
       </SidebarFooter>
     </Sidebar>
   );
