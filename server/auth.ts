@@ -1,19 +1,22 @@
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; // Importación corregida
+import bcrypt from "bcryptjs"; // Importación estándar compatible con esbuild
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
 
-// Middleware para verificar Token
+// Middleware: Verifica que el token venga en el Header o Cookie
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
 
+  // 1. Buscamos en Header "Authorization: Bearer <token>"
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.split(" ")[1];
-  } else if (req.cookies && req.cookies.token) {
+  } 
+  // 2. Respaldo: Cookie
+  else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
@@ -29,6 +32,7 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
       return res.status(401).json({ message: "Usuario inválido" });
     }
 
+    // Inyectamos el usuario en la request
     (req as any).user = user;
     next();
   } catch (error) {
@@ -36,9 +40,18 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
   }
 }
 
-declare global { namespace Express { interface Request { user?: User; } } }
+// Extender tipos de Express
+declare global {
+  namespace Express {
+    interface Request {
+      user?: User;
+    }
+  }
+}
 
 export function setupAuth(app: Express) {
+  
+  // LOGIN: Genera y devuelve el token
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -55,8 +68,15 @@ export function setupAuth(app: Express) {
       }
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-      res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
-      
+
+      // Cookie backup (Secure false para evitar problemas de proxy SSL)
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000
+      });
+
       const { password, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword, token });
 
@@ -66,11 +86,12 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // REGISTRO
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
       if (await storage.getUserByEmail(email)) {
-        return res.status(400).json({ message: "El email ya está registrado" });
+        return res.status(400).json({ message: "Email registrado" });
       }
 
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
@@ -83,7 +104,6 @@ export function setupAuth(app: Express) {
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
 
-      // Cookie backup
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
 
       const { password, ...userWithoutPassword } = user;
@@ -93,11 +113,13 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // LOGOUT
   app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("token");
     res.sendStatus(200);
   });
 
+  // OBTENER USUARIO
   app.get("/api/user", verifyAuth, (req, res) => {
     const { password, ...userWithoutPassword } = (req as any).user;
     res.json(userWithoutPassword);

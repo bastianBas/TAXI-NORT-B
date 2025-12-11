@@ -6,29 +6,19 @@ import type { User, InsertUser } from "@shared/schema";
 import { Loader2 } from "lucide-react";
 import { Route, useLocation } from "wouter";
 
-type AuthContextType = {
-  user: User | null;
-  isLoading: boolean;
-  error: Error | null;
-  loginMutation: any;
-  logoutMutation: any;
-  registerMutation: any;
-};
-
+type AuthContextType = { user: User | null; isLoading: boolean; error: Error | null; loginMutation: any; logoutMutation: any; registerMutation: any; };
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Cargar usuario solo si existe un token en localStorage
   const { data: user, error, isLoading } = useQuery<User | null>({
     queryKey: ["/api/user"],
     retry: false,
     enabled: !!localStorage.getItem("auth_token"), 
   });
 
-  // Si el token es inválido (error 401), limpiar automáticamente
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
@@ -39,7 +29,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: async (credentials: any) => {
       const res = await apiRequestJson("/api/auth/login", "POST", credentials);
-      // GUARDAR TOKEN (CRÍTICO)
       if (res.token) {
         localStorage.setItem("auth_token", res.token);
       }
@@ -48,7 +37,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: User) => {
       queryClient.setQueryData(["/api/user"], user);
       toast({ title: "Bienvenido", description: `Hola de nuevo, ${user.name}` });
-      // Redirección forzada para limpiar estado
       window.location.href = "/";
     },
     onError: (error: Error) => {
@@ -56,13 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  // --- LOGOUT ARREGLADO (MODO INSTANTÁNEO) ---
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // 1. ELIMINAR TOKEN LOCALMENTE (VITAL)
       localStorage.removeItem("auth_token");
-      
-      // 2. Intentar avisar al servidor (sin esperar respuesta estricta)
       try {
         await apiRequestJson("/api/auth/logout", "POST");
       } catch (e) {
@@ -72,11 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       queryClient.setQueryData(["/api/user"], null);
       queryClient.clear();
-      // 3. FORZAR RECARGA AL LOGIN (Solución definitiva al botón pegado)
       window.location.href = "/login";
     },
     onError: () => {
-      // Incluso si falla, forzamos la salida
       localStorage.removeItem("auth_token");
       window.location.href = "/login";
     },
@@ -121,7 +103,6 @@ export function ProtectedRoute({ path, component: Component }: { path: string; c
   if (!user) {
     return (
       <Route path={path}>
-        {/* Redirección simple */}
         <RedirectToLogin />
       </Route>
     );
