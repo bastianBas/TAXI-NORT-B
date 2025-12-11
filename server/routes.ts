@@ -9,7 +9,7 @@ import type { User } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs"; // Importación correcta
+import bcrypt from "bcryptjs";
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -56,24 +56,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // --- CONDUCTORES ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { res.json(await storage.getAllDrivers()); });
   app.post("/api/drivers", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createDriver(req.body)); });
   app.put("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateDriver(req.params.id, req.body)); });
   app.delete("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { await storage.deleteDriver(req.params.id); res.json({ success: true }); });
 
+  // --- VEHÍCULOS ---
   app.get("/api/vehicles", verifyAuth, async (req, res) => { res.json(await storage.getAllVehicles()); });
   app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createVehicle(req.body)); });
+  
+  // 🟢 ESTA ERA LA LÍNEA QUE FALTABA:
+  app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    await storage.deleteVehicle(req.params.id); 
+    res.json({ success: true }); 
+  });
+
   app.post("/api/vehicles/:id/location", async (req, res) => { await storage.updateVehicleLocation({ vehicleId: req.params.id, plate: "GPS", lat: req.body.lat, lng: req.body.lng, status: "active", timestamp: Date.now() }); res.json({ success: true }); });
 
+  // --- HOJAS DE RUTA ---
   app.get("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.getAllRouteSlips()); });
   app.post("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.createRouteSlip(req.body)); });
 
+  // --- PAGOS ---
   app.get("/api/payments", verifyAuth, async (req, res) => { res.json(await storage.getAllPayments()); });
   app.post("/api/payments", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => { 
       const payment = await storage.createPayment({ ...req.body, amount: parseInt(req.body.amount), proofOfPayment: req.file?.filename || "" });
       res.json(payment); 
   });
 
+  // --- AUDITORÍA ---
   app.get("/api/audit", verifyAuth, hasRole("admin"), async (req, res) => { res.json(await storage.getAllAuditLogs()); });
 
   const httpServer = createServer(app);
