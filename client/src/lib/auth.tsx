@@ -1,8 +1,10 @@
 import { createContext, useContext, ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User as SelectUser, InsertUser } from "@shared/schema";
-import { apiRequestJson } from "./queryClient"; // Importación corregida
+import { apiRequestJson } from "./queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import { Redirect } from "wouter";
 
 type AuthContextType = {
   user: SelectUser | null;
@@ -26,14 +28,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useQuery<SelectUser | null, Error>({
     queryKey: ["/api/user"],
     queryFn: async () => {
-      // Implementación manual para verificar sesión sin redirigir forzosamente
       const token = localStorage.getItem("auth_token");
+      // Si no hay token, no intentamos verificar sesión
+      if (!token) return null;
+
       const res = await fetch("/api/user", {
-        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+        headers: { "Authorization": `Bearer ${token}` },
       });
 
       if (res.status === 401) {
-        return null; // Si no está autenticado, simplemente retornamos null
+        // Token inválido o expirado
+        localStorage.removeItem("auth_token");
+        return null;
       }
 
       if (!res.ok) {
@@ -47,17 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
-      // Usamos apiRequestJson con el orden correcto: URL, METODO, BODY
-      const data = await apiRequestJson("/api/login", "POST", credentials);
-      
-      // Guardamos el token si la respuesta lo incluye
+      // CORREGIDO: Ruta coincide con server/auth.ts
+      const data = await apiRequestJson("/api/auth/login", "POST", credentials);
       if (data.token) {
         localStorage.setItem("auth_token", data.token);
       }
-      return data;
+      return data.user;
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Bienvenido",
+        description: `Hola de nuevo, ${user.name}`,
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -70,12 +78,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
-      // Usamos apiRequestJson con el orden correcto: URL, METODO, BODY
-      const data = await apiRequestJson("/api/register", "POST", credentials);
-      return data;
+      // CORREGIDO: Ruta coincide con server/auth.ts
+      const data = await apiRequestJson("/api/auth/register", "POST", credentials);
+      if (data.token) {
+        localStorage.setItem("auth_token", data.token);
+      }
+      return data.user;
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Registro exitoso",
+        description: "Tu cuenta ha sido creada.",
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -88,24 +103,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // Usamos apiRequestJson para llamar al logout del backend
-      await apiRequestJson("/api/logout", "POST");
+      // CORREGIDO: Ruta coincide con server/auth.ts
+      await apiRequestJson("/api/auth/logout", "POST");
     },
     onSuccess: () => {
-      // Limpieza exitosa
+      // SOLUCIÓN LOGIN: Limpiamos token y estado
       localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
+      // Redirección opcional, aunque App.tsx lo manejará al detectar user null
+      window.location.href = "/login";
     },
     onError: (error: Error) => {
-      // Forzamos limpieza local incluso si el backend falla
+      // Fallback: Limpiamos localmente aunque falle el server
       localStorage.removeItem("auth_token");
       queryClient.setQueryData(["/api/user"], null);
-      
-      toast({
-        title: "Sesión cerrada localmente",
-        description: "Hubo un error de conexión, pero se cerró tu sesión en este dispositivo.",
-        variant: "destructive",
-      });
+      window.location.href = "/login";
     },
   });
 
@@ -131,4 +143,35 @@ export function useAuth() {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
+}
+
+// RESTAURADO: El componente ProtectedRoute necesario para App.tsx
+export function ProtectedRoute({ 
+  children, 
+  allowedRoles 
+}: { 
+  children: ReactNode;
+  allowedRoles?: string[];
+}) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-border" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Redirect to="/login" />;
+  }
+
+  // Verificación de roles (si se especifican)
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Si no tiene permiso, redirigimos al inicio
+    return <Redirect to="/" />;
+  }
+
+  return <>{children}</>;
 }
