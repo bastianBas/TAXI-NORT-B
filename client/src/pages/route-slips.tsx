@@ -4,9 +4,10 @@ import { RouteSlip, Driver, Vehicle } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil } from "lucide-react";
+import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil, DollarSign } from "lucide-react";
 import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
 import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 export default function RouteSlips() {
   const { user } = useAuth();
@@ -41,15 +42,26 @@ export default function RouteSlips() {
     );
   }
 
+  // 🟢 Identificar al conductor actual
+  const currentDriver = user?.role === "driver" 
+    ? drivers?.find(d => d.userId === user.id) 
+    : null;
+
   const displayedSlips = (routeSlips || []).filter((slip) => {
     if (["admin", "operator", "finance"].includes(user?.role || "")) return true;
-    return slip.driverId === user?.id; 
+    
+    // 🟢 Filtro correcto para conductores
+    if (user?.role === "driver" && currentDriver) {
+        return slip.driverId === currentDriver.id;
+    }
+    return false; 
   });
 
   const canEdit = ["admin", "operator"].includes(user?.role || "");
+  const isDriver = user?.role === "driver";
 
   return (
-    <div className="space-y-6 p-4 md:p-8 pt-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
@@ -69,7 +81,7 @@ export default function RouteSlips() {
           {displayedSlips.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
               <Info className="h-10 w-10 text-gray-300" />
-              <p>No hay controles diarios registrados.</p>
+              <p>No hay controles diarios registrados para ti.</p>
             </div>
           ) : (
             <div className="rounded-md border">
@@ -82,7 +94,7 @@ export default function RouteSlips() {
                     <TableHead>Horario</TableHead>
                     <TableHead>Estado Pago</TableHead>
                     <TableHead>Firma</TableHead>
-                    {canEdit && <TableHead className="w-[50px]"></TableHead>}
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -127,19 +139,29 @@ export default function RouteSlips() {
                          )}
                       </TableCell>
 
-                      {canEdit && (
-                        <TableCell>
-                           {/* Botón de Edición reutilizando el Dialog */}
-                           <RouteSlipDialog 
-                             slipToEdit={slip} 
-                             trigger={
-                               <Button variant="ghost" size="icon">
-                                 <Pencil className="h-4 w-4" />
-                               </Button>
-                             }
-                           />
-                        </TableCell>
-                      )}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {/* 🟢 Botón Pagar */}
+                          {isDriver && slip.paymentStatus !== "paid" && (
+                            <Link href="/payments">
+                              <Button size="sm" variant="outline" className="h-8 gap-1 text-green-600 border-green-200 hover:bg-green-50">
+                                <DollarSign className="h-3 w-3" /> Pagar
+                              </Button>
+                            </Link>
+                          )}
+
+                          {canEdit && (
+                            <RouteSlipDialog 
+                              slipToEdit={slip} 
+                              trigger={
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              }
+                            />
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

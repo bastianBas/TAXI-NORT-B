@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
-import { AppSidebar } from "@/components/app-sidebar"; // Ahora es el Header
+import { AppSidebar } from "@/components/app-sidebar"; 
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -46,7 +46,6 @@ function AppRouter() {
       <AppSidebar />
 
       {/* Contenido Principal */}
-      {/* Ya no necesitamos pt-32, el flujo es natural. Solo un poco de padding general */}
       <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6">
         <div className="animate-in fade-in duration-500">
           <Switch>
@@ -69,11 +68,14 @@ function AppRouter() {
                 <RouteSlips />
               </ProtectedRoute>
             </Route>
+            
+            {/* 🟢 CORRECCIÓN AQUÍ: Agregado "driver" */}
             <Route path="/payments">
-              <ProtectedRoute allowedRoles={["admin", "finance"]}>
+              <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
                 <Payments />
               </ProtectedRoute>
             </Route>
+
             <Route path="/audit">
               <ProtectedRoute allowedRoles={["admin"]}>
                 <Audit />
