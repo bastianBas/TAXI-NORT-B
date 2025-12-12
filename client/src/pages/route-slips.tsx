@@ -4,8 +4,9 @@ import { RouteSlip, Driver, Vehicle } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, CheckCircle, AlertCircle, Info } from "lucide-react";
-import RouteSlipDialog from "@/components/route-slips/route-slip-dialog"; // Importación correcta
+import { Loader2, FileText, Info, Clock, CheckCircle } from "lucide-react";
+import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
+import { Button } from "@/components/ui/button";
 
 export default function RouteSlips() {
   const { user } = useAuth();
@@ -29,7 +30,7 @@ export default function RouteSlips() {
 
   const getVehicleInfo = (id: string) => {
     const v = vehicles?.find((v) => v.id === id);
-    return v ? `${v.plate} (${v.model})` : "Desconocido";
+    return v ? v.plate : "Desconocido";
   };
 
   if (isLoadingSlips) {
@@ -40,7 +41,6 @@ export default function RouteSlips() {
     );
   }
 
-  // Filtro de seguridad
   const displayedSlips = (routeSlips || []).filter((slip) => {
     if (["admin", "operator", "finance"].includes(user?.role || "")) return true;
     return slip.driverId === user?.id; 
@@ -52,11 +52,9 @@ export default function RouteSlips() {
     <div className="space-y-6 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Hojas de Ruta</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
           <p className="text-muted-foreground">
-            {user?.role === "driver" 
-              ? "Tus hojas de ruta asignadas" 
-              : "Historial completo de la flota"}
+            Bitácora de inicio y término de servicios.
           </p>
         </div>
         {canCreate && <RouteSlipDialog />}
@@ -73,7 +71,7 @@ export default function RouteSlips() {
           {displayedSlips.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
               <Info className="h-10 w-10 text-gray-300" />
-              <p>No tienes hojas de ruta registradas.</p>
+              <p>No hay controles diarios registrados.</p>
             </div>
           ) : (
             <div className="rounded-md border">
@@ -83,8 +81,9 @@ export default function RouteSlips() {
                     <TableHead>Fecha</TableHead>
                     <TableHead>Conductor</TableHead>
                     <TableHead>Vehículo</TableHead>
-                    <TableHead>Estado Pago</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Inicio</TableHead>
+                    <TableHead>Término</TableHead>
+                    <TableHead>Firma/Timbre</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -98,19 +97,24 @@ export default function RouteSlips() {
                       </TableCell>
                       <TableCell>{getDriverInfo(slip.driverId)}</TableCell>
                       <TableCell>{getVehicleInfo(slip.vehicleId)}</TableCell>
-                      <TableCell>
-                        {slip.paymentStatus === "paid" ? (
-                          <Badge className="bg-green-500 hover:bg-green-600 flex w-fit items-center gap-1">
-                            <CheckCircle className="h-3 w-3" /> Pagado
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="flex w-fit items-center gap-1">
-                            <AlertCircle className="h-3 w-3" /> Pendiente
-                          </Badge>
-                        )}
+                      <TableCell className="font-mono text-sm">
+                         <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-muted-foreground" /> {slip.startTime}
+                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        ${(slip.totalAmount || 0).toLocaleString("es-CL")}
+                      <TableCell className="font-mono text-sm">
+                         <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-muted-foreground" /> {slip.endTime}
+                         </div>
+                      </TableCell>
+                      <TableCell>
+                         {slip.signatureUrl ? (
+                           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                             <CheckCircle className="h-3 w-3 mr-1" /> Firmado
+                           </Badge>
+                         ) : (
+                           <span className="text-muted-foreground text-xs">Pendiente</span>
+                         )}
                       </TableCell>
                     </TableRow>
                   ))}

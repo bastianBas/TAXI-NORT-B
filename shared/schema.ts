@@ -25,41 +25,35 @@ export const drivers = mysqlTable("drivers", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// 🟢 VEHÍCULOS ACTUALIZADOS: Datos reales de la Hoja de Ruta
 export const vehicles = mysqlTable("vehicles", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  
-  // Datos Básicos del Vehículo
-  plate: varchar("plate", { length: 20 }).notNull().unique(), // Patente
-  model: varchar("model", { length: 100 }).notNull(), // Modelo (Opcional en hoja, pero útil)
-  color: varchar("color", { length: 50 }).notNull(), // Color (Opcional en hoja, pero útil)
-  
-  // Datos del Propietario
-  ownerName: varchar("owner_name", { length: 255 }).notNull(), // Nombre Propietario
-  ownerRut: varchar("owner_rut", { length: 20 }).notNull(), // Nuevo: RUT Propietario
-  
-  // Documentación y Vencimientos
-  technicalReviewDate: varchar("technical_review_date", { length: 50 }).notNull(), // Rev. Técnica
-  circulationPermitDate: varchar("circulation_permit_date", { length: 50 }).notNull(), // Nuevo: Permiso Circulación
-  soapDate: varchar("soap_date", { length: 50 }).notNull(), // Nuevo: SOAP
-  authorizationDate: varchar("authorization_date", { length: 50 }).notNull(), // Nuevo: CIRNSTP (Cartón Recorrido)
-
+  plate: varchar("plate", { length: 20 }).notNull().unique(),
+  model: varchar("model", { length: 100 }).notNull(),
+  color: varchar("color", { length: 50 }).notNull(),
+  ownerName: varchar("owner_name", { length: 255 }).notNull(),
+  ownerRut: varchar("owner_rut", { length: 20 }).notNull(),
+  technicalReviewDate: varchar("technical_review_date", { length: 50 }).notNull(),
+  circulationPermitDate: varchar("circulation_permit_date", { length: 50 }).notNull(),
+  soapDate: varchar("soap_date", { length: 50 }).notNull(),
+  authorizationDate: varchar("authorization_date", { length: 50 }).notNull(),
   status: varchar("status", { length: 50 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// 🟢 HOJAS DE RUTA (CONTROL DIARIO) ACTUALIZADA
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
   vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
   driverId: varchar("driver_id", { length: 36 }).notNull(),
-  signature: text("signature"),
-  paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
+  
+  // Nuevos campos de Control Diario
+  startTime: varchar("start_time", { length: 20 }).notNull(), // Hora Inicio
+  endTime: varchar("end_time", { length: 20 }).notNull(),   // Hora Término
+  signatureUrl: text("signature_url"),                      // URL de la imagen (Firma/Timbre)
+  
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
-  totalAmount: int("total_amount").default(0),
-  expenses: int("expenses").default(0),
-  netAmount: int("net_amount").default(0),
   createdAt: timestamp("created_at").defaultNow()
 });
 

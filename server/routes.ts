@@ -65,22 +65,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // --- VEHÍCULOS ---
   app.get("/api/vehicles", verifyAuth, async (req, res) => { res.json(await storage.getAllVehicles()); });
   app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createVehicle(req.body)); });
+  app.put("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateVehicle(req.params.id, req.body)); });
+  app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { await storage.deleteVehicle(req.params.id); res.json({ success: true }); });
   
-  // Ruta PUT agregada para editar vehículos
-  app.put("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
-    res.json(await storage.updateVehicle(req.params.id, req.body)); 
-  });
-
-  app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
-    await storage.deleteVehicle(req.params.id); 
-    res.json({ success: true }); 
-  });
-
   app.post("/api/vehicles/:id/location", async (req, res) => { await storage.updateVehicleLocation({ vehicleId: req.params.id, plate: "GPS", lat: req.body.lat, lng: req.body.lng, status: "active", timestamp: Date.now() }); res.json({ success: true }); });
 
-  // --- HOJAS DE RUTA ---
+  // --- HOJAS DE RUTA (Actualizado con carga de firma) ---
   app.get("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.getAllRouteSlips()); });
-  app.post("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.createRouteSlip(req.body)); });
+  
+  app.post("/api/route-slips", verifyAuth, upload.single("signature"), async (req, res) => { 
+    // Si se subió imagen, guardamos el nombre del archivo en signatureUrl
+    const slipData = {
+      ...req.body,
+      signatureUrl: req.file ? req.file.filename : null
+    };
+    res.json(await storage.createRouteSlip(slipData)); 
+  });
 
   // --- PAGOS ---
   app.get("/api/payments", verifyAuth, async (req, res) => { res.json(await storage.getAllPayments()); });
