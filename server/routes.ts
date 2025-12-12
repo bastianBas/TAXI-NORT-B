@@ -66,7 +66,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vehicles", verifyAuth, async (req, res) => { res.json(await storage.getAllVehicles()); });
   app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createVehicle(req.body)); });
   
-  // 🟢 ESTA ERA LA LÍNEA QUE FALTABA:
+  // Ruta PUT agregada para editar vehículos
+  app.put("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    res.json(await storage.updateVehicle(req.params.id, req.body)); 
+  });
+
   app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
     await storage.deleteVehicle(req.params.id); 
     res.json({ success: true }); 

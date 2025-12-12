@@ -11,33 +11,39 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// 🟢 TABLA DRIVERS CORREGIDA: Ahora incluye 'address'
 export const drivers = mysqlTable("drivers", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  
-  // Datos Personales
   name: varchar("name", { length: 255 }).notNull(),
   rut: varchar("rut", { length: 20 }).notNull().unique(),
   phone: varchar("phone", { length: 20 }).notNull(),
   commune: varchar("commune", { length: 100 }).notNull(),
-  address: varchar("address", { length: 255 }), // <--- ¡ESTA ERA LA LÍNEA QUE FALTABA!
-  
-  // Datos Licencia
+  address: varchar("address", { length: 255 }),
   licenseNumber: varchar("license_number", { length: 50 }).notNull(),
   licenseClass: varchar("license_class", { length: 10 }).notNull(),
   licenseDate: varchar("license_date", { length: 50 }).notNull(),
-
   status: varchar("status", { length: 50 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// 🟢 VEHÍCULOS ACTUALIZADOS: Datos reales de la Hoja de Ruta
 export const vehicles = mysqlTable("vehicles", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  plate: varchar("plate", { length: 20 }).notNull().unique(),
-  model: varchar("model", { length: 100 }).notNull(),
-  color: varchar("color", { length: 50 }).notNull(),
-  ownerName: varchar("owner_name", { length: 255 }).notNull(),
-  technicalReviewDate: varchar("technical_review_date", { length: 50 }).notNull(),
+  
+  // Datos Básicos del Vehículo
+  plate: varchar("plate", { length: 20 }).notNull().unique(), // Patente
+  model: varchar("model", { length: 100 }).notNull(), // Modelo (Opcional en hoja, pero útil)
+  color: varchar("color", { length: 50 }).notNull(), // Color (Opcional en hoja, pero útil)
+  
+  // Datos del Propietario
+  ownerName: varchar("owner_name", { length: 255 }).notNull(), // Nombre Propietario
+  ownerRut: varchar("owner_rut", { length: 20 }).notNull(), // Nuevo: RUT Propietario
+  
+  // Documentación y Vencimientos
+  technicalReviewDate: varchar("technical_review_date", { length: 50 }).notNull(), // Rev. Técnica
+  circulationPermitDate: varchar("circulation_permit_date", { length: 50 }).notNull(), // Nuevo: Permiso Circulación
+  soapDate: varchar("soap_date", { length: 50 }).notNull(), // Nuevo: SOAP
+  authorizationDate: varchar("authorization_date", { length: 50 }).notNull(), // Nuevo: CIRNSTP (Cartón Recorrido)
+
   status: varchar("status", { length: 50 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow()
 });
@@ -80,7 +86,6 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
-// Schemas de inserción
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
@@ -88,7 +93,6 @@ export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: t
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
 
-// Tipos TypeScript exportados
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Driver = typeof drivers.$inferSelect;
