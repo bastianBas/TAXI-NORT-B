@@ -37,7 +37,6 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-// 🟢 CORRECCIÓN 1: Agregado ExternalLink a los imports
 import { Plus, CreditCard, Upload, DollarSign, FileText, Loader2, Pencil, Eye, X, ExternalLink } from "lucide-react";
 import type { Payment, InsertPayment, Driver, Vehicle, RouteSlip } from "@shared/schema";
 
@@ -155,15 +154,12 @@ export default function Payments() {
     return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
   };
 
-  // Filtramos hojas para el SELECT (pendientes + la actual si se edita)
   const availableRouteSlips = routeSlips?.filter(slip => 
     slip.paymentStatus !== "paid" || (editingPayment && slip.id === editingPayment.routeSlipId)
   ) || [];
 
-  // 🟢 CORRECCIÓN 2: Restauramos esta variable para las tarjetas de estadísticas
   const pendingRouteSlips = routeSlips?.filter(slip => slip.paymentStatus !== "paid") || [];
 
-  // Helper para saber si el archivo es PDF
   const isPdf = (filename: string) => filename.toLowerCase().endsWith(".pdf");
 
   return (
@@ -175,7 +171,8 @@ export default function Payments() {
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={handleOpenCreate}>
+            {/* 🟢 AQUÍ ESTÁ EL CAMBIO DE ESTILO */}
+            <Button onClick={handleOpenCreate} className="bg-slate-900 text-white hover:bg-slate-800">
               <Plus className="mr-2 h-4 w-4" /> Nuevo Pago
             </Button>
           </DialogTrigger>
@@ -249,7 +246,7 @@ export default function Payments() {
         </Dialog>
       </div>
 
-      {/* --- VISOR DE ARCHIVOS (DIALOG NUEVO) --- */}
+      {/* --- VISOR DE ARCHIVOS --- */}
       <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
         <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
           <DialogHeader>
@@ -353,8 +350,6 @@ export default function Payments() {
                       <TableCell><span className="font-mono font-semibold">{getVehiclePlate(payment.vehicleId)}</span></TableCell>
                       <TableCell className="font-semibold">{formatAmount(payment.amount)}</TableCell>
                       <TableCell><Badge className="bg-green-600 hover:bg-green-700">Pagado</Badge></TableCell>
-                      
-                      {/* BOTÓN "VER ARCHIVO" ACTIVO */}
                       <TableCell>
                         {payment.proofOfPayment ? (
                           <Button 
@@ -367,7 +362,6 @@ export default function Payments() {
                           </Button>
                         ) : (<span className="text-muted-foreground text-sm">-</span>)}
                       </TableCell>
-                      
                       <TableCell>
                          <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(payment)}>
                            <Pencil className="h-4 w-4" />

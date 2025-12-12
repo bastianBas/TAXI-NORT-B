@@ -91,7 +91,6 @@ export default function RouteSlipDialog({ slipToEdit, trigger }: Props) {
       if (selectedFile) {
         formData.append("signature", selectedFile);
       } else if (!slipToEdit) {
-        // Solo es obligatorio al crear. Al editar, si no hay archivo, mantenemos el anterior.
         throw new Error("Debe adjuntar la imagen de Firma/Timbre del Controlador.");
       }
 
@@ -131,7 +130,8 @@ export default function RouteSlipDialog({ slipToEdit, trigger }: Props) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger ? trigger : (
-          <Button>
+          /* 🟢 AQUÍ ESTÁ EL CAMBIO DE ESTILO */
+          <Button className="bg-slate-900 text-white hover:bg-slate-800">
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Control Diario
           </Button>
