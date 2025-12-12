@@ -4,9 +4,8 @@ import { RouteSlip, Driver, Vehicle } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, Info, Clock, CheckCircle } from "lucide-react";
+import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, DollarSign } from "lucide-react";
 import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
-import { Button } from "@/components/ui/button";
 
 export default function RouteSlips() {
   const { user } = useAuth();
@@ -54,7 +53,7 @@ export default function RouteSlips() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
           <p className="text-muted-foreground">
-            Bitácora de inicio y término de servicios.
+            Bitácora de servicios y estado de pagos.
           </p>
         </div>
         {canCreate && <RouteSlipDialog />}
@@ -81,9 +80,9 @@ export default function RouteSlips() {
                     <TableHead>Fecha</TableHead>
                     <TableHead>Conductor</TableHead>
                     <TableHead>Vehículo</TableHead>
-                    <TableHead>Inicio</TableHead>
-                    <TableHead>Término</TableHead>
-                    <TableHead>Firma/Timbre</TableHead>
+                    <TableHead>Horario</TableHead>
+                    <TableHead>Estado Pago</TableHead> {/* NUEVA COLUMNA */}
+                    <TableHead>Firma</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -97,23 +96,36 @@ export default function RouteSlips() {
                       </TableCell>
                       <TableCell>{getDriverInfo(slip.driverId)}</TableCell>
                       <TableCell>{getVehicleInfo(slip.vehicleId)}</TableCell>
+                      
+                      {/* COLUMNA HORARIO */}
                       <TableCell className="font-mono text-sm">
-                         <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-muted-foreground" /> {slip.startTime}
+                         <div className="flex flex-col gap-1">
+                            <span className="flex items-center gap-1 text-xs">
+                                <Clock className="h-3 w-3 text-muted-foreground" /> {slip.startTime} - {slip.endTime}
+                            </span>
                          </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
-                         <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-muted-foreground" /> {slip.endTime}
-                         </div>
+
+                      {/* COLUMNA ESTADO DE PAGO (NUEVO) */}
+                      <TableCell>
+                        {slip.paymentStatus === "paid" ? (
+                          <Badge className="bg-green-600 hover:bg-green-700 flex w-fit items-center gap-1">
+                            <CheckCircle className="h-3 w-3" /> Pagado
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-yellow-600 border-yellow-600 flex w-fit items-center gap-1">
+                            <AlertCircle className="h-3 w-3" /> Pendiente
+                          </Badge>
+                        )}
                       </TableCell>
+
                       <TableCell>
                          {slip.signatureUrl ? (
-                           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                             <CheckCircle className="h-3 w-3 mr-1" /> Firmado
+                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                             Firmado
                            </Badge>
                          ) : (
-                           <span className="text-muted-foreground text-xs">Pendiente</span>
+                           <span className="text-muted-foreground text-xs">-</span>
                          )}
                       </TableCell>
                     </TableRow>

@@ -37,7 +37,6 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-// 🟢 CORRECCIÓN: Se agregó Loader2 a los imports
 import { Plus, CreditCard, Upload, DollarSign, FileText, Loader2 } from "lucide-react";
 import type { Payment, InsertPayment, Driver, Vehicle, RouteSlip } from "@shared/schema";
 
@@ -65,6 +64,7 @@ export default function Payments() {
     queryKey: ["/api/vehicles"],
   });
 
+  // Filtramos solo las hojas de ruta PENDIENTES de pago
   const pendingRouteSlips = routeSlips?.filter(slip => slip.paymentStatus !== "paid") || [];
 
   const createMutation = useMutation({
@@ -78,6 +78,7 @@ export default function Payments() {
       formDataObj.append("vehicleId", slip.vehicleId);
       formDataObj.append("date", slip.date);
       
+      // Valores fijos: Diario y $1.800
       formDataObj.append("type", "daily");
       formDataObj.append("amount", "1800");
       formDataObj.append("status", "completed");
