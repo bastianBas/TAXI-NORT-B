@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
-// IMPORTANTE: Agregamos 'users' a los imports
 import { drivers, routeSlips, vehicles, payments, users } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -10,9 +9,9 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
-import bcrypt from "bcryptjs"; // IMPORTANTE: Para encriptar la contraseña
+import bcrypt from "bcryptjs";
 
-// --- CONFIGURACIÓN DE SUBIDA DE IMÁGENES (MULTER) ---
+// --- CONFIGURACIÓN DE MULTER ---
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.resolve(process.cwd(), "uploads");
@@ -31,11 +30,46 @@ const upload = multer({ storage: storage });
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
-  // Servir carpeta de imágenes
+  // Servir imágenes
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
   // ==========================================
-  // API: HOJAS DE RUTA (Route Slips)
+  // 🚨 RUTA DE EMERGENCIA (RESET ADMIN) 🚨
+  // ==========================================
+  app.post("/api/emergency-reset-admin", async (req, res) => {
+    try {
+      // 1. Verificar si ya existe
+      const existingAdmin = await db.query.users.findFirst({
+        where: eq(users.email, "admin@taxinort.cl")
+      });
+
+      if (existingAdmin) {
+        return res.json({ message: "El admin ya existe. Intenta iniciar sesión." });
+      }
+
+      // 2. Crear Admin
+      const hashedPassword = await bcrypt.hash("admin123", 10);
+      const newAdmin = {
+        id: randomUUID(),
+        email: "admin@taxinort.cl",
+        password: hashedPassword,
+        name: "Administrador Principal",
+        role: "admin",
+        createdAt: new Date(),
+      };
+
+      await db.insert(users).values(newAdmin);
+      console.log("✅ Admin de emergencia creado: admin@taxinort.cl / admin123");
+      res.json({ message: "Admin creado exitosamente", credentials: "admin@taxinort.cl / admin123" });
+
+    } catch (error) {
+      console.error("Error reset admin:", error);
+      res.status(500).send("Error creando admin");
+    }
+  });
+
+  // ==========================================
+  // API: HOJAS DE RUTA
   // ==========================================
 
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
@@ -62,12 +96,11 @@ export function registerRoutes(app: Express): Server {
       }
       return res.json([]);
     } catch (error) {
-      console.error("Error obteniendo hojas de ruta:", error);
+      console.error("Error route-slips:", error);
       res.status(500).json([]);
     }
   });
 
-  // CREAR HOJA DE RUTA (Con imagen)
   app.post("/api/route-slips", verifyAuth, upload.single('signature'), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -92,16 +125,14 @@ export function registerRoutes(app: Express): Server {
       await db.insert(routeSlips).values(slipData);
       res.status(201).json(slipData);
     } catch (error) {
-      console.error("Error creando hoja:", error);
+      console.error("Error crear hoja:", error);
       res.status(500).send("Error al crear");
     }
   });
 
-  // EDITAR HOJA DE RUTA
   app.put("/api/route-slips/:id", verifyAuth, upload.single('signature'), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
-      const slipId = req.params.id;
       const updateData: any = {
         date: req.body.date,
         vehicleId: req.body.vehicleId,
@@ -112,16 +143,15 @@ export function registerRoutes(app: Express): Server {
       };
       if (req.file) updateData.signatureUrl = `uploads/${req.file.filename}`;
 
-      await db.update(routeSlips).set(updateData).where(eq(routeSlips.id, slipId));
-      res.json({ message: "Actualizado", id: slipId });
+      await db.update(routeSlips).set(updateData).where(eq(routeSlips.id, req.params.id));
+      res.json({ message: "Actualizado" });
     } catch (error) {
-      console.error("Error actualizando hoja:", error);
       res.status(500).send("Error al actualizar");
     }
   });
 
   // ==========================================
-  // API: CONDUCTORES (Drivers) - LÓGICA CORREGIDA
+  // API: CONDUCTORES (Drivers)
   // ==========================================
 
   app.get("/api/drivers", verifyAuth, async (req, res) => {
@@ -131,61 +161,51 @@ export function registerRoutes(app: Express): Server {
     res.json(allDrivers);
   });
 
-  // CREAR CONDUCTOR + USUARIO DE LOGIN
   app.post("/api/drivers", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     
     try {
       const { email, name, rut, ...otherData } = req.body;
 
-      // 1. Verificar si el email ya existe como usuario
-      const existingUser = await db.query.users.findFirst({
-        where: eq(users.email, email)
-      });
+      // 1. Validar duplicados
+      const existingUser = await db.query.users.findFirst({ where: eq(users.email, email) });
+      if (existingUser) return res.status(400).json({ message: "El email ya existe" });
 
-      if (existingUser) {
-        return res.status(400).json({ message: "El email ya está registrado en el sistema." });
-      }
-
-      // 2. Crear el USUARIO (Login) primero
+      // 2. Crear Usuario
       const newUserId = randomUUID();
-      // Contraseña por defecto: 123456 (Encriptada)
-      const hashedPassword = await bcrypt.hash("123456", 10);
+      const hashedPassword = await bcrypt.hash("123456", 10); // Pass por defecto
 
       await db.insert(users).values({
         id: newUserId,
-        email: email,
+        email,
         password: hashedPassword,
-        name: name,
+        name,
         role: 'driver',
         createdAt: new Date(),
       });
 
-      // 3. Crear el CONDUCTOR vinculado al Usuario
+      // 3. Crear Conductor
       const newDriverId = randomUUID();
       const driverData = {
         id: newDriverId,
-        userId: newUserId, // <--- AQUÍ ESTÁ LA VINCULACIÓN
-        email: email,
-        name: name,
-        rut: rut,
-        ...otherData, // telefono, licencia, etc.
+        userId: newUserId,
+        email,
+        name,
+        rut,
+        ...otherData,
         createdAt: new Date(),
         status: req.body.status || 'active'
       };
 
       await db.insert(drivers).values(driverData);
-
-      console.log(`Conductor creado: ${name} (User ID: ${newUserId})`);
       res.status(201).json(driverData);
 
     } catch (error) {
-      console.error("Error creando conductor y usuario:", error);
-      res.status(500).send("Error al crear conductor. Verifique que el email o RUT no estén duplicados.");
+      console.error("Error creando conductor:", error);
+      res.status(500).send("Error al crear conductor");
     }
   });
 
-  // EDITAR CONDUCTOR
   app.put("/api/drivers/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -193,6 +213,34 @@ export function registerRoutes(app: Express): Server {
       res.json({ message: "Conductor actualizado" });
     } catch (error) {
       res.status(500).send("Error al actualizar conductor");
+    }
+  });
+
+  // 🔴 ELIMINAR CONDUCTOR (NUEVO)
+  app.delete("/api/drivers/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      const driverId = req.params.id;
+
+      // 1. Buscar al conductor para obtener su ID de usuario
+      const driver = await db.query.drivers.findFirst({
+        where: eq(drivers.id, driverId)
+      });
+
+      if (!driver) return res.status(404).send("Conductor no encontrado");
+
+      // 2. Eliminar de la tabla drivers
+      await db.delete(drivers).where(eq(drivers.id, driverId));
+
+      // 3. Si tiene un usuario asociado, eliminarlo también (para que no quede el login huerfano)
+      if (driver.userId) {
+        await db.delete(users).where(eq(users.id, driver.userId));
+      }
+
+      res.json({ message: "Conductor y usuario eliminados correctamente" });
+    } catch (error) {
+      console.error("Error eliminando conductor:", error);
+      res.status(500).send("Error al eliminar");
     }
   });
 
@@ -205,7 +253,6 @@ export function registerRoutes(app: Express): Server {
     res.json(allVehicles);
   });
 
-  // CREAR VEHÍCULO
   app.post("/api/vehicles", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -224,7 +271,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // EDITAR VEHÍCULO
   app.put("/api/vehicles/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -235,8 +281,20 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // 🔴 ELIMINAR VEHÍCULO (NUEVO)
+  app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      await db.delete(vehicles).where(eq(vehicles.id, req.params.id));
+      res.json({ message: "Vehículo eliminado" });
+    } catch (error) {
+      console.error("Error eliminando vehículo:", error);
+      res.status(500).send("Error al eliminar");
+    }
+  });
+
   // ==========================================
-  // API: PAGOS (Payments)
+  // API: PAGOS
   // ==========================================
   
   app.get("/api/payments", verifyAuth, async (req, res) => {
