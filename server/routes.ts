@@ -1,37 +1,34 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth"; 
-import { db } from "./db"; // Corregido: Importación local
-import { drivers, routeSlips, vehicles, payments } from "@shared/schema"; // Corregido: Importación desde @shared
+import { db } from "./db";
+import { drivers, routeSlips, vehicles, payments } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
-import { randomUUID } from "crypto"; // Importamos generador de IDs nativo
+// Usamos crypto nativo de Node.js que es estable en Cloud Run
+import { randomUUID } from "crypto"; 
 
 export function registerRoutes(app: Express): Server {
-  // Configuración de rutas de Login/Register
   setupAuth(app);
 
-  // --- API: HOJAS DE RUTA ---
-  // Usamos 'verifyAuth' para proteger la ruta
+  // --- API: HOJAS DE RUTA (GET) ---
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     if (!req.user) return res.status(401).send("No autorizado");
 
     try {
-      // CASO ADMIN: Devuelve todas las hojas
+      // CASO ADMIN
       if (req.user.role === 'admin') {
         const allSlips = await db.query.routeSlips.findMany({
           with: {
             driver: true,
             vehicle: true,
           },
-          // Usamos 'slips' en el callback para evitar conflicto de nombres
           orderBy: (slips, { desc }) => [desc(slips.date)],
         });
         return res.json(allSlips);
       }
 
-      // CASO DRIVER: Devuelve solo las suyas
+      // CASO DRIVER
       if (req.user.role === 'driver') {
-        // 1. Buscamos el perfil del conductor
         const driverProfile = await db.query.drivers.findFirst({
           where: eq(drivers.userId, req.user.id),
         });
@@ -41,7 +38,6 @@ export function registerRoutes(app: Express): Server {
           return res.json([]);
         }
 
-        // 2. Buscamos las hojas de ese conductor
         const driverSlips = await db.query.routeSlips.findMany({
           where: eq(routeSlips.driverId, driverProfile.id),
           with: {
@@ -62,34 +58,47 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- CREAR HOJA DE RUTA (Solo Admin) ---
-  // CORRECCIÓN PRINCIPAL: Eliminamos .returning() y generamos ID manual
+  // --- CREAR HOJA DE RUTA (POST - Solo Admin) ---
+  // 🟢 CORRECCIÓN APLICADA AQUÍ
   app.post("/api/route-slips", verifyAuth, async (req, res) => {
-    // Verificar rol manualmente ya que verifyAuth solo verifica login
     if (req.user?.role !== 'admin') {
       return res.status(403).send("No autorizado");
     }
 
     try {
-      // 1. Generamos el ID y la fecha manualmente
+      // 1. Generamos solo el ID. NO generamos la fecha manualmente.
       const newId = randomUUID();
-      const newDate = new Date();
-
-      const newSlipData = {
-        ...req.body,
+      
+      // Preparamos los datos para insertar.
+      // NOTA: No incluimos 'createdAt', dejamos que la BD lo ponga por defecto.
+      const slipDataToInsert = {
+        ...req.body, // Esto trae vehicleId, driverId, date, etc. del formulario
         id: newId,
-        createdAt: newDate,
       };
 
-      // 2. Insertamos sin .returning() (MySQL no lo soporta)
-      await db.insert(routeSlips).values(newSlipData);
+      // 2. Insertamos en la base de datos
+      await db.insert(routeSlips).values(slipDataToInsert);
 
-      // 3. Devolvemos el objeto que acabamos de crear
-      res.json(newSlipData);
+      // 3. Construimos la respuesta para el frontend.
+      // Como MySQL no devuelve el objeto creado, simulamos la respuesta completa
+      // agregando los valores por defecto que sabemos que tendrá la BD.
+      const responseData = {
+          ...slipDataToInsert,
+          // Agregamos una fecha actual solo para que el frontend la muestre al instante
+          createdAt: new Date().toISOString(), 
+          // Valores por defecto de tu schema
+          paymentStatus: 'pending', 
+          isDuplicate: false
+      };
+
+      console.log("Hoja de ruta creada exitosamente:", newId);
+      res.status(201).json(responseData);
 
     } catch (error) {
-      console.error("Error creando hoja de ruta:", error);
-      res.status(500).send("Error al crear hoja de ruta");
+      // Este log ahora te dará más detalles en Cloud Run si falla
+      console.error("❌ Error FATAL creando hoja de ruta en BD:", error);
+      // Devolvemos un error genérico al cliente, pero el log del servidor tendrá el detalle
+      res.status(500).send("Error al crear hoja de ruta en la base de datos.");
     }
   });
 
@@ -101,7 +110,6 @@ export function registerRoutes(app: Express): Server {
       if (req.user.role === 'admin') {
         const allPayments = await db.query.payments.findMany({
           with: { routeSlip: true },
-          // Corregido: payments.date (según tu schema) y nombre de variable 'p'
           orderBy: (p, { desc }) => [desc(p.date)],
         });
         return res.json(allPayments);
@@ -114,7 +122,6 @@ export function registerRoutes(app: Express): Server {
         
         if (!driverProfile) return res.json([]);
 
-        // Obtenemos hojas del conductor para filtrar pagos
         const mySlips = await db.query.routeSlips.findMany({
           where: eq(routeSlips.driverId, driverProfile.id),
         });
@@ -123,7 +130,6 @@ export function registerRoutes(app: Express): Server {
         
         if (slipIds.length === 0) return res.json([]);
 
-        // Buscamos pagos y filtramos en memoria (solución compatible con MySQL simple)
         const allPayments = await db.query.payments.findMany({
           with: { routeSlip: true },
           orderBy: (p, { desc }) => [desc(p.date)],
@@ -144,8 +150,6 @@ export function registerRoutes(app: Express): Server {
   // --- API: CONDUCTORES ---
   app.get("/api/drivers", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
-    
-    // Usamos variable 'd' para evitar conflicto con import 'drivers'
     const allDrivers = await db.query.drivers.findMany({
       orderBy: (d, { desc }) => [desc(d.createdAt)],
     });
