@@ -15,24 +15,37 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// 🟢 MEJORA: Crear carpeta uploads si no existe para evitar crash
-const uploadsDir = path.join(process.cwd(), "uploads");
+// 🟢 CORRECCIÓN CRÍTICA PARA ARCHIVOS ESTÁTICOS
+// 1. Obtenemos la ruta absoluta a la carpeta 'uploads' desde la raíz del proyecto.
+//    Usamos path.resolve(process.cwd(), 'uploads') para que sea seguro en cualquier entorno.
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+
+// 2. Aseguramos que la carpeta exista antes de intentar servirla.
 if (!fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`📁 Carpeta creada: ${uploadsDir}`);
+    console.log(`📁 [INFO] Carpeta de subidas creada en: ${uploadsDir}`);
   } catch (err) {
-    console.error("❌ Error creando carpeta uploads:", err);
+    console.error("❌ [ERROR] No se pudo crear la carpeta 'uploads':", err);
+    // Si esto falla, las imágenes no funcionarán, pero el server debe seguir.
   }
 }
+
+// 3. Servimos la carpeta 'uploads' en la URL '/uploads'.
+//    Ejemplo: Un archivo en /app/uploads/foto.jpg será accesible en http://host/uploads/foto.jpg
+console.log(`📂 [INFO] Sirviendo archivos estáticos desde: ${uploadsDir}`);
 app.use("/uploads", express.static(uploadsDir));
+
 
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (req.path.startsWith("/api")) {
-      console.log(`${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
+      // Simplificamos el log para que sea menos ruidoso
+      const logLine = `${req.method} ${req.path} ${res.statusCode} in ${duration}ms`;
+       // log(logLine); // Descomenta si usas la función log personalizada
+       console.log(logLine);
     }
   });
   next();
@@ -42,7 +55,6 @@ app.use((req, res, next) => {
   try {
     console.log("🚀 [Inicio] Configurando servidor...");
     
-    // Aquí se registran las rutas y se conecta a la DB
     const server = await registerRoutes(app);
     console.log("✅ [Inicio] Rutas registradas correctamente.");
 
@@ -59,12 +71,17 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
+    // Puerto estándar para Cloud Run
     const port = parseInt(process.env.PORT || '8080', 10);
+    
     server.listen(port, '0.0.0.0', () => {
       console.log(`🚀 Servidor LISTO y escuchando en puerto ${port}`);
+      console.log(`   - Entorno: ${app.get("env")}`);
+      console.log(`   - Directorio base: ${process.cwd()}`);
     });
+
   } catch (err) {
-    console.error("❌ Error FATAL al iniciar:", err);
-    process.exit(1);
+    console.error("❌ Error FATAL al iniciar el servidor:", err);
+    process.exit(1); // Salir si algo crítico falla al inicio
   }
 })();
