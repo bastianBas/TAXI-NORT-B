@@ -33,6 +33,25 @@ function hasRole(...roles: string[]) {
   };
 }
 
+// Helper para crear logs de auditoría rápidamente
+async function logAudit(req: Request, action: string, entity: string, entityId: string, details: string) {
+  try {
+    const user = (req as any).user as User;
+    if (user) {
+      await storage.createAuditLog({
+        userId: user.id,
+        userName: user.name,
+        action: action.toUpperCase(),
+        entity: entity,
+        entityId: entityId,
+        details: details
+      });
+    }
+  } catch (error) {
+    console.error("Error creando log de auditoría:", error);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
   seedData().catch(console.error);
@@ -58,53 +77,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // --- CONDUCTORES ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { res.json(await storage.getAllDrivers()); });
-  app.post("/api/drivers", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createDriver(req.body)); });
-  app.put("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateDriver(req.params.id, req.body)); });
-  app.delete("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { await storage.deleteDriver(req.params.id); res.json({ success: true }); });
+  
+  app.post("/api/drivers", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    const driver = await storage.createDriver(req.body);
+    await logAudit(req, "CREATE", "Conductor", driver.id, `Creación de conductor: ${driver.name}`);
+    res.json(driver); 
+  });
+  
+  app.put("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    const driver = await storage.updateDriver(req.params.id, req.body);
+    if (driver) {
+      await logAudit(req, "UPDATE", "Conductor", driver.id, `Actualización de conductor: ${driver.name}`);
+    }
+    res.json(driver); 
+  });
+  
+  app.delete("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    // Intentamos obtener el nombre antes de borrar para el log
+    const driver = await storage.getDriver(req.params.id);
+    await storage.deleteDriver(req.params.id); 
+    await logAudit(req, "DELETE", "Conductor", req.params.id, `Eliminación de conductor: ${driver?.name || 'Desconocido'}`);
+    res.json({ success: true }); 
+  });
 
   // --- VEHÍCULOS ---
   app.get("/api/vehicles", verifyAuth, async (req, res) => { res.json(await storage.getAllVehicles()); });
-  app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createVehicle(req.body)); });
-  app.put("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateVehicle(req.params.id, req.body)); });
-  app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { await storage.deleteVehicle(req.params.id); res.json({ success: true }); });
-  app.post("/api/vehicles/:id/location", async (req, res) => { await storage.updateVehicleLocation({ vehicleId: req.params.id, plate: "GPS", lat: req.body.lat, lng: req.body.lng, status: "active", timestamp: Date.now() }); res.json({ success: true }); });
+  
+  app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    const vehicle = await storage.createVehicle(req.body);
+    await logAudit(req, "CREATE", "Vehículo", vehicle.id, `Registro de vehículo: ${vehicle.plate}`);
+    res.json(vehicle); 
+  });
+  
+  app.put("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    const vehicle = await storage.updateVehicle(req.params.id, req.body);
+    if (vehicle) {
+      await logAudit(req, "UPDATE", "Vehículo", vehicle.id, `Actualización de vehículo: ${vehicle.plate}`);
+    }
+    res.json(vehicle); 
+  });
+  
+  app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
+    const vehicle = await storage.getVehicle(req.params.id);
+    await storage.deleteVehicle(req.params.id); 
+    await logAudit(req, "DELETE", "Vehículo", req.params.id, `Eliminación de vehículo: ${vehicle?.plate || 'Desconocido'}`);
+    res.json({ success: true }); 
+  });
+  
+  app.post("/api/vehicles/:id/location", async (req, res) => { 
+    await storage.updateVehicleLocation({ vehicleId: req.params.id, plate: "GPS", lat: req.body.lat, lng: req.body.lng, status: "active", timestamp: Date.now() }); 
+    res.json({ success: true }); 
+  });
 
-  // --- HOJAS DE RUTA (Control Diario) ---
+  // --- HOJAS DE RUTA ---
   app.get("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.getAllRouteSlips()); });
   
   app.post("/api/route-slips", verifyAuth, upload.single("signature"), async (req, res) => { 
     const slipData = { ...req.body, signatureUrl: req.file ? req.file.filename : null };
-    res.json(await storage.createRouteSlip(slipData)); 
+    const slip = await storage.createRouteSlip(slipData);
+    await logAudit(req, "CREATE", "Hoja de Ruta", slip.id, `Control diario creado para fecha: ${slip.date}`);
+    res.json(slip); 
   });
 
-  // 🟢 PUT ROUTE SLIPS (Edición)
   app.put("/api/route-slips/:id", verifyAuth, hasRole("admin", "operator"), upload.single("signature"), async (req, res) => {
     const slipData = { ...req.body };
     if (req.file) {
         slipData.signatureUrl = req.file.filename;
     }
-    res.json(await storage.updateRouteSlip(req.params.id, slipData));
+    const slip = await storage.updateRouteSlip(req.params.id, slipData);
+    if (slip) {
+      await logAudit(req, "UPDATE", "Hoja de Ruta", slip.id, `Modificación de Control diario: ${slip.date}`);
+    }
+    res.json(slip);
   });
 
-  // --- PAGOS (Vinculado a Hoja de Ruta) ---
+  // --- PAGOS ---
   app.get("/api/payments", verifyAuth, async (req, res) => { res.json(await storage.getAllPayments()); });
+  
   app.post("/api/payments", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => { 
       const paymentData = { ...req.body, amount: parseInt(req.body.amount || "1800"), proofOfPayment: req.file?.filename || "" };
-      res.json(await storage.createPayment(paymentData)); 
+      const payment = await storage.createPayment(paymentData);
+      await logAudit(req, "CREATE", "Pago", payment.id, `Registro de pago diario ($${payment.amount})`);
+      res.json(payment); 
   });
 
-  // 🟢 PUT PAYMENTS (Edición)
   app.put("/api/payments/:id", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => {
     const paymentData = { ...req.body };
     if (paymentData.amount) paymentData.amount = parseInt(paymentData.amount);
     if (req.file) {
         paymentData.proofOfPayment = req.file.filename;
     }
-    res.json(await storage.updatePayment(req.params.id, paymentData));
+    const payment = await storage.updatePayment(req.params.id, paymentData);
+    if (payment) {
+      await logAudit(req, "UPDATE", "Pago", payment.id, `Actualización de pago ID: ${payment.id.substring(0,8)}...`);
+    }
+    res.json(payment);
   });
 
   // --- AUDITORÍA ---
-  app.get("/api/audit", verifyAuth, hasRole("admin"), async (req, res) => { res.json(await storage.getAllAuditLogs()); });
+  app.get("/api/audit", verifyAuth, hasRole("admin"), async (req, res) => { 
+    res.json(await storage.getAllAuditLogs()); 
+  });
 
   const httpServer = createServer(app);
   return httpServer;
