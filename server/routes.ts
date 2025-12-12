@@ -266,7 +266,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // ==========================================
-  // API: PAGOS (Payments) - ¡RUTAS RESTAURADAS!
+  // API: PAGOS (Payments) - ¡RUTAS FALTANTES AQUÍ!
   // ==========================================
   app.get("/api/payments", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
@@ -293,7 +293,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // CREAR PAGO (POST)
+  // CREAR PAGO (Esta era la que faltaba y lanzaba el error)
   app.post("/api/payments", verifyAuth, upload.single('proofOfPayment'), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -316,7 +316,7 @@ export function registerRoutes(app: Express): Server {
 
       await db.insert(payments).values(paymentData);
 
-      // Actualizar estado de la hoja de ruta a "pagado"
+      // Actualizar estado de la hoja de ruta
       if (req.body.routeSlipId) {
          await db.update(routeSlips)
            .set({ paymentStatus: 'paid' })
@@ -330,7 +330,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // ELIMINAR PAGO (DELETE)
+  // ELIMINAR PAGO
   app.delete("/api/payments/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
