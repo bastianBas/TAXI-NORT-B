@@ -37,26 +37,24 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, CreditCard, Upload, DollarSign } from "lucide-react";
-import type { Payment, InsertPayment, Driver, Vehicle } from "@shared/schema";
+// 🟢 CORRECCIÓN: Se agregó Loader2 a los imports
+import { Plus, CreditCard, Upload, DollarSign, FileText, Loader2 } from "lucide-react";
+import type { Payment, InsertPayment, Driver, Vehicle, RouteSlip } from "@shared/schema";
 
 export default function Payments() {
   const queryClientLocal = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState<InsertPayment>({
-    type: "daily",
-    amount: 1800,
-    driverId: "",
-    vehicleId: "",
-    date: new Date().toISOString().split('T')[0],
-    proofOfPayment: "",
-    status: "pending",
-  });
+  
+  const [selectedRouteSlipId, setSelectedRouteSlipId] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const { toast } = useToast();
 
   const { data: payments, isLoading } = useQuery<Payment[]>({
     queryKey: ["/api/payments"],
+  });
+
+  const { data: routeSlips } = useQuery<RouteSlip[]>({
+    queryKey: ["/api/route-slips"],
   });
 
   const { data: drivers } = useQuery<Driver[]>({
@@ -67,65 +65,51 @@ export default function Payments() {
     queryKey: ["/api/vehicles"],
   });
 
+  const pendingRouteSlips = routeSlips?.filter(slip => slip.paymentStatus !== "paid") || [];
+
   const createMutation = useMutation({
-    mutationFn: async (data: InsertPayment) => {
+    mutationFn: async () => {
+      const slip = routeSlips?.find(s => s.id === selectedRouteSlipId);
+      if (!slip) throw new Error("Debe seleccionar una Hoja de Ruta válida.");
+
       const formDataObj = new FormData();
+      formDataObj.append("routeSlipId", slip.id);
+      formDataObj.append("driverId", slip.driverId);
+      formDataObj.append("vehicleId", slip.vehicleId);
+      formDataObj.append("date", slip.date);
       
-      formDataObj.append("type", data.type);
-      formDataObj.append("amount", data.amount.toString());
-      formDataObj.append("driverId", data.driverId);
-      formDataObj.append("vehicleId", data.vehicleId);
-      formDataObj.append("date", data.date);
-      formDataObj.append("status", data.status ?? "pending");
+      formDataObj.append("type", "daily");
+      formDataObj.append("amount", "1800");
+      formDataObj.append("status", "completed");
 
       if (selectedFile) {
         formDataObj.append("file", selectedFile);
+      } else {
+         throw new Error("Debe adjuntar el comprobante de transferencia/depósito.");
       }
 
       return apiRequestFormData("/api/payments", "POST", formDataObj);
     },
-    onSuccess: (created) => {
+    onSuccess: () => {
       setIsDialogOpen(false);
-      resetForm();
+      setSelectedRouteSlipId("");
+      setSelectedFile(null);
       toast({
         title: "Pago registrado",
-        description: "El pago ha sido registrado exitosamente",
+        description: "La hoja de ruta ha sido marcada como PAGADA.",
       });
 
       queryClientLocal.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClientLocal.invalidateQueries({ queryKey: ["/api/route-slips"] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
-  const resetForm = () => {
-    setFormData({
-      type: "daily",
-      amount: 1800,
-      driverId: "",
-      vehicleId: "",
-      date: new Date().toISOString().split('T')[0],
-      proofOfPayment: "",
-      status: "pending",
-    });
-    setSelectedFile(null);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData);
-  };
-
-  const handleOpenChange = (open: boolean) => {
-    setIsDialogOpen(open);
-    if (!open) {
-      resetForm();
-    }
+    createMutation.mutate();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,19 +118,12 @@ export default function Payments() {
     }
   };
 
-  const handleTypeChange = (value: string) => {
-    const amount = value === "daily" ? 1800 : 43200;
-    setFormData({ ...formData, type: value, amount });
-  };
+  const getDriverName = (driverId: string) => drivers?.find(d => d.id === driverId)?.name || "Desconocido";
+  const getVehiclePlate = (vehicleId: string) => vehicles?.find(v => v.id === vehicleId)?.plate || "Desconocido";
 
-  const getDriverInfo = (driverId: string) => {
-    const d = drivers?.find(d => d.id === driverId);
-    return d ? d.name : "Desconocido";
-  };
-
-  const getVehicleInfo = (vehicleId: string) => {
-    const v = vehicles?.find(v => v.id === vehicleId);
-    return v ? v.plate : "Desconocido";
+  const getRouteSlipLabel = (slip: RouteSlip) => {
+     const driver = getDriverName(slip.driverId);
+     return `${slip.date} - ${driver}`;
   };
 
   const formatAmount = (amount: number) => {
@@ -162,10 +139,10 @@ export default function Payments() {
         <div>
           <h1 className="text-2xl font-semibold">Pagos</h1>
           <p className="text-sm text-muted-foreground">
-            Gestiona los pagos de conductores y vehículos
+            Registro de pagos diarios de Hojas de Ruta
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={handleOpenChange}>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-payment">
               <Plus className="mr-2 h-4 w-4" />
@@ -175,132 +152,65 @@ export default function Payments() {
           <DialogContent>
             <form onSubmit={handleSubmit}>
               <DialogHeader>
-                <DialogTitle>Registrar Pago</DialogTitle>
+                <DialogTitle>Registrar Pago Diario</DialogTitle>
                 <DialogDescription>
-                  Completa los datos para registrar un nuevo pago
+                  Seleccione la hoja de ruta que desea pagar. Valor fijo: $1.800.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                
                 <div className="space-y-2">
-                  <Label htmlFor="type">Tipo de Pago</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={handleTypeChange}
-                  >
-                    <SelectTrigger id="type" data-testid="select-payment-type">
-                      <SelectValue />
+                  <Label>Hoja de Ruta (Pendiente de Pago)</Label>
+                  <Select value={selectedRouteSlipId} onValueChange={setSelectedRouteSlipId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione hoja de ruta..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="daily">Diario (CLP $1,800)</SelectItem>
-                      <SelectItem value="monthly">Mensual (CLP $43,200)</SelectItem>
+                      {pendingRouteSlips.length === 0 ? (
+                        <SelectItem value="none" disabled>No hay hojas pendientes</SelectItem>
+                      ) : (
+                        pendingRouteSlips.map((slip) => (
+                          <SelectItem key={slip.id} value={slip.id}>
+                            <span className="flex items-center gap-2">
+                               <FileText className="h-4 w-4 text-muted-foreground"/> 
+                               {getRouteSlipLabel(slip)}
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
+
+                {selectedRouteSlipId && (
+                    <div className="p-3 bg-muted/50 rounded-md text-sm space-y-1">
+                        <p><strong>Monto a Pagar:</strong> $1.800 (Diario)</p>
+                        <p className="text-muted-foreground text-xs">El pago se vinculará automáticamente al conductor y vehículo de la hoja seleccionada.</p>
+                    </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label htmlFor="amount">Monto</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    value={formData.amount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, amount: parseInt(e.target.value) })
-                    }
-                    required
-                    data-testid="input-payment-amount"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date">Fecha</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, date: e.target.value })
-                    }
-                    required
-                    data-testid="input-payment-date"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="driverId">Conductor</Label>
-                  <Select
-                    value={formData.driverId}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, driverId: value })
-                    }
-                  >
-                    <SelectTrigger id="driverId" data-testid="select-payment-driver">
-                      <SelectValue placeholder="Selecciona un conductor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {drivers?.map((driver) => (
-                        <SelectItem key={driver.id} value={driver.id}>
-                          {driver.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="vehicleId">Vehículo</Label>
-                  <Select
-                    value={formData.vehicleId}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, vehicleId: value })
-                    }
-                  >
-                    <SelectTrigger id="vehicleId" data-testid="select-payment-vehicle">
-                      <SelectValue placeholder="Selecciona un vehículo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vehicles?.map((vehicle) => (
-                        <SelectItem key={vehicle.id} value={vehicle.id}>
-                          {vehicle.plate}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="proofOfPayment">Comprobante de Pago</Label>
+                  <Label htmlFor="proofOfPayment">Comprobante (Transferencia/Depósito)</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="proofOfPayment"
                       type="file"
                       accept="image/*,application/pdf"
                       onChange={handleFileChange}
-                      data-testid="input-payment-proof"
                     />
                     {selectedFile && (
                       <Badge variant="outline" className="gap-1">
                         <Upload className="h-3 w-3" />
-                        {selectedFile.name}
+                        Adjunto
                       </Badge>
                     )}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status">Estado</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, status: value })
-                    }
-                  >
-                    <SelectTrigger id="status" data-testid="select-payment-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pendiente</SelectItem>
-                      <SelectItem value="completed">Completado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
               </div>
               <DialogFooter>
-                <Button type="submit" data-testid="button-save-payment">
-                  Registrar Pago
+                <Button type="submit" disabled={!selectedRouteSlipId || !selectedFile || createMutation.isPending}>
+                  {createMutation.isPending ? "Procesando..." : "Confirmar Pago"}
                 </Button>
               </DialogFooter>
             </form>
@@ -309,7 +219,6 @@ export default function Payments() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Tarjetas de Resumen (Sin cambios) */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Pagos</CardTitle>
@@ -317,31 +226,29 @@ export default function Payments() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{payments?.length || 0}</div>
-            <p className="text-xs text-muted-foreground">Registrados en el sistema</p>
+            <p className="text-xs text-muted-foreground">Registrados</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
+             <CardTitle className="text-sm font-medium">Hojas Pendientes</CardTitle>
+             <FileText className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {payments?.filter(p => p.status === "pending").length || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">Por completar</p>
+             <div className="text-2xl font-bold">{pendingRouteSlips.length}</div>
+             <p className="text-xs text-muted-foreground">Por pagar</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completados</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Recaudación Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {payments?.filter(p => p.status === "completed").length || 0}
+               {formatAmount((payments?.length || 0) * 1800)}
             </div>
-            <p className="text-xs text-muted-foreground">Procesados</p>
+            <p className="text-xs text-muted-foreground">Estimada</p>
           </CardContent>
         </Card>
       </div>
@@ -356,23 +263,19 @@ export default function Payments() {
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : !payments || payments.length === 0 ? (
             <div className="text-center py-12">
               <CreditCard className="mx-auto h-12 w-12 text-muted-foreground/50" />
-              <h3 className="mt-4 text-lg font-medium">No hay pagos</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Comienza registrando el primer pago
-              </p>
+              <h3 className="mt-4 text-lg font-medium">No hay pagos registrados</h3>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
+                    <TableHead>Fecha Hoja</TableHead>
                     <TableHead>Conductor</TableHead>
                     <TableHead>Vehículo</TableHead>
                     <TableHead>Monto</TableHead>
@@ -382,41 +285,32 @@ export default function Payments() {
                 </TableHeader>
                 <TableBody>
                   {payments.map((payment) => (
-                    <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
+                    <TableRow key={payment.id}>
                       <TableCell>
-                        {new Date(payment.date).toLocaleDateString()}
+                        {payment.date}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {payment.type === "daily" ? "Diario" : "Mensual"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{getDriverInfo(payment.driverId)}</TableCell>
+                      <TableCell>{getDriverName(payment.driverId)}</TableCell>
                       <TableCell>
                         <span className="font-mono font-semibold">
-                          {getVehicleInfo(payment.vehicleId)}
+                          {getVehiclePlate(payment.vehicleId)}
                         </span>
                       </TableCell>
                       <TableCell className="font-semibold">
                         {formatAmount(payment.amount)}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            payment.status === "completed" ? "default" : "secondary"
-                          }
-                        >
-                          {payment.status === "completed" ? "Completado" : "Pendiente"}
+                        <Badge className="bg-green-600 hover:bg-green-700">
+                           Pagado
                         </Badge>
                       </TableCell>
                       <TableCell>
                         {payment.proofOfPayment ? (
                           <Badge variant="outline" className="gap-1">
                             <Upload className="h-3 w-3" />
-                            Adjunto
+                            Ver Archivo
                           </Badge>
                         ) : (
-                          <span className="text-muted-foreground text-sm">Sin comprobante</span>
+                          <span className="text-muted-foreground text-sm">-</span>
                         )}
                       </TableCell>
                     </TableRow>

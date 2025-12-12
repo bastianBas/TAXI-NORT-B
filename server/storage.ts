@@ -26,7 +26,10 @@ export interface IStorage {
   checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
   getPayment(id: string): Promise<Payment | undefined>;
   getAllPayments(): Promise<Payment[]>;
+  
+  // Actualizamos la firma de createPayment
   createPayment(payment: InsertPayment): Promise<Payment>;
+  
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
@@ -70,11 +73,54 @@ export class DatabaseStorage implements IStorage {
   async getRouteSlip(id: string): Promise<RouteSlip | undefined> { const [slip] = await db.select().from(routeSlips).where(eq(routeSlips.id, id)); return slip; }
   async getAllRouteSlips(): Promise<RouteSlip[]> { return await db.select().from(routeSlips).orderBy(desc(routeSlips.createdAt)); }
   async checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean> { const [existing] = await db.select().from(routeSlips).where(and(eq(routeSlips.driverId, driverId), eq(routeSlips.vehicleId, vehicleId), eq(routeSlips.date, date))); return !!existing; }
-  async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> { const id = randomUUID(); const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date); const newSlip = { ...insertSlip, id, isDuplicate, createdAt: new Date(), paymentStatus: insertSlip.paymentStatus ?? "pending", notes: insertSlip.notes ?? null, signature: insertSlip.signature ?? null, totalAmount: insertSlip.totalAmount ?? 0, expenses: insertSlip.expenses ?? 0, netAmount: insertSlip.netAmount ?? 0 } as RouteSlip; await db.insert(routeSlips).values(newSlip); return newSlip; }
+  
+  async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> { 
+    const id = randomUUID(); 
+    // isDuplicate y otros campos ya no se usan tanto con el nuevo modelo, pero los mantenemos por compatibilidad
+    const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date); 
+    
+    const newSlip = { 
+      ...insertSlip, 
+      id, 
+      isDuplicate, 
+      createdAt: new Date(), 
+      paymentStatus: insertSlip.paymentStatus ?? "pending", 
+      notes: insertSlip.notes ?? null, 
+      signatureUrl: insertSlip.signatureUrl ?? null,
+      startTime: insertSlip.startTime,
+      endTime: insertSlip.endTime
+    } as RouteSlip; 
+    
+    await db.insert(routeSlips).values(newSlip); 
+    return newSlip; 
+  }
   
   async getPayment(id: string): Promise<Payment | undefined> { const [payment] = await db.select().from(payments).where(eq(payments.id, id)); return payment; }
   async getAllPayments(): Promise<Payment[]> { return await db.select().from(payments).orderBy(desc(payments.createdAt)); }
-  async createPayment(insertPayment: InsertPayment): Promise<Payment> { const id = randomUUID(); const newPayment = { ...insertPayment, id, createdAt: new Date(), status: insertPayment.status ?? "pending", proofOfPayment: insertPayment.proofOfPayment ?? null } as Payment; await db.insert(payments).values(newPayment); return newPayment; }
+  
+  // 🟢 CREATE PAYMENT ACTUALIZADO: Vincula y actualiza la hoja de ruta
+  async createPayment(insertPayment: InsertPayment): Promise<Payment> { 
+    const id = randomUUID(); 
+    const newPayment = { 
+        ...insertPayment, 
+        id, 
+        createdAt: new Date(), 
+        status: insertPayment.status ?? "pending", 
+        proofOfPayment: insertPayment.proofOfPayment ?? null 
+    } as Payment; 
+    
+    // 1. Guardar el pago
+    await db.insert(payments).values(newPayment); 
+    
+    // 2. IMPORTANTE: Actualizar el estado de la Hoja de Ruta vinculada a "paid"
+    if (newPayment.routeSlipId) {
+        await db.update(routeSlips)
+            .set({ paymentStatus: "paid" })
+            .where(eq(routeSlips.id, newPayment.routeSlipId));
+    }
+
+    return newPayment; 
+  }
   
   async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }
   async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> { const id = randomUUID(); const newLog = { ...insertLog, id, timestamp: new Date(), entityId: insertLog.entityId ?? null, details: insertLog.details ?? null } as AuditLog; await db.insert(auditLogs).values(newLog); return newLog; }

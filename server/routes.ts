@@ -70,11 +70,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/vehicles/:id/location", async (req, res) => { await storage.updateVehicleLocation({ vehicleId: req.params.id, plate: "GPS", lat: req.body.lat, lng: req.body.lng, status: "active", timestamp: Date.now() }); res.json({ success: true }); });
 
-  // --- HOJAS DE RUTA (Actualizado con carga de firma) ---
+  // --- HOJAS DE RUTA (Control Diario) ---
   app.get("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.getAllRouteSlips()); });
   
   app.post("/api/route-slips", verifyAuth, upload.single("signature"), async (req, res) => { 
-    // Si se subió imagen, guardamos el nombre del archivo en signatureUrl
     const slipData = {
       ...req.body,
       signatureUrl: req.file ? req.file.filename : null
@@ -82,11 +81,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(await storage.createRouteSlip(slipData)); 
   });
 
-  // --- PAGOS ---
+  // --- PAGOS (Vinculado a Hoja de Ruta) ---
   app.get("/api/payments", verifyAuth, async (req, res) => { res.json(await storage.getAllPayments()); });
   app.post("/api/payments", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => { 
-      const payment = await storage.createPayment({ ...req.body, amount: parseInt(req.body.amount), proofOfPayment: req.file?.filename || "" });
-      res.json(payment); 
+      // Si el frontend envía 'routeSlipId', lo usamos.
+      const paymentData = {
+          ...req.body,
+          amount: parseInt(req.body.amount || "1800"),
+          proofOfPayment: req.file?.filename || ""
+      };
+      res.json(await storage.createPayment(paymentData)); 
   });
 
   // --- AUDITORÍA ---

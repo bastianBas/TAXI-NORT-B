@@ -40,32 +40,39 @@ export const vehicles = mysqlTable("vehicles", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// 🟢 HOJAS DE RUTA (CONTROL DIARIO) ACTUALIZADA
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
   vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
   driverId: varchar("driver_id", { length: 36 }).notNull(),
+  startTime: varchar("start_time", { length: 20 }).notNull(),
+  endTime: varchar("end_time", { length: 20 }).notNull(),
+  signatureUrl: text("signature_url"),
   
-  // Nuevos campos de Control Diario
-  startTime: varchar("start_time", { length: 20 }).notNull(), // Hora Inicio
-  endTime: varchar("end_time", { length: 20 }).notNull(),   // Hora Término
-  signatureUrl: text("signature_url"),                      // URL de la imagen (Firma/Timbre)
+  // ESTE ES EL ESTADO QUE PEDISTE (por defecto 'pending' = no pagada)
+  paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
   
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// 🟢 PAGOS ACTUALIZADOS: Ahora vinculado a una Hoja de Ruta
 export const payments = mysqlTable("payments", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  type: varchar("type", { length: 50 }).notNull(),
-  amount: int("amount").notNull(),
+  
+  routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(), // <--- VÍNCULO CLAVE
+  
+  type: varchar("type", { length: 50 }).notNull(), // Será siempre 'daily'
+  amount: int("amount").notNull(), // Será siempre 1800
+  
+  // Mantenemos estos por redundancia histórica, pero se llenarán solos
   driverId: varchar("driver_id", { length: 36 }).notNull(),
   vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
   date: varchar("date", { length: 50 }).notNull(),
+  
   proofOfPayment: text("proof_of_payment"),
-  status: varchar("status", { length: 50 }).notNull().default("pending"),
+  status: varchar("status", { length: 50 }).notNull().default("pending"), // Estado del PROCESO de pago (ej: revisión)
   createdAt: timestamp("created_at").defaultNow()
 });
 
