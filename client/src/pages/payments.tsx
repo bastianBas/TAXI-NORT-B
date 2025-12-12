@@ -76,8 +76,6 @@ export default function Payments() {
       formDataObj.append("driverId", data.driverId);
       formDataObj.append("vehicleId", data.vehicleId);
       formDataObj.append("date", data.date);
-      
-      // CORRECCIÓN: Usamos el operador ?? para asegurar un valor por defecto
       formDataObj.append("status", data.status ?? "pending");
 
       if (selectedFile) {
@@ -141,12 +139,14 @@ export default function Payments() {
     setFormData({ ...formData, type: value, amount });
   };
 
-  const getDriverName = (driverId: string) => {
-    return drivers?.find(d => d.id === driverId)?.name || "Desconocido";
+  const getDriverInfo = (driverId: string) => {
+    const d = drivers?.find(d => d.id === driverId);
+    return d ? d.name : "Desconocido";
   };
 
-  const getVehiclePlate = (vehicleId: string) => {
-    return vehicles?.find(v => v.id === vehicleId)?.plate || "Desconocido";
+  const getVehicleInfo = (vehicleId: string) => {
+    const v = vehicles?.find(v => v.id === vehicleId);
+    return v ? v.plate : "Desconocido";
   };
 
   const formatAmount = (amount: number) => {
@@ -309,6 +309,7 @@ export default function Payments() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
+        {/* Tarjetas de Resumen (Sin cambios) */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Pagos</CardTitle>
@@ -390,10 +391,10 @@ export default function Payments() {
                           {payment.type === "daily" ? "Diario" : "Mensual"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{getDriverName(payment.driverId)}</TableCell>
+                      <TableCell>{getDriverInfo(payment.driverId)}</TableCell>
                       <TableCell>
                         <span className="font-mono font-semibold">
-                          {getVehiclePlate(payment.vehicleId)}
+                          {getVehicleInfo(payment.vehicleId)}
                         </span>
                       </TableCell>
                       <TableCell className="font-semibold">

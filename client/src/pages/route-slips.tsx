@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, FileText, CheckCircle, AlertCircle, Info } from "lucide-react";
-// IMPORTANTE: Importamos el diálogo nuevo
-import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
+import RouteSlipDialog from "@/components/route-slips/route-slip-dialog"; // Importación correcta
 
 export default function RouteSlips() {
   const { user } = useAuth();
@@ -23,12 +22,14 @@ export default function RouteSlips() {
     queryKey: ["/api/vehicles"],
   });
 
-  const getDriverName = (id: string) => {
-    return drivers?.find((d) => d.id === id)?.name || "Desconocido";
+  const getDriverInfo = (id: string) => {
+    const d = drivers?.find((d) => d.id === id);
+    return d ? d.name : "Desconocido";
   };
 
-  const getVehiclePlate = (id: string) => {
-    return vehicles?.find((v) => v.id === id)?.plate || "Desconocido";
+  const getVehicleInfo = (id: string) => {
+    const v = vehicles?.find((v) => v.id === id);
+    return v ? `${v.plate} (${v.model})` : "Desconocido";
   };
 
   if (isLoadingSlips) {
@@ -39,17 +40,12 @@ export default function RouteSlips() {
     );
   }
 
-  // --- FILTRO DE SEGURIDAD Y PRIVACIDAD ---
+  // Filtro de seguridad
   const displayedSlips = (routeSlips || []).filter((slip) => {
-    // 1. Si el usuario es Admin, Operador o Finanzas, ve TODO.
-    if (["admin", "operator", "finance"].includes(user?.role || "")) {
-      return true;
-    }
-    // 2. Si es Conductor, SOLO ve las hojas asignadas a su ID.
+    if (["admin", "operator", "finance"].includes(user?.role || "")) return true;
     return slip.driverId === user?.id; 
   });
 
-  // Solo admins y operadores pueden crear hojas nuevas
   const canCreate = ["admin", "operator"].includes(user?.role || "");
 
   return (
@@ -63,7 +59,6 @@ export default function RouteSlips() {
               : "Historial completo de la flota"}
           </p>
         </div>
-        {/* BOTÓN NUEVO AQUÍ: Se muestra solo si tiene permiso */}
         {canCreate && <RouteSlipDialog />}
       </div>
 
@@ -79,11 +74,6 @@ export default function RouteSlips() {
             <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
               <Info className="h-10 w-10 text-gray-300" />
               <p>No tienes hojas de ruta registradas.</p>
-              {user?.role === "driver" && (
-                <p className="text-xs text-gray-400 max-w-xs text-center">
-                  Si crees que esto es un error, contacta al administrador.
-                </p>
-              )}
             </div>
           ) : (
             <div className="rounded-md border">
@@ -106,8 +96,8 @@ export default function RouteSlips() {
                           <Badge variant="destructive" className="ml-2 text-[10px]">DUPLICADO</Badge>
                         )}
                       </TableCell>
-                      <TableCell>{getDriverName(slip.driverId)}</TableCell>
-                      <TableCell>{getVehiclePlate(slip.vehicleId)}</TableCell>
+                      <TableCell>{getDriverInfo(slip.driverId)}</TableCell>
+                      <TableCell>{getVehicleInfo(slip.vehicleId)}</TableCell>
                       <TableCell>
                         {slip.paymentStatus === "paid" ? (
                           <Badge className="bg-green-500 hover:bg-green-600 flex w-fit items-center gap-1">

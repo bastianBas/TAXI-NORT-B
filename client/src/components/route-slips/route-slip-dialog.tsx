@@ -37,15 +37,13 @@ export default function RouteSlipDialog() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // 1. Obtener datos para los selectores
   const { data: drivers } = useQuery<Driver[]>({ queryKey: ["/api/drivers"] });
   const { data: vehicles } = useQuery<Vehicle[]>({ queryKey: ["/api/vehicles"] });
 
-  // 2. Configurar el formulario
   const form = useForm<InsertRouteSlip>({
     resolver: zodResolver(insertRouteSlipSchema),
     defaultValues: {
-      date: new Date().toISOString().split("T")[0], // Fecha de hoy YYYY-MM-DD
+      date: new Date().toISOString().split("T")[0],
       totalAmount: 0,
       expenses: 0,
       netAmount: 0,
@@ -54,10 +52,8 @@ export default function RouteSlipDialog() {
     },
   });
 
-  // 3. Mutación para guardar
   const createMutation = useMutation({
     mutationFn: async (data: InsertRouteSlip) => {
-      // Forzar conversión a números por si el input devuelve string
       const payload = {
         ...data,
         totalAmount: Number(data.totalAmount),
@@ -77,9 +73,7 @@ export default function RouteSlipDialog() {
     },
   });
 
-  // Calcular neto automáticamente cuando cambian total o gastos
   const calculateNet = () => {
-    // Usamos un pequeño timeout para asegurar que el valor ya se actualizó en el form
     setTimeout(() => {
         const total = Number(form.getValues("totalAmount")) || 0;
         const expenses = Number(form.getValues("expenses")) || 0;
@@ -104,7 +98,6 @@ export default function RouteSlipDialog() {
           <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-4">
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* FECHA */}
               <FormField
                 control={form.control}
                 name="date"
@@ -119,7 +112,6 @@ export default function RouteSlipDialog() {
                 )}
               />
 
-              {/* VEHÍCULO */}
               <FormField
                 control={form.control}
                 name="vehicleId"
@@ -127,11 +119,7 @@ export default function RouteSlipDialog() {
                   <FormItem>
                     <FormLabel>Vehículo</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar vehículo" />
-                        </SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar vehículo" /></SelectTrigger></FormControl>
                       <SelectContent>
                         {vehicles?.map((v) => (
                           <SelectItem key={v.id} value={v.id}>
@@ -145,7 +133,6 @@ export default function RouteSlipDialog() {
                 )}
               />
 
-              {/* CONDUCTOR */}
               <FormField
                 control={form.control}
                 name="driverId"
@@ -153,15 +140,12 @@ export default function RouteSlipDialog() {
                   <FormItem>
                     <FormLabel>Conductor</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar conductor" />
-                        </SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar conductor" /></SelectTrigger></FormControl>
                       <SelectContent>
                         {drivers?.map((d) => (
                           <SelectItem key={d.id} value={d.id}>
-                            {d.name} ({d.rut})
+                            {/* AQUÍ MOSTRAMOS MÁS DETALLES ÚTILES */}
+                            {d.name} ({d.licenseClass} - {d.rut})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -173,7 +157,6 @@ export default function RouteSlipDialog() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* TOTAL */}
               <FormField
                 control={form.control}
                 name="totalAmount"
@@ -181,23 +164,13 @@ export default function RouteSlipDialog() {
                   <FormItem>
                     <FormLabel>Monto Total ($)</FormLabel>
                     <FormControl>
-                      {/* SOLUCIÓN LÍNEA 181: Agregamos value={field.value ?? ''} */}
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        value={field.value ?? ''} 
-                        onChange={(e) => {
-                          field.onChange(e);
-                          calculateNet();
-                        }}
-                      />
+                      <Input type="number" {...field} value={field.value ?? ''} onChange={(e) => { field.onChange(e); calculateNet(); }} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* GASTOS */}
               <FormField
                 control={form.control}
                 name="expenses"
@@ -205,23 +178,13 @@ export default function RouteSlipDialog() {
                   <FormItem>
                     <FormLabel>Gastos ($)</FormLabel>
                     <FormControl>
-                      {/* SOLUCIÓN LÍNEA 203: Agregamos value={field.value ?? ''} */}
-                      <Input 
-                        type="number" 
-                        {...field}
-                        value={field.value ?? ''} 
-                        onChange={(e) => {
-                          field.onChange(e);
-                          calculateNet();
-                        }}
-                      />
+                      <Input type="number" {...field} value={field.value ?? ''} onChange={(e) => { field.onChange(e); calculateNet(); }} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* NETO (Solo lectura) */}
               <FormField
                 control={form.control}
                 name="netAmount"
@@ -229,14 +192,7 @@ export default function RouteSlipDialog() {
                   <FormItem>
                     <FormLabel>Monto Neto ($)</FormLabel>
                     <FormControl>
-                      {/* SOLUCIÓN LÍNEA 225: Agregamos value={field.value ?? ''} */}
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        value={field.value ?? ''} 
-                        readOnly 
-                        className="bg-muted" 
-                      />
+                      <Input type="number" {...field} value={field.value ?? ''} readOnly className="bg-muted" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -244,7 +200,6 @@ export default function RouteSlipDialog() {
               />
             </div>
 
-            {/* NOTAS */}
             <FormField
               control={form.control}
               name="notes"
@@ -252,7 +207,6 @@ export default function RouteSlipDialog() {
                 <FormItem>
                   <FormLabel>Observaciones (Opcional)</FormLabel>
                   <FormControl>
-                    {/* SOLUCIÓN LÍNEA 241: Agregamos value={field.value ?? ''} */}
                     <Textarea {...field} value={field.value ?? ''} />
                   </FormControl>
                   <FormMessage />
@@ -261,9 +215,7 @@ export default function RouteSlipDialog() {
             />
 
             <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancelar
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Guardar Hoja
