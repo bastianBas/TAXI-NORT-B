@@ -2,13 +2,15 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
-import { drivers, routeSlips, vehicles, payments } from "@shared/schema";
+// IMPORTANTE: Agregamos 'users' a los imports
+import { drivers, routeSlips, vehicles, payments, users } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import bcrypt from "bcryptjs"; // IMPORTANTE: Para encriptar la contraseña
 
 // --- CONFIGURACIÓN DE SUBIDA DE IMÁGENES (MULTER) ---
 const storage = multer.diskStorage({
@@ -84,7 +86,7 @@ export function registerRoutes(app: Express): Server {
         signatureUrl: signatureUrl,
         paymentStatus: 'pending',
         isDuplicate: false,
-        createdAt: new Date(), // Generamos fecha compatible
+        createdAt: new Date(),
       };
 
       await db.insert(routeSlips).values(slipData);
@@ -119,7 +121,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // ==========================================
-  // API: CONDUCTORES (Drivers) - RESTAURADA
+  // API: CONDUCTORES (Drivers) - LÓGICA CORREGIDA
   // ==========================================
 
   app.get("/api/drivers", verifyAuth, async (req, res) => {
@@ -129,22 +131,57 @@ export function registerRoutes(app: Express): Server {
     res.json(allDrivers);
   });
 
-  // CREAR CONDUCTOR (Faltaba esta ruta)
+  // CREAR CONDUCTOR + USUARIO DE LOGIN
   app.post("/api/drivers", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    
     try {
-      const newId = randomUUID();
+      const { email, name, rut, ...otherData } = req.body;
+
+      // 1. Verificar si el email ya existe como usuario
+      const existingUser = await db.query.users.findFirst({
+        where: eq(users.email, email)
+      });
+
+      if (existingUser) {
+        return res.status(400).json({ message: "El email ya está registrado en el sistema." });
+      }
+
+      // 2. Crear el USUARIO (Login) primero
+      const newUserId = randomUUID();
+      // Contraseña por defecto: 123456 (Encriptada)
+      const hashedPassword = await bcrypt.hash("123456", 10);
+
+      await db.insert(users).values({
+        id: newUserId,
+        email: email,
+        password: hashedPassword,
+        name: name,
+        role: 'driver',
+        createdAt: new Date(),
+      });
+
+      // 3. Crear el CONDUCTOR vinculado al Usuario
+      const newDriverId = randomUUID();
       const driverData = {
-        ...req.body,
-        id: newId,
+        id: newDriverId,
+        userId: newUserId, // <--- AQUÍ ESTÁ LA VINCULACIÓN
+        email: email,
+        name: name,
+        rut: rut,
+        ...otherData, // telefono, licencia, etc.
         createdAt: new Date(),
         status: req.body.status || 'active'
       };
+
       await db.insert(drivers).values(driverData);
+
+      console.log(`Conductor creado: ${name} (User ID: ${newUserId})`);
       res.status(201).json(driverData);
+
     } catch (error) {
-      console.error("Error creando conductor:", error);
-      res.status(500).send("Error al crear conductor");
+      console.error("Error creando conductor y usuario:", error);
+      res.status(500).send("Error al crear conductor. Verifique que el email o RUT no estén duplicados.");
     }
   });
 
@@ -160,7 +197,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // ==========================================
-  // API: VEHÍCULOS (Vehicles) - RESTAURADA
+  // API: VEHÍCULOS (Vehicles)
   // ==========================================
 
   app.get("/api/vehicles", verifyAuth, async (req, res) => {
@@ -168,7 +205,7 @@ export function registerRoutes(app: Express): Server {
     res.json(allVehicles);
   });
 
-  // CREAR VEHÍCULO (Faltaba esta ruta)
+  // CREAR VEHÍCULO
   app.post("/api/vehicles", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
