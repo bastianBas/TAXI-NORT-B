@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestFormData } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth"; // 🟢 Importar useAuth
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +42,7 @@ import { Plus, CreditCard, Upload, DollarSign, FileText, Loader2, Pencil, Eye, X
 import type { Payment, InsertPayment, Driver, Vehicle, RouteSlip } from "@shared/schema";
 
 export default function Payments() {
+  const { user } = useAuth(); // 🟢 Obtenemos usuario logueado
   const queryClientLocal = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -67,6 +69,11 @@ export default function Payments() {
   const { data: vehicles } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
   });
+
+  const canEdit = ["admin", "finance"].includes(user?.role || "");
+
+  // 🟢 Si es conductor, buscamos su ficha de driver
+  const myDriverInfo = user?.role === "driver" ? drivers?.find(d => d.userId === user.id) : null;
 
   // Efecto para cargar datos al editar
   useEffect(() => {
@@ -154,11 +161,31 @@ export default function Payments() {
     return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
   };
 
-  const availableRouteSlips = routeSlips?.filter(slip => 
-    slip.paymentStatus !== "paid" || (editingPayment && slip.id === editingPayment.routeSlipId)
-  ) || [];
+  // 🟢 FILTRADO INTELIGENTE DE HOJAS PENDIENTES
+  const pendingRouteSlips = routeSlips?.filter(slip => {
+    const isPending = slip.paymentStatus !== "paid";
+    
+    if (user?.role === "admin" || user?.role === "operator") {
+        // Admin ve todas las pendientes
+        return isPending;
+    } else if (user?.role === "driver" && myDriverInfo) {
+        // Conductor solo ve las SUYAS que estén pendientes
+        return isPending && slip.driverId === myDriverInfo.id;
+    }
+    return false; // Otros roles no ven nada
+  }) || [];
 
-  const pendingRouteSlips = routeSlips?.filter(slip => slip.paymentStatus !== "paid") || [];
+  // Filtramos hojas para el SELECT del Dialog (pendientes filtradas + la actual si se edita)
+  const availableRouteSlips = pendingRouteSlips.concat(
+    editingPayment && routeSlips ? routeSlips.filter(s => s.id === editingPayment.routeSlipId) : []
+  );
+
+  // 🟢 FILTRADO DE PAGOS REALIZADOS
+  const myPayments = payments?.filter(payment => {
+    if (user?.role === "admin" || user?.role === "finance") return true;
+    if (user?.role === "driver" && myDriverInfo) return payment.driverId === myDriverInfo.id;
+    return false;
+  }) || [];
 
   const isPdf = (filename: string) => filename.toLowerCase().endsWith(".pdf");
 
@@ -194,17 +221,21 @@ export default function Payments() {
                     </SelectTrigger>
                     <SelectContent>
                       {availableRouteSlips.length === 0 ? (
-                        <SelectItem value="none" disabled>No hay hojas disponibles</SelectItem>
+                        <SelectItem value="none" disabled>No tienes hojas pendientes</SelectItem>
                       ) : (
-                        availableRouteSlips.map((slip) => (
-                          <SelectItem key={slip.id} value={slip.id}>
-                            <span className="flex items-center gap-2">
-                               <FileText className="h-4 w-4 text-muted-foreground"/> 
-                               {getRouteSlipLabel(slip)} 
-                               {editingPayment && slip.id === editingPayment.routeSlipId && " (Actual)"}
-                            </span>
-                          </SelectItem>
-                        ))
+                        // Usamos un Set para evitar duplicados si se está editando
+                        Array.from(new Set(availableRouteSlips.map(s => s.id))).map(id => {
+                          const slip = availableRouteSlips.find(s => s.id === id)!;
+                          return (
+                            <SelectItem key={slip.id} value={slip.id}>
+                                <span className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-muted-foreground"/> 
+                                {getRouteSlipLabel(slip)} 
+                                {editingPayment && slip.id === editingPayment.routeSlipId && " (Actual)"}
+                                </span>
+                            </SelectItem>
+                          );
+                        })
                       )}
                     </SelectContent>
                   </Select>
@@ -286,24 +317,27 @@ export default function Payments() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Pagos</CardTitle>
+            <CardTitle className="text-sm font-medium">{user?.role === 'driver' ? 'Mis Pagos' : 'Total Pagos'}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{payments?.length || 0}</div>
+            <div className="text-2xl font-bold">{myPayments.length}</div>
             <p className="text-xs text-muted-foreground">Registrados</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-             <CardTitle className="text-sm font-medium">Hojas Pendientes</CardTitle>
+             <CardTitle className="text-sm font-medium">{user?.role === 'driver' ? 'Mis Pendientes' : 'Hojas Pendientes'}</CardTitle>
              <FileText className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
+             {/* 🟢 Muestra el conteo filtrado */}
              <div className="text-2xl font-bold">{pendingRouteSlips.length}</div>
              <p className="text-xs text-muted-foreground">Por pagar</p>
           </CardContent>
         </Card>
+        {/* Ocultamos Recaudación Total al conductor */}
+        {user?.role !== 'driver' && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recaudación Total</CardTitle>
@@ -316,17 +350,18 @@ export default function Payments() {
             <p className="text-xs text-muted-foreground">Estimada</p>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Historial de Pagos</CardTitle>
-          <CardDescription>{payments?.length || 0} pagos registrados</CardDescription>
+          <CardTitle>{user?.role === 'driver' ? 'Mi Historial de Pagos' : 'Historial de Pagos'}</CardTitle>
+          <CardDescription>{myPayments.length} pagos registrados</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
-          ) : !payments || payments.length === 0 ? (
+          ) : myPayments.length === 0 ? (
             <div className="text-center py-12"><CreditCard className="mx-auto h-12 w-12 text-muted-foreground/50" /><h3 className="mt-4 text-lg font-medium">No hay pagos registrados</h3></div>
           ) : (
             <div className="overflow-x-auto">
@@ -339,11 +374,12 @@ export default function Payments() {
                     <TableHead>Monto</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Comprobante</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    {/* Solo Admin/Finance pueden editar */}
+                    {canEdit && <TableHead className="w-[50px]"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.map((payment) => (
+                  {myPayments.map((payment) => (
                     <TableRow key={payment.id}>
                       <TableCell>{payment.date}</TableCell>
                       <TableCell>{getDriverName(payment.driverId)}</TableCell>
@@ -362,11 +398,13 @@ export default function Payments() {
                           </Button>
                         ) : (<span className="text-muted-foreground text-sm">-</span>)}
                       </TableCell>
+                      {canEdit && (
                       <TableCell>
                          <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(payment)}>
                            <Pencil className="h-4 w-4" />
                          </Button>
                       </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

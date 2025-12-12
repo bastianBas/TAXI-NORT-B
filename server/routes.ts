@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { setupAuth, verifyAuth } from "./auth";
 import { seedData } from "./seed";
-import type { User } from "@shared/schema";
+import type { User, RouteSlip } from "@shared/schema"; // 🟢 Importar RouteSlip
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -33,7 +33,6 @@ function hasRole(...roles: string[]) {
   };
 }
 
-// Helper para crear logs de auditoría rápidamente
 async function logAudit(req: Request, action: string, entity: string, entityId: string, details: string) {
   try {
     const user = (req as any).user as User;
@@ -93,7 +92,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   app.delete("/api/drivers/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { 
-    // Intentamos obtener el nombre antes de borrar para el log
     const driver = await storage.getDriver(req.params.id);
     await storage.deleteDriver(req.params.id); 
     await logAudit(req, "DELETE", "Conductor", req.params.id, `Eliminación de conductor: ${driver?.name || 'Desconocido'}`);
@@ -151,10 +149,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(slip);
   });
 
-  // --- PAGOS ---
+  // --- PAGOS (MODIFICADO) ---
   app.get("/api/payments", verifyAuth, async (req, res) => { res.json(await storage.getAllPayments()); });
   
-  app.post("/api/payments", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => { 
+  // 🟢 CAMBIO: Permitir que 'driver' también haga POST
+  app.post("/api/payments", verifyAuth, hasRole("admin", "finance", "driver"), upload.single("file"), async (req, res) => { 
+      const user = (req as any).user as User;
+      const slipId = req.body.routeSlipId;
+
+      // 🟢 LÓGICA DE SEGURIDAD PARA CONDUCTORES
+      // Si no es admin/finanzas, verificamos que la Hoja de Ruta sea SUYA
+      if (user.role === "driver") {
+        const slip = await storage.getRouteSlip(slipId);
+        if (!slip) return res.status(404).json({ message: "Hoja de ruta no encontrada" });
+
+        const driverInfo = await storage.getDriver(slip.driverId);
+        // Verificamos que el userId del conductor coincida con el usuario logueado
+        if (driverInfo?.userId !== user.id) {
+            return res.status(403).json({ message: "No puedes pagar una hoja de ruta que no te pertenece." });
+        }
+      }
+
       const paymentData = { ...req.body, amount: parseInt(req.body.amount || "1800"), proofOfPayment: req.file?.filename || "" };
       const payment = await storage.createPayment(paymentData);
       await logAudit(req, "CREATE", "Pago", payment.id, `Registro de pago diario ($${payment.amount})`);
