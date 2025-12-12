@@ -39,14 +39,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertDriverSchema, type Driver, type InsertDriver } from "@shared/schema";
-import { Plus, Loader2, UserSquare2, Car } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car } from "lucide-react";
 
 export default function Drivers() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Solo Admin y Operador pueden ver el botón de "Crear Nuevo"
   const canEdit = ["admin", "operator"].includes(user?.role || "");
 
   const { data: drivers, isLoading } = useQuery<Driver[]>({
@@ -69,7 +69,6 @@ export default function Drivers() {
     },
   });
 
-  // Solo mantenemos la mutación de CREAR
   const createMutation = useMutation({
     mutationFn: async (data: InsertDriver) => {
       await apiRequestJson("/api/drivers", "POST", data);
@@ -88,11 +87,57 @@ export default function Drivers() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (data: InsertDriver) => {
+      if (!editingId) return;
+      await apiRequestJson(`/api/drivers/${editingId}`, "PUT", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
+      setOpen(false);
+      setEditingId(null);
+      form.reset();
+      toast({ title: "Actualizado", description: "Datos modificados." });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequestJson(`/api/drivers/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
+      toast({ title: "Eliminado", description: "Conductor eliminado." });
+    },
+  });
+
   const onSubmit = (data: InsertDriver) => {
-    createMutation.mutate(data);
+    if (editingId) {
+      updateMutation.mutate(data);
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const handleEdit = (driver: Driver) => {
+    setEditingId(driver.id);
+    form.reset({
+      name: driver.name,
+      email: driver.email || "",
+      rut: driver.rut,
+      phone: driver.phone,
+      commune: driver.commune,
+      address: driver.address || "",
+      licenseNumber: driver.licenseNumber,
+      licenseClass: driver.licenseClass,
+      licenseDate: driver.licenseDate,
+      status: driver.status,
+    });
+    setOpen(true);
   };
 
   const handleCreate = () => {
+    setEditingId(null);
     form.reset({
       name: "",
       email: "",
@@ -126,7 +171,7 @@ export default function Drivers() {
             </DialogTrigger>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Nueva Ficha de Conductor</DialogTitle>
+                <DialogTitle>{editingId ? "Editar Ficha" : "Nueva Ficha de Conductor"}</DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -143,10 +188,12 @@ export default function Drivers() {
                         </FormItem>
                       )} />
                       
+                      {/* CAMPO EMAIL NUEVO (CORREGIDO) */}
                       <FormField control={form.control} name="email" render={({ field }) => (
                         <FormItem className="col-span-2">
                           <FormLabel>Email (Para inicio de sesión)</FormLabel>
                           <FormControl>
+                            {/* AQUÍ ESTÁ LA CORRECCIÓN: value={field.value || ""} */}
                             <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
                           </FormControl>
                           <FormMessage />
@@ -221,8 +268,8 @@ export default function Drivers() {
                     </div>
                   </div>
 
-                  <Button type="submit" className="w-full" disabled={createMutation.isPending}>
-                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Registrar Conductor
+                  <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {editingId ? "Guardar Cambios" : "Registrar Conductor"}
                   </Button>
                 </form>
               </Form>
@@ -242,13 +289,13 @@ export default function Drivers() {
                 <TableHead>Licencia</TableHead>
                 <TableHead>Control</TableHead>
                 <TableHead>Teléfono</TableHead>
-                {/* COLUMNA DE ACCIONES ELIMINADA */}
+                {canEdit && <TableHead className="w-[100px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {drivers?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No hay conductores registrados.
                   </TableCell>
                 </TableRow>
@@ -266,7 +313,16 @@ export default function Drivers() {
                     </TableCell>
                     <TableCell>{driver.licenseDate}</TableCell>
                     <TableCell>{driver.phone}</TableCell>
-                    {/* BOTONES DE EDITAR/ELIMINAR ELIMINADOS */}
+                    {canEdit && (
+                      <TableCell className="flex gap-2 justify-end">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(driver)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(driver.id)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
