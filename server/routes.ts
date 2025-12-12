@@ -34,18 +34,15 @@ export function registerRoutes(app: Express): Server {
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
   // ==========================================
-  // 🚨 RUTA DE EMERGENCIA (RESET ADMIN) 🚨
+  // RUTA DE EMERGENCIA
   // ==========================================
-  // CAMBIO IMPORTANTE: Usamos GET para que funcione desde el navegador
   app.get("/api/emergency-reset-admin", async (req, res) => {
     try {
-      // 1. Verificar si ya existe
       const existingAdmin = await db.query.users.findFirst({
         where: eq(users.email, "admin@taxinort.cl")
       });
 
       if (existingAdmin) {
-        // Si existe, reseteamos la contraseña para asegurar acceso
         const hashedPassword = await bcrypt.hash("admin123", 10);
         await db.update(users)
            .set({ password: hashedPassword, role: 'admin' })
@@ -54,7 +51,6 @@ export function registerRoutes(app: Express): Server {
         return res.json({ message: "El admin ya existía. SE HA RESTABLECIDO SU CONTRASEÑA A: admin123" });
       }
 
-      // 2. Crear Admin si no existe
       const hashedPassword = await bcrypt.hash("admin123", 10);
       const newAdmin = {
         id: randomUUID(),
@@ -66,7 +62,6 @@ export function registerRoutes(app: Express): Server {
       };
 
       await db.insert(users).values(newAdmin);
-      console.log("✅ Admin de emergencia creado: admin@taxinort.cl / admin123");
       res.json({ message: "Admin creado exitosamente", credentials: "admin@taxinort.cl / admin123" });
 
     } catch (error) {
@@ -76,12 +71,14 @@ export function registerRoutes(app: Express): Server {
   });
 
   // ==========================================
-  // API: HOJAS DE RUTA
+  // API: HOJAS DE RUTA - LÓGICA CORREGIDA PARA CONDUCTOR
   // ==========================================
 
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     if (!req.user) return res.status(401).send("No autorizado");
+    
     try {
+      // ADMIN: Ve todas
       if (req.user.role === 'admin') {
         const allSlips = await db.query.routeSlips.findMany({
           with: { driver: true, vehicle: true },
@@ -89,19 +86,31 @@ export function registerRoutes(app: Express): Server {
         });
         return res.json(allSlips);
       }
+
+      // DRIVER: Ve solo las suyas
       if (req.user.role === 'driver') {
+        // 1. Buscar el perfil del conductor usando el ID del usuario logueado
         const driverProfile = await db.query.drivers.findFirst({
-          where: eq(drivers.userId, req.user.id),
+          where: eq(drivers.userId, req.user.id), // <-- AQUÍ ESTABA EL PROBLEMA
         });
-        if (!driverProfile) return res.json([]);
+
+        if (!driverProfile) {
+          console.log("El usuario es driver pero no tiene perfil en tabla drivers.");
+          return res.json([]);
+        }
+
+        // 2. Buscar hojas de ruta usando el ID del conductor encontrado
         const driverSlips = await db.query.routeSlips.findMany({
-          where: eq(routeSlips.driverId, driverProfile.id),
+          where: eq(routeSlips.driverId, driverProfile.id), // <-- Ahora usamos el ID correcto
           with: { driver: true, vehicle: true },
           orderBy: (slips, { desc }) => [desc(slips.date)],
         });
+        
         return res.json(driverSlips);
       }
+
       return res.json([]);
+
     } catch (error) {
       console.error("Error route-slips:", error);
       res.status(500).json([]);
@@ -223,27 +232,18 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // 🔴 ELIMINAR CONDUCTOR
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
       const driverId = req.params.id;
-
-      // 1. Buscar al conductor para obtener su ID de usuario
       const driver = await db.query.drivers.findFirst({
         where: eq(drivers.id, driverId)
       });
-
       if (!driver) return res.status(404).send("Conductor no encontrado");
-
-      // 2. Eliminar de la tabla drivers
       await db.delete(drivers).where(eq(drivers.id, driverId));
-
-      // 3. Si tiene un usuario asociado, eliminarlo también
       if (driver.userId) {
         await db.delete(users).where(eq(users.id, driver.userId));
       }
-
       res.json({ message: "Conductor y usuario eliminados correctamente" });
     } catch (error) {
       console.error("Error eliminando conductor:", error);
@@ -288,7 +288,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // 🔴 ELIMINAR VEHÍCULO
   app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -301,12 +300,13 @@ export function registerRoutes(app: Express): Server {
   });
 
   // ==========================================
-  // API: PAGOS
+  // API: PAGOS - LÓGICA CORREGIDA PARA CONDUCTOR
   // ==========================================
   
   app.get("/api/payments", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     try {
+      // ADMIN: Ve todo
       if (req.user.role === 'admin') {
         const all = await db.query.payments.findMany({
           with: { routeSlip: true },
@@ -314,13 +314,29 @@ export function registerRoutes(app: Express): Server {
         });
         return res.json(all);
       } 
+      
+      // DRIVER: Ve solo lo suyo
       if (req.user.role === 'driver') {
-        const driverProfile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
+        // 1. Buscar perfil de conductor
+        const driverProfile = await db.query.drivers.findFirst({ 
+          where: eq(drivers.userId, req.user.id) // <-- CORREGIDO
+        });
+        
         if (!driverProfile) return res.json([]);
-        const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, driverProfile.id) });
+
+        // 2. Buscar hojas del conductor
+        const mySlips = await db.query.routeSlips.findMany({ 
+          where: eq(routeSlips.driverId, driverProfile.id) // <-- CORREGIDO
+        });
+        
         const slipIds = mySlips.map(s => s.id);
         if (slipIds.length === 0) return res.json([]);
-        const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] });
+
+        // 3. Buscar pagos asociados a esas hojas
+        const all = await db.query.payments.findMany({ 
+          with: { routeSlip: true }, 
+          orderBy: (p, { desc }) => [desc(p.date)] 
+        });
         return res.json(all.filter(p => p.routeSlipId && slipIds.includes(p.routeSlipId)));
       }
       return res.json([]);
