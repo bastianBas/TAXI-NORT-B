@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import * as bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs"; // 🟢 CORRECCIÓN: Importación por defecto
 import type { InsertUser } from "@shared/schema";
 import { db } from "./db";
 import { users } from "@shared/schema";
@@ -13,6 +13,7 @@ export async function seedData() {
 
   try {
     const existingUser = await storage.getUserByEmail(email);
+    // Ahora sí funcionará porque 'bcrypt' es el objeto correcto
     const hashedPassword = await bcrypt.hash(password, 10);
     
     if (!existingUser) {
