@@ -1,65 +1,79 @@
 import { useForm } from "react-hook-form";
-import { useAuth } from "@/lib/auth";
-import { useLocation, Link } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useState } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Link } from "wouter";
+// 🟢 CORRECCIÓN: Usamos 'Car' en lugar de 'Taxi' para evitar el error
+import { Car } from "lucide-react";
 
+// Esquema ampliado para pedir RUT y Teléfono
 const registerSchema = z.object({
-  name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
+  name: z.string().min(2, "El nombre es requerido"),
   email: z.string().email("Email inválido"),
+  rut: z.string().min(8, "RUT es requerido"),
+  phone: z.string().min(8, "Teléfono es requerido"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Las contraseñas no coinciden",
+  path: ["confirmPassword"],
 });
 
+type RegisterFormData = z.infer<typeof registerSchema>;
+
 export default function Register() {
-  const { registerMutation, user } = useAuth();
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { registerMutation } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      setLocation("/");
-    }
-  }, [user, setLocation]);
-
-  const form = useForm<z.infer<typeof registerSchema>>({
+  const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       name: "",
       email: "",
+      rut: "",
+      phone: "",
       password: "",
+      confirmPassword: "",
     },
   });
 
-  async function onSubmit(values: z.infer<typeof registerSchema>) {
-    setIsSubmitting(true);
-    try {
-      await registerMutation.mutateAsync(values);
-    } catch (error) {
-      console.error("Error en submit:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Crear Cuenta</CardTitle>
-          <CardDescription className="text-center">
-            Regístrate para acceder al sistema TaxiNort
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-slate-900 rounded-full">
+              {/* 🟢 ÍCONO ACTUALIZADO AQUÍ */}
+              <Car className="h-8 w-8 text-white" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl font-bold">Crear Cuenta</CardTitle>
+          <CardDescription>
+            Regístrate para unirte a la flota de Taxi Nort
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form
+              onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))}
+              className="space-y-4"
+            >
               <FormField
                 control={form.control}
                 name="name"
@@ -78,14 +92,48 @@ export default function Register() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Correo Electrónico</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="juan@ejemplo.com" {...field} />
+                      <Input
+                        type="email"
+                        placeholder="juan@ejemplo.com"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                    control={form.control}
+                    name="rut"
+                    render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>RUT</FormLabel>
+                        <FormControl>
+                        <Input placeholder="12.345.678-9" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Teléfono</FormLabel>
+                        <FormControl>
+                        <Input placeholder="+56 9..." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
                 name="password"
@@ -93,30 +141,41 @@ export default function Register() {
                   <FormItem>
                     <FormLabel>Contraseña</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••" {...field} />
+                      <Input type="password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button 
-                type="submit" 
-                className="w-full bg-slate-900 hover:bg-slate-800"
-                disabled={isSubmitting || registerMutation?.isPending}
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirmar Contraseña</FormLabel>
+                    <FormControl>
+                      <Input type="password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="submit"
+                className="w-full bg-slate-900 text-white hover:bg-slate-800"
+                disabled={registerMutation.isPending}
               >
-                {(isSubmitting || registerMutation?.isPending) ? "Registrando..." : "Registrarse"}
+                {registerMutation.isPending ? "Registrando..." : "Crear Cuenta"}
               </Button>
             </form>
           </Form>
-        </CardContent>
-        <CardFooter className="justify-center">
-          <p className="text-sm text-gray-600">
+          <div className="mt-4 text-center text-sm">
             ¿Ya tienes una cuenta?{" "}
-            <Link href="/login" className="text-blue-600 hover:underline">
-              Inicia sesión aquí
+            <Link href="/login" className="text-primary hover:underline font-medium">
+              Inicia sesión
             </Link>
-          </p>
-        </CardFooter>
+          </div>
+        </CardContent>
       </Card>
     </div>
   );

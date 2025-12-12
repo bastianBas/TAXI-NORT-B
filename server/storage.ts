@@ -4,17 +4,21 @@ import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { firebaseDb } from "./firebase";
+import bcrypt from "bcryptjs"; // Necesario para crear passwords
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
+  
   getDriver(id: string): Promise<Driver | undefined>;
+  getDriverByUserId(userId: string): Promise<Driver | undefined>; // NUEVO
   getAllDrivers(): Promise<Driver[]>;
-  createDriver(driver: InsertDriver): Promise<Driver>;
+  createDriver(driver: InsertDriver): Promise<Driver>; // AHORA CREA USUARIO TAMBIÉN
   updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
   deleteDriver(id: string): Promise<boolean>;
+  
   getVehicle(id: string): Promise<Vehicle | undefined>;
   getAllVehicles(): Promise<Vehicle[]>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
@@ -24,13 +28,13 @@ export interface IStorage {
   getRouteSlip(id: string): Promise<RouteSlip | undefined>;
   getAllRouteSlips(): Promise<RouteSlip[]>;
   createRouteSlip(slip: InsertRouteSlip): Promise<RouteSlip>;
-  updateRouteSlip(id: string, slip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined>; // NUEVO
+  updateRouteSlip(id: string, slip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined>;
   checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
   
   getPayment(id: string): Promise<Payment | undefined>;
   getAllPayments(): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
-  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined>; // NUEVO
+  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined>;
   
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
@@ -49,20 +53,57 @@ export class DatabaseStorage implements IStorage {
   }
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const newUser = { 
-      ...insertUser, 
-      id, 
-      createdAt: new Date(),
-      role: insertUser.role ?? "driver" 
-    } as User;
+    const newUser = { ...insertUser, id, createdAt: new Date(), role: insertUser.role ?? "driver" } as User;
     await db.insert(users).values(newUser);
     return newUser;
   }
   async getAllUsers(): Promise<User[]> { return await db.select().from(users); }
   
   async getDriver(id: string): Promise<Driver | undefined> { const [driver] = await db.select().from(drivers).where(eq(drivers.id, id)); return driver; }
+  
+  // 🟢 NUEVO: Busca el conductor asociado al usuario logueado
+  async getDriverByUserId(userId: string): Promise<Driver | undefined> { 
+    const [driver] = await db.select().from(drivers).where(eq(drivers.userId, userId)); 
+    return driver; 
+  }
+
   async getAllDrivers(): Promise<Driver[]> { return await db.select().from(drivers); }
-  async createDriver(insertDriver: InsertDriver): Promise<Driver> { const id = randomUUID(); const newDriver = { ...insertDriver, id, createdAt: new Date(), status: insertDriver.status ?? "active" } as Driver; await db.insert(drivers).values(newDriver); return newDriver; }
+  
+  // 🟢 MODIFICADO: Crea Conductor Y Usuario automáticamente
+  async createDriver(insertDriver: InsertDriver): Promise<Driver> { 
+    const id = randomUUID(); 
+    let userId = null;
+
+    // Si el conductor tiene email, intentamos crearle un usuario
+    if (insertDriver.email) {
+        const existingUser = await this.getUserByEmail(insertDriver.email);
+        if (existingUser) {
+            userId = existingUser.id; // Ya existe, lo vinculamos
+        } else {
+            // No existe, creamos usuario. Contraseña = RUT (sin puntos ni guión idealmente, pero usamos lo que venga)
+            const hashedPassword = await bcrypt.hash(insertDriver.rut, 10);
+            const newUser = await this.createUser({
+                email: insertDriver.email,
+                name: insertDriver.name,
+                password: hashedPassword,
+                role: "driver"
+            });
+            userId = newUser.id;
+        }
+    }
+
+    const newDriver = { 
+        ...insertDriver, 
+        id, 
+        userId, // Vinculamos el ID del usuario
+        createdAt: new Date(), 
+        status: insertDriver.status ?? "active" 
+    } as Driver; 
+    
+    await db.insert(drivers).values(newDriver); 
+    return newDriver; 
+  }
+
   async updateDriver(id: string, insertDriver: Partial<InsertDriver>): Promise<Driver | undefined> { await db.update(drivers).set(insertDriver).where(eq(drivers.id, id)); return this.getDriver(id); }
   async deleteDriver(id: string): Promise<boolean> { const [result] = await db.delete(drivers).where(eq(drivers.id, id)); return (result as any).affectedRows > 0; }
   
@@ -79,54 +120,27 @@ export class DatabaseStorage implements IStorage {
   async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> { 
     const id = randomUUID(); 
     const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date); 
-    const newSlip = { 
-      ...insertSlip, 
-      id, 
-      isDuplicate, 
-      createdAt: new Date(), 
-      paymentStatus: insertSlip.paymentStatus ?? "pending", 
-      notes: insertSlip.notes ?? null, 
-      signatureUrl: insertSlip.signatureUrl ?? null,
-      startTime: insertSlip.startTime,
-      endTime: insertSlip.endTime
-    } as RouteSlip; 
+    const newSlip = { ...insertSlip, id, isDuplicate, createdAt: new Date(), paymentStatus: insertSlip.paymentStatus ?? "pending", notes: insertSlip.notes ?? null, signatureUrl: insertSlip.signatureUrl ?? null, startTime: insertSlip.startTime, endTime: insertSlip.endTime } as RouteSlip; 
     await db.insert(routeSlips).values(newSlip); 
     return newSlip; 
   }
-
-  // 🟢 UPDATE ROUTE SLIP
-  async updateRouteSlip(id: string, insertSlip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined> {
-    await db.update(routeSlips).set(insertSlip).where(eq(routeSlips.id, id));
-    return this.getRouteSlip(id);
-  }
+  async updateRouteSlip(id: string, insertSlip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined> { await db.update(routeSlips).set(insertSlip).where(eq(routeSlips.id, id)); return this.getRouteSlip(id); }
   
   async getPayment(id: string): Promise<Payment | undefined> { const [payment] = await db.select().from(payments).where(eq(payments.id, id)); return payment; }
   async getAllPayments(): Promise<Payment[]> { return await db.select().from(payments).orderBy(desc(payments.createdAt)); }
-  
   async createPayment(insertPayment: InsertPayment): Promise<Payment> { 
     const id = randomUUID(); 
     const newPayment = { ...insertPayment, id, createdAt: new Date(), status: insertPayment.status ?? "pending", proofOfPayment: insertPayment.proofOfPayment ?? null } as Payment; 
     await db.insert(payments).values(newPayment); 
-    
-    // Marcar hoja como pagada
-    if (newPayment.routeSlipId) {
-        await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, newPayment.routeSlipId));
-    }
+    if (newPayment.routeSlipId) { await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, newPayment.routeSlipId)); }
     return newPayment; 
   }
-
-  // 🟢 UPDATE PAYMENT (Con lógica inteligente de estados)
   async updatePayment(id: string, insertPayment: Partial<InsertPayment>): Promise<Payment | undefined> {
     const oldPayment = await this.getPayment(id);
-    
-    // Si cambiamos la hoja de ruta asociada, debemos arreglar los estados
     if (oldPayment && insertPayment.routeSlipId && oldPayment.routeSlipId !== insertPayment.routeSlipId) {
-        // 1. Liberar la hoja antigua (volver a pendiente)
         await db.update(routeSlips).set({ paymentStatus: "pending" }).where(eq(routeSlips.id, oldPayment.routeSlipId));
-        // 2. Marcar la nueva como pagada
         await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, insertPayment.routeSlipId));
     }
-
     await db.update(payments).set(insertPayment).where(eq(payments.id, id));
     return this.getPayment(id);
   }

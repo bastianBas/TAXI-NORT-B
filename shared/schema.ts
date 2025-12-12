@@ -13,14 +13,21 @@ export const users = mysqlTable("users", {
 
 export const drivers = mysqlTable("drivers", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  
+  // 🟢 NUEVO: Vínculo con la tabla de usuarios
+  userId: varchar("user_id", { length: 36 }), 
+  email: varchar("email", { length: 255 }), // Para contacto y sincronización
+
   name: varchar("name", { length: 255 }).notNull(),
   rut: varchar("rut", { length: 20 }).notNull().unique(),
   phone: varchar("phone", { length: 20 }).notNull(),
   commune: varchar("commune", { length: 100 }).notNull(),
   address: varchar("address", { length: 255 }),
+  
   licenseNumber: varchar("license_number", { length: 50 }).notNull(),
   licenseClass: varchar("license_class", { length: 10 }).notNull(),
   licenseDate: varchar("license_date", { length: 50 }).notNull(),
+
   status: varchar("status", { length: 50 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow()
 });
@@ -48,31 +55,22 @@ export const routeSlips = mysqlTable("route_slips", {
   startTime: varchar("start_time", { length: 20 }).notNull(),
   endTime: varchar("end_time", { length: 20 }).notNull(),
   signatureUrl: text("signature_url"),
-  
-  // ESTE ES EL ESTADO QUE PEDISTE (por defecto 'pending' = no pagada)
   paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
-  
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// 🟢 PAGOS ACTUALIZADOS: Ahora vinculado a una Hoja de Ruta
 export const payments = mysqlTable("payments", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  
-  routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(), // <--- VÍNCULO CLAVE
-  
-  type: varchar("type", { length: 50 }).notNull(), // Será siempre 'daily'
-  amount: int("amount").notNull(), // Será siempre 1800
-  
-  // Mantenemos estos por redundancia histórica, pero se llenarán solos
+  routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(),
+  type: varchar("type", { length: 50 }).notNull(),
+  amount: int("amount").notNull(),
   driverId: varchar("driver_id", { length: 36 }).notNull(),
   vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
   date: varchar("date", { length: 50 }).notNull(),
-  
   proofOfPayment: text("proof_of_payment"),
-  status: varchar("status", { length: 50 }).notNull().default("pending"), // Estado del PROCESO de pago (ej: revisión)
+  status: varchar("status", { length: 50 }).notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow()
 });
 

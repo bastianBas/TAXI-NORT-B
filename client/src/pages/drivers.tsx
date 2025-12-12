@@ -57,6 +57,7 @@ export default function Drivers() {
     resolver: zodResolver(insertDriverSchema),
     defaultValues: {
       name: "",
+      email: "",
       rut: "",
       phone: "",
       commune: "Copiapó",
@@ -76,7 +77,10 @@ export default function Drivers() {
       queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
       setOpen(false);
       form.reset();
-      toast({ title: "Conductor creado", description: "Registro exitoso." });
+      toast({ 
+        title: "Conductor creado", 
+        description: "Se ha creado también una cuenta de usuario. La contraseña es el RUT." 
+      });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -119,6 +123,7 @@ export default function Drivers() {
     setEditingId(driver.id);
     form.reset({
       name: driver.name,
+      email: driver.email || "",
       rut: driver.rut,
       phone: driver.phone,
       commune: driver.commune,
@@ -135,6 +140,7 @@ export default function Drivers() {
     setEditingId(null);
     form.reset({
       name: "",
+      email: "",
       rut: "",
       phone: "",
       commune: "Copiapó",
@@ -181,9 +187,22 @@ export default function Drivers() {
                           <FormMessage />
                         </FormItem>
                       )} />
+                      
+                      {/* CAMPO EMAIL NUEVO (CORREGIDO) */}
+                      <FormField control={form.control} name="email" render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Email (Para inicio de sesión)</FormLabel>
+                          <FormControl>
+                            {/* AQUÍ ESTÁ LA CORRECCIÓN: value={field.value || ""} */}
+                            <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+
                       <FormField control={form.control} name="rut" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>RUT</FormLabel>
+                          <FormLabel>RUT (Será la contraseña)</FormLabel>
                           <FormControl><Input {...field} placeholder="12.345.678-9" /></FormControl>
                           <FormMessage />
                         </FormItem>
@@ -266,16 +285,17 @@ export default function Drivers() {
               <TableRow>
                 <TableHead>Nombre</TableHead>
                 <TableHead>RUT</TableHead>
+                <TableHead>Email</TableHead>
                 <TableHead>Licencia</TableHead>
                 <TableHead>Control</TableHead>
-                <TableHead>Comuna</TableHead>
+                <TableHead>Teléfono</TableHead>
                 {canEdit && <TableHead className="w-[100px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {drivers?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No hay conductores registrados.
                   </TableCell>
                 </TableRow>
@@ -284,6 +304,7 @@ export default function Drivers() {
                   <TableRow key={driver.id}>
                     <TableCell className="font-medium">{driver.name}</TableCell>
                     <TableCell>{driver.rut}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{driver.email || "-"}</TableCell>
                     <TableCell>
                       <span className="font-mono text-xs border px-1 rounded bg-slate-100 dark:bg-slate-800 mr-1">
                         {driver.licenseClass}
@@ -291,7 +312,7 @@ export default function Drivers() {
                       {driver.licenseNumber}
                     </TableCell>
                     <TableCell>{driver.licenseDate}</TableCell>
-                    <TableCell>{driver.commune}</TableCell>
+                    <TableCell>{driver.phone}</TableCell>
                     {canEdit && (
                       <TableCell className="flex gap-2 justify-end">
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(driver)}>
