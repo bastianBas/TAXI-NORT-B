@@ -97,12 +97,17 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.post("/api/route-slips", verifyAuth, upload.single('signature'), async (req, res) => {
+  // Usamos upload.any() para evitar errores si el campo se llama diferente
+  app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
       const newId = randomUUID();
       let signatureUrl = null;
-      if (req.file) signatureUrl = `uploads/${req.file.filename}`;
+      
+      // Buscar si hay algún archivo subido
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        signatureUrl = `uploads/${req.files[0].filename}`;
+      }
 
       const slipData = {
         id: newId,
@@ -125,7 +130,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.put("/api/route-slips/:id", verifyAuth, upload.single('signature'), async (req, res) => {
+  app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
       const updateData: any = {
@@ -136,7 +141,11 @@ export function registerRoutes(app: Express): Server {
         endTime: req.body.endTime,
         notes: req.body.notes
       };
-      if (req.file) updateData.signatureUrl = `uploads/${req.file.filename}`;
+      
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        updateData.signatureUrl = `uploads/${req.files[0].filename}`;
+      }
+      
       await db.update(routeSlips).set(updateData).where(eq(routeSlips.id, req.params.id));
       res.json({ message: "Actualizado" });
     } catch (error) {
@@ -266,7 +275,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // ==========================================
-  // API: PAGOS (Payments) - ¡RUTAS FALTANTES AQUÍ!
+  // API: PAGOS (Payments)
   // ==========================================
   app.get("/api/payments", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
@@ -293,19 +302,27 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // CREAR PAGO (Esta era la que faltaba y lanzaba el error)
-  app.post("/api/payments", verifyAuth, upload.single('proofOfPayment'), async (req, res) => {
+  // 🔥 CREAR PAGO (CORREGIDO Y ROBUSTO) 🔥
+  // Usamos upload.any() para aceptar CUALQUIER nombre de campo de archivo (file, image, proofOfPayment, etc.)
+  app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
       const newId = randomUUID();
       let proofUrl = null;
-      if (req.file) proofUrl = `uploads/${req.file.filename}`;
+      
+      // Buscamos si llegó algún archivo en req.files (que es un array)
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        proofUrl = `uploads/${req.files[0].filename}`;
+      }
+
+      // Parseamos amount a entero por si viene como string
+      const amountVal = req.body.amount ? parseInt(req.body.amount) : 0;
 
       const paymentData = {
         id: newId,
         routeSlipId: req.body.routeSlipId,
         type: req.body.type,
-        amount: parseInt(req.body.amount),
+        amount: amountVal,
         driverId: req.body.driverId,
         vehicleId: req.body.vehicleId,
         date: req.body.date,
@@ -326,7 +343,7 @@ export function registerRoutes(app: Express): Server {
       res.status(201).json(paymentData);
     } catch (error) {
       console.error("Error creando pago:", error);
-      res.status(500).send("Error al crear pago");
+      res.status(500).send("Error al crear pago: " + error);
     }
   });
 
