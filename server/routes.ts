@@ -36,7 +36,8 @@ export function registerRoutes(app: Express): Server {
   // ==========================================
   // 🚨 RUTA DE EMERGENCIA (RESET ADMIN) 🚨
   // ==========================================
-  app.post("/api/emergency-reset-admin", async (req, res) => {
+  // CAMBIO IMPORTANTE: Usamos GET para que funcione desde el navegador
+  app.get("/api/emergency-reset-admin", async (req, res) => {
     try {
       // 1. Verificar si ya existe
       const existingAdmin = await db.query.users.findFirst({
@@ -44,10 +45,16 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (existingAdmin) {
-        return res.json({ message: "El admin ya existe. Intenta iniciar sesión." });
+        // Si existe, reseteamos la contraseña para asegurar acceso
+        const hashedPassword = await bcrypt.hash("admin123", 10);
+        await db.update(users)
+           .set({ password: hashedPassword, role: 'admin' })
+           .where(eq(users.email, "admin@taxinort.cl"));
+           
+        return res.json({ message: "El admin ya existía. SE HA RESTABLECIDO SU CONTRASEÑA A: admin123" });
       }
 
-      // 2. Crear Admin
+      // 2. Crear Admin si no existe
       const hashedPassword = await bcrypt.hash("admin123", 10);
       const newAdmin = {
         id: randomUUID(),
@@ -64,7 +71,7 @@ export function registerRoutes(app: Express): Server {
 
     } catch (error) {
       console.error("Error reset admin:", error);
-      res.status(500).send("Error creando admin");
+      res.status(500).send("Error creando admin: " + error);
     }
   });
 
@@ -216,7 +223,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // 🔴 ELIMINAR CONDUCTOR (NUEVO)
+  // 🔴 ELIMINAR CONDUCTOR
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
@@ -232,7 +239,7 @@ export function registerRoutes(app: Express): Server {
       // 2. Eliminar de la tabla drivers
       await db.delete(drivers).where(eq(drivers.id, driverId));
 
-      // 3. Si tiene un usuario asociado, eliminarlo también (para que no quede el login huerfano)
+      // 3. Si tiene un usuario asociado, eliminarlo también
       if (driver.userId) {
         await db.delete(users).where(eq(users.id, driver.userId));
       }
@@ -281,7 +288,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // 🔴 ELIMINAR VEHÍCULO (NUEVO)
+  // 🔴 ELIMINAR VEHÍCULO
   app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
