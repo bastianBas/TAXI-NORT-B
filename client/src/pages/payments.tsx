@@ -37,13 +37,17 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, CreditCard, Upload, DollarSign, FileText, Loader2, Pencil } from "lucide-react";
+// 🟢 CORRECCIÓN 1: Agregado ExternalLink a los imports
+import { Plus, CreditCard, Upload, DollarSign, FileText, Loader2, Pencil, Eye, X, ExternalLink } from "lucide-react";
 import type { Payment, InsertPayment, Driver, Vehicle, RouteSlip } from "@shared/schema";
 
 export default function Payments() {
   const queryClientLocal = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  
+  // Estado para el visor de archivos
+  const [viewingFile, setViewingFile] = useState<string | null>(null);
   
   const [selectedRouteSlipId, setSelectedRouteSlipId] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -151,10 +155,16 @@ export default function Payments() {
     return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
   };
 
-  // Filtramos hojas pendientes + la hoja actual si estamos editando (para que no desaparezca del select)
+  // Filtramos hojas para el SELECT (pendientes + la actual si se edita)
   const availableRouteSlips = routeSlips?.filter(slip => 
     slip.paymentStatus !== "paid" || (editingPayment && slip.id === editingPayment.routeSlipId)
   ) || [];
+
+  // 🟢 CORRECCIÓN 2: Restauramos esta variable para las tarjetas de estadísticas
+  const pendingRouteSlips = routeSlips?.filter(slip => slip.paymentStatus !== "paid") || [];
+
+  // Helper para saber si el archivo es PDF
+  const isPdf = (filename: string) => filename.toLowerCase().endsWith(".pdf");
 
   return (
     <div className="space-y-6">
@@ -203,6 +213,13 @@ export default function Payments() {
                   </Select>
                 </div>
 
+                {selectedRouteSlipId && (
+                    <div className="p-3 bg-muted/50 rounded-md text-sm space-y-1">
+                        <p><strong>Monto a Pagar:</strong> $1.800 (Diario)</p>
+                        <p className="text-muted-foreground text-xs">El pago se vinculará automáticamente al conductor y vehículo de la hoja seleccionada.</p>
+                    </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="proofOfPayment">Comprobante</Label>
                   <div className="flex items-center gap-2">
@@ -230,6 +247,78 @@ export default function Payments() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* --- VISOR DE ARCHIVOS (DIALOG NUEVO) --- */}
+      <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Visualizador de Comprobante</DialogTitle>
+            <DialogDescription>Documento adjunto al pago.</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 bg-slate-100 rounded-md overflow-hidden flex items-center justify-center border relative">
+             {viewingFile && (
+                isPdf(viewingFile) ? (
+                  <iframe 
+                    src={`/uploads/${viewingFile}`} 
+                    className="w-full h-full" 
+                    title="Comprobante PDF"
+                  />
+                ) : (
+                  <img 
+                    src={`/uploads/${viewingFile}`} 
+                    alt="Comprobante" 
+                    className="max-w-full max-h-full object-contain" 
+                  />
+                )
+             )}
+          </div>
+          <DialogFooter>
+             <Button variant="outline" onClick={() => setViewingFile(null)}>Cerrar</Button>
+             {viewingFile && (
+               <Button asChild>
+                 <a href={`/uploads/${viewingFile}`} target="_blank" rel="noreferrer">
+                   <ExternalLink className="mr-2 h-4 w-4" /> Abrir en nueva pestaña
+                 </a>
+               </Button>
+             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Pagos</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{payments?.length || 0}</div>
+            <p className="text-xs text-muted-foreground">Registrados</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+             <CardTitle className="text-sm font-medium">Hojas Pendientes</CardTitle>
+             <FileText className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+             <div className="text-2xl font-bold">{pendingRouteSlips.length}</div>
+             <p className="text-xs text-muted-foreground">Por pagar</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Recaudación Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+               {formatAmount((payments?.length || 0) * 1800)}
+            </div>
+            <p className="text-xs text-muted-foreground">Estimada</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -264,11 +353,21 @@ export default function Payments() {
                       <TableCell><span className="font-mono font-semibold">{getVehiclePlate(payment.vehicleId)}</span></TableCell>
                       <TableCell className="font-semibold">{formatAmount(payment.amount)}</TableCell>
                       <TableCell><Badge className="bg-green-600 hover:bg-green-700">Pagado</Badge></TableCell>
+                      
+                      {/* BOTÓN "VER ARCHIVO" ACTIVO */}
                       <TableCell>
                         {payment.proofOfPayment ? (
-                          <Badge variant="outline" className="gap-1"><Upload className="h-3 w-3" /> Ver Archivo</Badge>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="gap-2 h-8 text-xs border-dashed"
+                            onClick={() => setViewingFile(payment.proofOfPayment!)}
+                          >
+                            <Eye className="h-3 w-3" /> Ver Archivo
+                          </Button>
                         ) : (<span className="text-muted-foreground text-sm">-</span>)}
                       </TableCell>
+                      
                       <TableCell>
                          <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(payment)}>
                            <Pencil className="h-4 w-4" />
