@@ -4,8 +4,9 @@ import { RouteSlip, Driver, Vehicle } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, DollarSign } from "lucide-react";
+import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil } from "lucide-react";
 import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
+import { Button } from "@/components/ui/button";
 
 export default function RouteSlips() {
   const { user } = useAuth();
@@ -45,18 +46,16 @@ export default function RouteSlips() {
     return slip.driverId === user?.id; 
   });
 
-  const canCreate = ["admin", "operator"].includes(user?.role || "");
+  const canEdit = ["admin", "operator"].includes(user?.role || "");
 
   return (
     <div className="space-y-6 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
-          <p className="text-muted-foreground">
-            Bitácora de servicios y estado de pagos.
-          </p>
+          <p className="text-muted-foreground">Bitácora de servicios y estado de pagos.</p>
         </div>
-        {canCreate && <RouteSlipDialog />}
+        {canEdit && <RouteSlipDialog />}
       </div>
 
       <Card>
@@ -81,8 +80,9 @@ export default function RouteSlips() {
                     <TableHead>Conductor</TableHead>
                     <TableHead>Vehículo</TableHead>
                     <TableHead>Horario</TableHead>
-                    <TableHead>Estado Pago</TableHead> {/* NUEVA COLUMNA */}
+                    <TableHead>Estado Pago</TableHead>
                     <TableHead>Firma</TableHead>
+                    {canEdit && <TableHead className="w-[50px]"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -97,7 +97,6 @@ export default function RouteSlips() {
                       <TableCell>{getDriverInfo(slip.driverId)}</TableCell>
                       <TableCell>{getVehicleInfo(slip.vehicleId)}</TableCell>
                       
-                      {/* COLUMNA HORARIO */}
                       <TableCell className="font-mono text-sm">
                          <div className="flex flex-col gap-1">
                             <span className="flex items-center gap-1 text-xs">
@@ -106,7 +105,6 @@ export default function RouteSlips() {
                          </div>
                       </TableCell>
 
-                      {/* COLUMNA ESTADO DE PAGO (NUEVO) */}
                       <TableCell>
                         {slip.paymentStatus === "paid" ? (
                           <Badge className="bg-green-600 hover:bg-green-700 flex w-fit items-center gap-1">
@@ -128,6 +126,20 @@ export default function RouteSlips() {
                            <span className="text-muted-foreground text-xs">-</span>
                          )}
                       </TableCell>
+
+                      {canEdit && (
+                        <TableCell>
+                           {/* Botón de Edición reutilizando el Dialog */}
+                           <RouteSlipDialog 
+                             slipToEdit={slip} 
+                             trigger={
+                               <Button variant="ghost" size="icon">
+                                 <Pencil className="h-4 w-4" />
+                               </Button>
+                             }
+                           />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

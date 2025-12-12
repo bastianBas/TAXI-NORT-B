@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { insertRouteSlipSchema, type InsertRouteSlip, type Driver, type Vehicle } from "@shared/schema";
+import { insertRouteSlipSchema, type InsertRouteSlip, type RouteSlip, type Driver, type Vehicle } from "@shared/schema";
 import { apiRequestFormData } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,15 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Clock, Stamp, ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 
-export default function RouteSlipDialog() {
+interface Props {
+  slipToEdit?: RouteSlip;
+  trigger?: React.ReactNode;
+}
+
+export default function RouteSlipDialog({ slipToEdit, trigger }: Props) {
   const [open, setOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const { toast } = useToast();
@@ -52,7 +57,28 @@ export default function RouteSlipDialog() {
     },
   });
 
-  const createMutation = useMutation({
+  // Efecto para cargar datos si estamos editando
+  useEffect(() => {
+    if (slipToEdit && open) {
+      form.reset({
+        date: slipToEdit.date,
+        vehicleId: slipToEdit.vehicleId,
+        driverId: slipToEdit.driverId,
+        startTime: slipToEdit.startTime,
+        endTime: slipToEdit.endTime,
+        notes: slipToEdit.notes || "",
+      });
+    } else if (!slipToEdit && open) {
+      form.reset({
+        date: new Date().toISOString().split("T")[0],
+        startTime: "08:00",
+        endTime: "18:00",
+        notes: "",
+      });
+    }
+  }, [slipToEdit, open, form]);
+
+  const mutation = useMutation({
     mutationFn: async (data: InsertRouteSlip) => {
       const formData = new FormData();
       formData.append("date", data.date);
@@ -64,15 +90,23 @@ export default function RouteSlipDialog() {
 
       if (selectedFile) {
         formData.append("signature", selectedFile);
-      } else {
+      } else if (!slipToEdit) {
+        // Solo es obligatorio al crear. Al editar, si no hay archivo, mantenemos el anterior.
         throw new Error("Debe adjuntar la imagen de Firma/Timbre del Controlador.");
       }
 
-      return apiRequestFormData("/api/route-slips", "POST", formData);
+      if (slipToEdit) {
+        return apiRequestFormData(`/api/route-slips/${slipToEdit.id}`, "PUT", formData);
+      } else {
+        return apiRequestFormData("/api/route-slips", "POST", formData);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/route-slips"] });
-      toast({ title: "Control Diario Registrado", description: "La hoja de ruta ha sido guardada." });
+      toast({ 
+        title: slipToEdit ? "Control Actualizado" : "Control Registrado", 
+        description: "Los datos han sido guardados." 
+      });
       setOpen(false);
       form.reset();
       setSelectedFile(null);
@@ -90,27 +124,26 @@ export default function RouteSlipDialog() {
 
   const simulateClaveUnica = () => {
     window.open("https://claveunica.gob.cl", "_blank");
-    toast({
-      title: "Simulación Iniciada",
-      description: "Se ha abierto el portal de validación en otra pestaña.",
-    });
+    toast({ title: "Simulación", description: "Portal de validación abierto." });
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Control Diario
-        </Button>
+        {trigger ? trigger : (
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Nuevo Control Diario
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Hoja de Ruta - Control Diario</DialogTitle>
+          <DialogTitle>{slipToEdit ? "Editar Control Diario" : "Nuevo Control Diario"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-4">
+          <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
@@ -119,9 +152,7 @@ export default function RouteSlipDialog() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Fecha</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} value={field.value ?? ''} />
-                    </FormControl>
+                    <FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -137,7 +168,7 @@ export default function RouteSlipDialog() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Vehículo</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger></FormControl>
                       <SelectContent>
                         {vehicles?.map((v) => (
@@ -156,7 +187,7 @@ export default function RouteSlipDialog() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Conductor</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger></FormControl>
                       <SelectContent>
                         {drivers?.map((d) => (
@@ -179,9 +210,7 @@ export default function RouteSlipDialog() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Inicio Servicio</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} value={field.value ?? ''} />
-                    </FormControl>
+                    <FormControl><Input type="time" {...field} value={field.value ?? ''} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -193,9 +222,7 @@ export default function RouteSlipDialog() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Término Servicio</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} value={field.value ?? ''} />
-                    </FormControl>
+                    <FormControl><Input type="time" {...field} value={field.value ?? ''} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -212,7 +239,9 @@ export default function RouteSlipDialog() {
               
               <div className="space-y-2">
                 <Input type="file" accept="image/*" onChange={handleFileChange} />
-                <p className="text-xs text-muted-foreground">Adjunte imagen de la firma o timbre digital validado.</p>
+                <p className="text-xs text-muted-foreground">
+                    {slipToEdit ? "Suba una nueva imagen para reemplazar la actual (opcional)." : "Adjunte imagen de la firma o timbre digital validado."}
+                </p>
               </div>
             </div>
 
@@ -222,9 +251,7 @@ export default function RouteSlipDialog() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Observaciones (Opcional)</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} value={field.value ?? ''} />
-                  </FormControl>
+                  <FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -232,9 +259,9 @@ export default function RouteSlipDialog() {
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Guardar Control
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {slipToEdit ? "Guardar Cambios" : "Guardar Control"}
               </Button>
             </div>
           </form>

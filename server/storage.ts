@@ -20,15 +20,17 @@ export interface IStorage {
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: string, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
   deleteVehicle(id: string): Promise<boolean>;
+  
   getRouteSlip(id: string): Promise<RouteSlip | undefined>;
   getAllRouteSlips(): Promise<RouteSlip[]>;
   createRouteSlip(slip: InsertRouteSlip): Promise<RouteSlip>;
+  updateRouteSlip(id: string, slip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined>; // NUEVO
   checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
+  
   getPayment(id: string): Promise<Payment | undefined>;
   getAllPayments(): Promise<Payment[]>;
-  
-  // Actualizamos la firma de createPayment
   createPayment(payment: InsertPayment): Promise<Payment>;
+  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined>; // NUEVO
   
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
@@ -76,9 +78,7 @@ export class DatabaseStorage implements IStorage {
   
   async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> { 
     const id = randomUUID(); 
-    // isDuplicate y otros campos ya no se usan tanto con el nuevo modelo, pero los mantenemos por compatibilidad
     const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date); 
-    
     const newSlip = { 
       ...insertSlip, 
       id, 
@@ -90,36 +90,45 @@ export class DatabaseStorage implements IStorage {
       startTime: insertSlip.startTime,
       endTime: insertSlip.endTime
     } as RouteSlip; 
-    
     await db.insert(routeSlips).values(newSlip); 
     return newSlip; 
+  }
+
+  // 🟢 UPDATE ROUTE SLIP
+  async updateRouteSlip(id: string, insertSlip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined> {
+    await db.update(routeSlips).set(insertSlip).where(eq(routeSlips.id, id));
+    return this.getRouteSlip(id);
   }
   
   async getPayment(id: string): Promise<Payment | undefined> { const [payment] = await db.select().from(payments).where(eq(payments.id, id)); return payment; }
   async getAllPayments(): Promise<Payment[]> { return await db.select().from(payments).orderBy(desc(payments.createdAt)); }
   
-  // 🟢 CREATE PAYMENT ACTUALIZADO: Vincula y actualiza la hoja de ruta
   async createPayment(insertPayment: InsertPayment): Promise<Payment> { 
     const id = randomUUID(); 
-    const newPayment = { 
-        ...insertPayment, 
-        id, 
-        createdAt: new Date(), 
-        status: insertPayment.status ?? "pending", 
-        proofOfPayment: insertPayment.proofOfPayment ?? null 
-    } as Payment; 
-    
-    // 1. Guardar el pago
+    const newPayment = { ...insertPayment, id, createdAt: new Date(), status: insertPayment.status ?? "pending", proofOfPayment: insertPayment.proofOfPayment ?? null } as Payment; 
     await db.insert(payments).values(newPayment); 
     
-    // 2. IMPORTANTE: Actualizar el estado de la Hoja de Ruta vinculada a "paid"
+    // Marcar hoja como pagada
     if (newPayment.routeSlipId) {
-        await db.update(routeSlips)
-            .set({ paymentStatus: "paid" })
-            .where(eq(routeSlips.id, newPayment.routeSlipId));
+        await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, newPayment.routeSlipId));
+    }
+    return newPayment; 
+  }
+
+  // 🟢 UPDATE PAYMENT (Con lógica inteligente de estados)
+  async updatePayment(id: string, insertPayment: Partial<InsertPayment>): Promise<Payment | undefined> {
+    const oldPayment = await this.getPayment(id);
+    
+    // Si cambiamos la hoja de ruta asociada, debemos arreglar los estados
+    if (oldPayment && insertPayment.routeSlipId && oldPayment.routeSlipId !== insertPayment.routeSlipId) {
+        // 1. Liberar la hoja antigua (volver a pendiente)
+        await db.update(routeSlips).set({ paymentStatus: "pending" }).where(eq(routeSlips.id, oldPayment.routeSlipId));
+        // 2. Marcar la nueva como pagada
+        await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, insertPayment.routeSlipId));
     }
 
-    return newPayment; 
+    await db.update(payments).set(insertPayment).where(eq(payments.id, id));
+    return this.getPayment(id);
   }
   
   async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }

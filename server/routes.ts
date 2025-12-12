@@ -67,30 +67,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vehicles", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.createVehicle(req.body)); });
   app.put("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { res.json(await storage.updateVehicle(req.params.id, req.body)); });
   app.delete("/api/vehicles/:id", verifyAuth, hasRole("admin", "operator"), async (req, res) => { await storage.deleteVehicle(req.params.id); res.json({ success: true }); });
-  
   app.post("/api/vehicles/:id/location", async (req, res) => { await storage.updateVehicleLocation({ vehicleId: req.params.id, plate: "GPS", lat: req.body.lat, lng: req.body.lng, status: "active", timestamp: Date.now() }); res.json({ success: true }); });
 
   // --- HOJAS DE RUTA (Control Diario) ---
   app.get("/api/route-slips", verifyAuth, async (req, res) => { res.json(await storage.getAllRouteSlips()); });
   
   app.post("/api/route-slips", verifyAuth, upload.single("signature"), async (req, res) => { 
-    const slipData = {
-      ...req.body,
-      signatureUrl: req.file ? req.file.filename : null
-    };
+    const slipData = { ...req.body, signatureUrl: req.file ? req.file.filename : null };
     res.json(await storage.createRouteSlip(slipData)); 
+  });
+
+  // 🟢 PUT ROUTE SLIPS (Edición)
+  app.put("/api/route-slips/:id", verifyAuth, hasRole("admin", "operator"), upload.single("signature"), async (req, res) => {
+    const slipData = { ...req.body };
+    if (req.file) {
+        slipData.signatureUrl = req.file.filename;
+    }
+    res.json(await storage.updateRouteSlip(req.params.id, slipData));
   });
 
   // --- PAGOS (Vinculado a Hoja de Ruta) ---
   app.get("/api/payments", verifyAuth, async (req, res) => { res.json(await storage.getAllPayments()); });
   app.post("/api/payments", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => { 
-      // Si el frontend envía 'routeSlipId', lo usamos.
-      const paymentData = {
-          ...req.body,
-          amount: parseInt(req.body.amount || "1800"),
-          proofOfPayment: req.file?.filename || ""
-      };
+      const paymentData = { ...req.body, amount: parseInt(req.body.amount || "1800"), proofOfPayment: req.file?.filename || "" };
       res.json(await storage.createPayment(paymentData)); 
+  });
+
+  // 🟢 PUT PAYMENTS (Edición)
+  app.put("/api/payments/:id", verifyAuth, hasRole("admin", "finance"), upload.single("file"), async (req, res) => {
+    const paymentData = { ...req.body };
+    if (paymentData.amount) paymentData.amount = parseInt(paymentData.amount);
+    if (req.file) {
+        paymentData.proofOfPayment = req.file.filename;
+    }
+    res.json(await storage.updatePayment(req.params.id, paymentData));
   });
 
   // --- AUDITORÍA ---
