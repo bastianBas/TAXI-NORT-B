@@ -1,208 +1,319 @@
-// server/storage.ts
-
-import { users, drivers, vehicles, routeSlips, payments, auditLogs } from "@shared/schema";
-import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation } from "@shared/schema";
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { drivers, routeSlips, vehicles, payments, users } from "@shared/schema";
+import { eq, desc, and } from "drizzle-orm"; 
 import { randomUUID } from "crypto";
-import { firebaseDb } from "./firebase"; 
-import bcrypt from "bcryptjs"; 
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import express from "express";
+import bcrypt from "bcryptjs";
+import { storage } from "./storage"; // ✅ Usamos storage para obtener la ubicación filtrada
+import { firebaseDb } from "./firebase"; // Se mantiene el import, pero ya no se usa para leer ubicaciones
 
-export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  getAllUsers(): Promise<User[]>;
-  
-  getDriver(id: string): Promise<Driver | undefined>;
-  getDriverByUserId(userId: string): Promise<Driver | undefined>; 
-  getAllDrivers(): Promise<Driver[]>;
-  createDriver(driver: InsertDriver): Promise<Driver>; 
-  updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
-  deleteDriver(id: string): Promise<boolean>;
-  
-  getVehicle(id: string): Promise<Vehicle | undefined>;
-  getAllVehicles(): Promise<Vehicle[]>;
-  createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
-  updateVehicle(id: string, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
-  deleteVehicle(id: string): Promise<boolean>;
-  
-  getRouteSlip(id: string): Promise<RouteSlip | undefined>;
-  getAllRouteSlips(): Promise<RouteSlip[]>;
-  createRouteSlip(slip: InsertRouteSlip): Promise<RouteSlip>;
-  updateRouteSlip(id: string, slip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined>;
-  checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
-  
-  getPayment(id: string): Promise<Payment | undefined>;
-  getAllPayments(): Promise<Payment[]>;
-  createPayment(payment: InsertPayment): Promise<Payment>;
-  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined>;
-  
-  getAllAuditLogs(): Promise<AuditLog[]>;
-  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
-  
-  // MÉTODOS GPS (CONECTADOS A FIREBASE)
-  updateVehicleLocation(location: VehicleLocation): Promise<void>;
-  getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
-  getAllVehicleLocations(): Promise<VehicleLocation[]>; // ✅ NUEVO: Ahora está en la interfaz
-}
+const storageMulter = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.resolve(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storageMulter });
 
-export class DatabaseStorage implements IStorage {
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
-  }
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
-  }
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const newUser = { ...insertUser, id, createdAt: new Date(), role: insertUser.role ?? "driver" } as User;
-    await db.insert(users).values(newUser);
-    return newUser;
-  }
-  async getAllUsers(): Promise<User[]> { return await db.select().from(users); }
-  
-  async getDriver(id: string): Promise<Driver | undefined> { const [driver] = await db.select().from(drivers).where(eq(drivers.id, id)); return driver; }
-  
-  async getDriverByUserId(userId: string): Promise<Driver | undefined> { 
-    const [driver] = await db.select().from(drivers).where(eq(drivers.userId, userId)); 
-    return driver; 
-  }
+export function registerRoutes(app: Express): Server {
+  setupAuth(app);
+  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  async getAllDrivers(): Promise<Driver[]> { return await db.select().from(drivers); }
-  
-  async createDriver(insertDriver: InsertDriver): Promise<Driver> { 
-    const id = randomUUID(); 
-    let userId = null;
+  // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
 
-    if (insertDriver.email) {
-        const existingUser = await this.getUserByEmail(insertDriver.email);
-        if (existingUser) {
-            userId = existingUser.id; 
-        } else {
-            const hashedPassword = await bcrypt.hash(insertDriver.rut, 10);
-            const newUser = await this.createUser({
-                email: insertDriver.email,
-                name: insertDriver.name,
-                password: hashedPassword,
-                role: "driver"
-            });
-            userId = newUser.id;
-        }
-    }
-
-    const newDriver = { 
-        ...insertDriver, 
-        id, 
-        userId, 
-        createdAt: new Date(), 
-        status: insertDriver.status ?? "active" 
-    } as Driver; 
-    
-    await db.insert(drivers).values(newDriver); 
-    return newDriver; 
-  }
-
-  async updateDriver(id: string, insertDriver: Partial<InsertDriver>): Promise<Driver | undefined> { await db.update(drivers).set(insertDriver).where(eq(drivers.id, id)); return this.getDriver(id); }
-  async deleteDriver(id: string): Promise<boolean> { const [result] = await db.delete(drivers).where(eq(drivers.id, id)); return (result as any).affectedRows > 0; }
-  
-  async getVehicle(id: string): Promise<Vehicle | undefined> { const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id)); return vehicle; }
-  async getAllVehicles(): Promise<Vehicle[]> { return await db.select().from(vehicles); }
-  async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> { const id = randomUUID(); const newVehicle = { ...insertVehicle, id, createdAt: new Date(), status: insertVehicle.status ?? "active" } as Vehicle; await db.insert(vehicles).values(newVehicle); return newVehicle; }
-  async updateVehicle(id: string, insertVehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined> { await db.update(vehicles).set(insertVehicle).where(eq(vehicles.id, id)); return this.getVehicle(id); }
-  async deleteVehicle(id: string): Promise<boolean> { const [result] = await db.delete(vehicles).where(eq(vehicles.id, id)); return (result as any).affectedRows > 0; }
-  
-  async getRouteSlip(id: string): Promise<RouteSlip | undefined> { const [slip] = await db.select().from(routeSlips).where(eq(routeSlips.id, id)); return slip; }
-  async getAllRouteSlips(): Promise<RouteSlip[]> { return await db.select().from(routeSlips).orderBy(desc(routeSlips.createdAt)); }
-  async checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean> { const [existing] = await db.select().from(routeSlips).where(and(eq(routeSlips.driverId, driverId), eq(routeSlips.vehicleId, vehicleId), eq(routeSlips.date, date))); return !!existing; }
-  
-  async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> { 
-    const id = randomUUID(); 
-    const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date); 
-    const newSlip = { ...insertSlip, id, isDuplicate, createdAt: new Date(), paymentStatus: insertSlip.paymentStatus ?? "pending", notes: insertSlip.notes ?? null, signatureUrl: insertSlip.signatureUrl ?? null, startTime: insertSlip.startTime, endTime: insertSlip.endTime } as RouteSlip; 
-    await db.insert(routeSlips).values(newSlip); 
-    return newSlip; 
-  }
-  async updateRouteSlip(id: string, insertSlip: Partial<InsertRouteSlip>): Promise<RouteSlip | undefined> { await db.update(routeSlips).set(insertSlip).where(eq(routeSlips.id, id)); return this.getRouteSlip(id); }
-  
-  async getPayment(id: string): Promise<Payment | undefined> { const [payment] = await db.select().from(payments).where(eq(payments.id, id)); return payment; }
-  async getAllPayments(): Promise<Payment[]> { return await db.select().from(payments).orderBy(desc(payments.createdAt)); }
-  async createPayment(insertPayment: InsertPayment): Promise<Payment> { 
-    const id = randomUUID(); 
-    const newPayment = { ...insertPayment, id, createdAt: new Date(), status: insertPayment.status ?? "pending", proofOfPayment: insertPayment.proofOfPayment ?? null } as Payment; 
-    await db.insert(payments).values(newPayment); 
-    if (newPayment.routeSlipId) { await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, newPayment.routeSlipId)); }
-    return newPayment; 
-  }
-  async updatePayment(id: string, insertPayment: Partial<InsertPayment>): Promise<Payment | undefined> {
-    const oldPayment = await this.getPayment(id);
-    if (oldPayment && insertPayment.routeSlipId && oldPayment.routeSlipId !== insertPayment.routeSlipId) {
-        await db.update(routeSlips).set({ paymentStatus: "pending" }).where(eq(routeSlips.id, oldPayment.routeSlipId));
-        await db.update(routeSlips).set({ paymentStatus: "paid" }).where(eq(routeSlips.id, insertPayment.routeSlipId));
-    }
-    await db.update(payments).set(insertPayment).where(eq(payments.id, id));
-    return this.getPayment(id);
-  }
-  
-  async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }
-  async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> { const id = randomUUID(); const newLog = { ...insertLog, id, timestamp: new Date(), entityId: insertLog.entityId ?? null, details: insertLog.details ?? null } as AuditLog; await db.insert(auditLogs).values(newLog); return newLog; }
-  
-  // 🟢 IMPLEMENTACIÓN: GUARDAR Y LEER DESDE FIREBASE REALTIME DATABASE
-  
-  // 1. Guardar (Ahora siempre incluye el timestamp)
-  async updateVehicleLocation(location: VehicleLocation): Promise<void> { 
-    if (!firebaseDb) return; 
-    try { 
-        const ref = firebaseDb.ref(`locations/${location.vehicleId}`); 
-        await ref.set({ 
-            ...location, 
-            timestamp: Date.now() // ✅ CRÍTICO: Guardamos la hora actual
-        }); 
-    } catch (error) { 
-        console.error("Error actualizando ubicación en Firebase:", error); 
-    } 
-  }
-
-  // 2. Leer uno (Lectura)
-  async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> { 
-    if (!firebaseDb) return null; 
-    try { 
-        const ref = firebaseDb.ref(`locations/${vehicleId}`); 
-        const snapshot = await ref.once('value'); 
-        return snapshot.val() as VehicleLocation | null; 
-    } catch (error) { 
-        console.error("Error obteniendo ubicación de Firebase:", error); 
-        return null; 
-    } 
-  }
-
-  // 3. Leer todos (Lectura masiva para el Mapa)
-  async getAllVehicleLocations(): Promise<VehicleLocation[]> {
-    if (!firebaseDb) return [];
+  // 1. GET: El Dashboard pide todas las ubicaciones
+  app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-        const snapshot = await firebaseDb.ref("locations").once("value");
-        const data = snapshot.val();
-        
-        if (!data) return [];
-        
-        const locations: any[] = Object.values(data);
-        const currentTime = Date.now();
-        const TIMEOUT_MS = 30000; // 30 segundos de timeout
+      
+      // 🟢 CORRECCIÓN: Leemos solo las ubicaciones activas (con filtro de 30s)
+      const firebaseLocations: any[] = await storage.getAllVehicleLocations();
+      
+      // B. Obtenemos metadatos de MySQL
+      const fleetMetadata = await db
+        .select({
+          vehicleId: vehicles.id,
+          model: vehicles.model,
+          plate: vehicles.plate,
+          driverName: drivers.name,
+          paymentStatus: routeSlips.paymentStatus, 
+          createdAt: routeSlips.createdAt 
+        })
+        .from(vehicles)
+        .leftJoin(routeSlips, eq(routeSlips.vehicleId, vehicles.id))
+        .leftJoin(drivers, eq(routeSlips.driverId, drivers.id))
+        .orderBy(desc(routeSlips.createdAt));
 
-        // ✅ LÓGICA DE FILTRO (TIMEOUT)
-        const activeLocations = locations.filter((loc: any) => {
-            // Un vehículo está activo si el timestamp existe Y no es más viejo que 30s.
-            return loc.timestamp && (currentTime - loc.timestamp < TIMEOUT_MS);
+      // C. FUSIONAMOS Y LIMPIAMOS DATOS
+      const uniqueVehicles = new Map();
+
+      fleetMetadata.forEach((meta) => {
+        if (uniqueVehicles.has(meta.vehicleId)) return;
+
+        // Buscamos si este vehículo tiene datos en la lista filtrada (solo activos)
+        const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
+
+        uniqueVehicles.set(meta.vehicleId, {
+          vehicleId: meta.vehicleId,
+          model: meta.model,
+          plate: meta.plate,
+          driverName: meta.driverName || "Sin conductor",
+          lat: location ? location.lat : null,
+          lng: location ? location.lng : null,
+          isPaid: meta.paymentStatus === 'paid'
         });
-        
-        return activeLocations as VehicleLocation[];
-    } catch (error) {
-        console.error("Error obteniendo ubicaciones de Firebase:", error);
-        return [];
-    }
-  }
-}
+      });
 
-export const storage = new DatabaseStorage();
+      // Filtramos solo los que tienen datos válidos (GPS activo)
+      const activeFleet = Array.from(uniqueVehicles.values())
+          .filter((v: any) => v.lat !== null && v.lng !== null);
+
+      // ============================================================
+      // ❌ ELIMINADO: Se quitó el código de generación de datos de prueba. 
+      // Si activeFleet está vacío, devuelve [].
+      // ============================================================
+
+      res.json(activeFleet);
+
+    } catch (error) {
+      console.error("Error obteniendo flota:", error);
+      res.status(500).json([]);
+    }
+  });
+
+  // 2. POST: El Conductor envía su ubicación GPS (Se mantiene igual)
+  app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
+
+    try {
+      const { lat, lng } = req.body;
+      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
+
+      // Buscamos al conductor por su ID de usuario
+      const driver = await db.query.drivers.findFirst({
+        where: eq(drivers.userId, req.user.id)
+      });
+
+      if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
+
+      // Buscamos su última hoja de ruta para saber qué auto maneja
+      const slips = await db.query.routeSlips.findMany({
+          where: eq(routeSlips.driverId, driver.id),
+          orderBy: (t, { desc }) => [desc(t.createdAt)],
+          limit: 1,
+          with: { vehicle: true }
+      });
+
+      if (slips.length === 0 || !slips[0].vehicle) {
+         return res.status(400).send("No tienes vehículo asignado (Crea una Hoja de Ruta)");
+      }
+
+      const activeVehicle = slips[0].vehicle;
+
+      // Guardamos en Firebase (updateVehicleLocation ahora guarda el timestamp)
+      await storage.updateVehicleLocation({
+        vehicleId: activeVehicle.id,
+        plate: activeVehicle.plate,
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+        status: 'active',
+        timestamp: Date.now() // Esto se guarda en Firebase y se usa para el timeout
+      });
+
+      res.sendStatus(200);
+    } catch (e) {
+      console.error(e);
+      res.status(500).send("Error guardando ubicación");
+    }
+  });
+
+  // --- RESTO DE RUTAS (Sin cambios mayores) ---
+
+  // RESET ADMIN
+  app.get("/api/emergency-reset-admin", async (req, res) => {
+    try {
+      const existingAdmin = await db.query.users.findFirst({ where: eq(users.email, "admin@taxinort.cl") });
+      if (existingAdmin) {
+        const hashedPassword = await bcrypt.hash("admin123", 10);
+        await db.update(users).set({ password: hashedPassword, role: 'admin' }).where(eq(users.email, "admin@taxinort.cl"));
+        return res.json({ message: "Admin reset: admin123" });
+      }
+      const hashedPassword = await bcrypt.hash("admin123", 10);
+      await db.insert(users).values({ id: randomUUID(), email: "admin@taxinort.cl", password: hashedPassword, name: "Admin", role: "admin", createdAt: new Date() });
+      res.json({ message: "Admin created: admin123" });
+    } catch (error) { res.status(500).send("Error: " + error); }
+  });
+
+  // HOJAS DE RUTA
+  app.get("/api/route-slips", verifyAuth, async (req, res) => {
+    if (!req.user) return res.status(401).send("No autorizado");
+    try {
+      if (req.user.role === 'admin') {
+        const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] });
+        return res.json(all);
+      }
+      if (req.user.role === 'driver') {
+        const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
+        if (!profile) return res.json([]);
+        const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id) });
+        const ids = slips.map(s => s.id);
+        if (ids.length === 0) return res.json([]);
+        const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] });
+        return res.json(all.filter(p => p.routeSlipId && ids.includes(p.routeSlipId)));
+      }
+      return res.json([]);
+    } catch (e) { res.status(500).json([]); }
+  });
+
+  app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      const newId = randomUUID();
+      let url = null;
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
+      const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
+      await db.insert(routeSlips).values(data);
+      res.status(201).json(data);
+    } catch (e) { res.status(500).send("Error"); }
+  });
+
+  app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      const data: any = { ...req.body };
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`;
+      await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id));
+      res.json({ message: "Updated" });
+    } catch (e) { res.status(500).send("Error"); }
+  });
+
+  // CONDUCTORES
+  app.get("/api/drivers", verifyAuth, async (req, res) => {
+    const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] });
+    res.json(all);
+  });
+
+  app.post("/api/drivers", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      const { email, name, rut, ...rest } = req.body;
+      const exist = await db.query.users.findFirst({ where: eq(users.email, email) });
+      if (exist) return res.status(400).json({ message: "Email existe" });
+
+      const uid = randomUUID();
+      const pass = await bcrypt.hash("123456", 10);
+      await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() });
+
+      const did = randomUUID();
+      // Asegúrate de que tu schema de drivers tenga userId, sino esto fallará
+      const dData = { id: did, userId: uid, email, name, rut, ...rest, createdAt: new Date(), status: 'active' };
+      await db.insert(drivers).values(dData);
+      res.status(201).json(dData);
+    } catch (e) { console.error(e); res.status(500).send("Error"); }
+  });
+
+  app.put("/api/drivers/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try { await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); }
+  });
+
+  app.delete("/api/drivers/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) });
+      if (!d) return res.status(404).send("Not found");
+      await db.delete(drivers).where(eq(drivers.id, req.params.id));
+      if (d.userId) await db.delete(users).where(eq(users.id, d.userId));
+      res.json({ message: "Deleted" });
+    } catch (e) { res.status(500).send("Error"); }
+  });
+
+  // VEHICULOS
+  app.get("/api/vehicles", verifyAuth, async (req, res) => {
+    const all = await db.query.vehicles.findMany();
+    res.json(all);
+  });
+  app.post("/api/vehicles", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try {
+      const vid = randomUUID();
+      const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' };
+      await db.insert(vehicles).values(vData);
+      res.status(201).json(vData);
+    } catch (e) { res.status(500).send("Error"); }
+  });
+  app.put("/api/vehicles/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); }
+  });
+  app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try { await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); }
+  });
+
+  // PAGOS
+  app.get("/api/payments", verifyAuth, async (req, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      if (req.user.role === 'admin') {
+        const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] });
+        return res.json(all);
+      }
+      if (req.user.role === 'driver') {
+        const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
+        if (!profile) return res.json([]);
+        const slips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id) });
+        const ids = slips.map(s => s.id);
+        if (ids.length === 0) return res.json([]);
+        const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] });
+        return res.json(all.filter(p => p.routeSlipId && ids.includes(p.routeSlipId)));
+      }
+      return res.json([]);
+    } catch (e) { res.status(500).json([]); }
+  });
+
+  // CREAR PAGO
+  app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => {
+    if (!['admin', 'driver', 'finance'].includes(req.user?.role || '')) return res.status(403).send("No autorizado");
+    try {
+      const pid = randomUUID();
+      let proof = null;
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`;
+      const pData = {
+        id: pid,
+        routeSlipId: req.body.routeSlipId,
+        type: req.body.type,
+        amount: parseInt(req.body.amount || "0"),
+        driverId: req.body.driverId,
+        vehicleId: req.body.vehicleId,
+        date: req.body.date,
+        proofOfPayment: proof,
+        status: 'completed',
+        createdAt: new Date()
+      };
+      await db.insert(payments).values(pData);
+      if (req.body.routeSlipId) {
+        await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId));
+      }
+      res.status(201).json(pData);
+    } catch (e) { console.error(e); res.status(500).send("Error"); }
+  });
+
+  app.delete("/api/payments/:id", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+    try { await db.delete(payments).where(eq(payments.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}

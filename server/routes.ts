@@ -10,8 +10,8 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage"; // ✅ Usamos storage para obtener la ubicación filtrada
-import { firebaseDb } from "./firebase"; // Se mantiene por si se usa en otras partes
+import { storage } from "./storage"; // ✅ Usamos storage para obtener/guardar la ubicación
+import { firebaseDb } from "./firebase"; 
 
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -32,11 +32,11 @@ export function registerRoutes(app: Express): Server {
 
   // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
 
-  // 1. GET: El Dashboard pide todas las ubicaciones
+  // 1. GET: El Dashboard pide todas las ubicaciones (Usa el filtro de 30s de Storage)
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       
-      // 🟢 CORRECCIÓN: Llamamos a la función de storage que ya aplica el filtro de 30 segundos
+      // ✅ Lectura Filtrada: Obtiene solo los autos que han reportado ubicación en los últimos 30s
       const firebaseLocations: any[] = await storage.getAllVehicleLocations();
       
       // B. Obtenemos metadatos de MySQL
@@ -78,34 +78,7 @@ export function registerRoutes(app: Express): Server {
       const activeFleet = Array.from(uniqueVehicles.values())
           .filter((v: any) => v.lat !== null && v.lng !== null);
 
-      // ============================================================
-      // 🚨 MODO DE SEGURIDAD: GENERAMOS DATOS DE PRUEBA SI ESTÁ VACÍO
-      // ============================================================
-      if (activeFleet.length === 0) {
-        // Puedes comentar esto cuando ya tengas choferes reales
-        // console.log("⚠️ No hay vehículos activos. Generando datos de prueba.");
-        
-        activeFleet.push({
-          vehicleId: "test-1",
-          model: "Toyota Yaris (Prueba)",
-          plate: "TEST-OK",
-          driverName: "Juan Pérez",
-          lat: -27.3668, 
-          lng: -70.3319, // Coordenada de Copiapó
-          isPaid: true
-        });
-
-        activeFleet.push({
-          vehicleId: "test-2",
-          model: "Nissan Versa (Prueba)",
-          plate: "TEST-NO",
-          driverName: "Pedro Deuda",
-          lat: -27.3680, 
-          lng: -70.3330, // Coordenada de Copiapó
-          isPaid: false
-        });
-      }
-      // ============================================================
+      // ❌ Se eliminaron los autos de prueba. Si la lista está vacía, se devuelve vacía.
 
       res.json(activeFleet);
 
@@ -123,7 +96,7 @@ export function registerRoutes(app: Express): Server {
       const { lat, lng } = req.body;
       if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
 
-      // Buscamos al conductor por su ID de usuario directamente en DB
+      // Buscamos al conductor por su ID de usuario
       const driver = await db.query.drivers.findFirst({
         where: eq(drivers.userId, req.user.id)
       });
@@ -144,15 +117,15 @@ export function registerRoutes(app: Express): Server {
 
       const activeVehicle = slips[0].vehicle;
 
-      // Guardamos en Firebase (updateVehicleLocation ahora guarda el timestamp)
+      // 🟢 CORRECCIÓN: Llamamos a storage.updateVehicleLocation.
+      // Eliminamos el 'timestamp: Date.now()' de aquí, ya que storage.ts lo añade.
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         status: 'active',
-        timestamp: Date.now() // Se mantiene porque es la hora de la actualización
-      });
+      } as any); // Usamos 'as any' para compatibilidad de tipos
 
       res.sendStatus(200);
     } catch (e) {
