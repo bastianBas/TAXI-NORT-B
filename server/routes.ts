@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
 import { drivers, routeSlips, vehicles, payments, users } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm"; 
 import { randomUUID } from "crypto";
 import multer from "multer";
 import path from "path";
@@ -32,19 +32,67 @@ export function registerRoutes(app: Express): Server {
   // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
 
   // 1. GET: El Dashboard pide todas las ubicaciones
-  // El servidor las busca en Firebase y las devuelve
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-      const locations = await storage.getAllVehicleLocations();
-      res.json(locations);
+      // A. Obtenemos coordenadas de Firebase
+      const firebaseLocations = await storage.getAllVehicleLocations();
+
+      // B. Obtenemos metadatos de MySQL
+      const fleetMetadata = await db
+        .select({
+          vehicleId: vehicles.id,
+          model: vehicles.model,
+          plate: vehicles.plate,
+          driverName: drivers.name,
+          paymentStatus: routeSlips.paymentStatus, 
+          // Traemos la fecha para poder filtrar duplicados si es necesario
+          createdAt: routeSlips.createdAt 
+        })
+        .from(vehicles)
+        // 1. Unimos Hoja de Ruta (Quitamos el 'status' que daba error)
+        // Esto traerá el historial, así que abajo filtraremos.
+        .leftJoin(routeSlips, eq(routeSlips.vehicleId, vehicles.id))
+        // 2. Unimos Conductor
+        .leftJoin(drivers, eq(routeSlips.driverId, drivers.id))
+        // Ordenamos por fecha descendente para que la hoja más nueva quede primera
+        .orderBy(desc(routeSlips.createdAt));
+
+      // C. FUSIONAMOS Y LIMPIAMOS DATOS
+      // Usamos un Map para quedarnos solo con la hoja de ruta más reciente por vehículo
+      const uniqueVehicles = new Map();
+
+      fleetMetadata.forEach((meta) => {
+        // Si ya procesamos este vehículo, saltamos (porque ya tenemos el más reciente gracias al orderBy)
+        if (uniqueVehicles.has(meta.vehicleId)) return;
+
+        // Buscamos coordenadas
+        const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
+
+        uniqueVehicles.set(meta.vehicleId, {
+          vehicleId: meta.vehicleId,
+          model: meta.model,
+          plate: meta.plate,
+          driverName: meta.driverName || "Sin conductor",
+          lat: location ? location.lat : null,
+          lng: location ? location.lng : null,
+          // Estado de pago
+          isPaid: meta.paymentStatus === 'paid'
+        });
+      });
+
+      // Convertimos el Map a Array y filtramos solo los que tienen GPS activo
+      const activeFleet = Array.from(uniqueVehicles.values())
+        .filter((v: any) => v.lat !== null && v.lng !== null);
+
+      res.json(activeFleet);
+
     } catch (error) {
-      console.error(error);
+      console.error("Error obteniendo flota combinada:", error);
       res.status(500).json([]);
     }
   });
 
   // 2. POST: El Conductor envía su ubicación GPS
-  // El servidor valida en MySQL quién es y luego guarda en Firebase
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
 
