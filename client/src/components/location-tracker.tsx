@@ -56,4 +56,4 @@ export function LocationTracker() {
   }, [user, toast]);
 
   return null; // Este componente no renderiza nada visual
-}s
+}
