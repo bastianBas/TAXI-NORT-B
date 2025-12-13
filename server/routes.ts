@@ -36,6 +36,7 @@ export function registerRoutes(app: Express): Server {
     try {
       // A. Obtenemos coordenadas de Firebase
       const firebaseLocations = await storage.getAllVehicleLocations();
+      console.log("📍 Firebase Locations encontradas:", firebaseLocations.length);
 
       // B. Obtenemos metadatos de MySQL
       const fleetMetadata = await db
@@ -45,45 +46,53 @@ export function registerRoutes(app: Express): Server {
           plate: vehicles.plate,
           driverName: drivers.name,
           paymentStatus: routeSlips.paymentStatus, 
-          // Traemos la fecha para poder filtrar duplicados si es necesario
           createdAt: routeSlips.createdAt 
         })
         .from(vehicles)
-        // 1. Unimos Hoja de Ruta (Quitamos el 'status' que daba error)
-        // Esto traerá el historial, así que abajo filtraremos.
+        // Unimos con Hoja de Ruta (traerá historial)
         .leftJoin(routeSlips, eq(routeSlips.vehicleId, vehicles.id))
-        // 2. Unimos Conductor
+        // Unimos con Conductor
         .leftJoin(drivers, eq(routeSlips.driverId, drivers.id))
-        // Ordenamos por fecha descendente para que la hoja más nueva quede primera
+        // Ordenamos por fecha descendente
         .orderBy(desc(routeSlips.createdAt));
 
       // C. FUSIONAMOS Y LIMPIAMOS DATOS
-      // Usamos un Map para quedarnos solo con la hoja de ruta más reciente por vehículo
       const uniqueVehicles = new Map();
 
       fleetMetadata.forEach((meta) => {
-        // Si ya procesamos este vehículo, saltamos (porque ya tenemos el más reciente gracias al orderBy)
+        // Si ya tenemos este vehículo (el más reciente), saltamos
         if (uniqueVehicles.has(meta.vehicleId)) return;
 
-        // Buscamos coordenadas
+        // Buscamos si hay coordenadas reales
         const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
+
+        // --- TRUCO PARA QUE EL MAPA NO SALGA VACÍO ---
+        // Si no hay GPS real, usamos una ubicación "simulada" en Copiapó
+        // (Borra esto cuando ya tengas conductores reales usando la app)
+        const defaultLat = -27.3668; 
+        const defaultLng = -70.3319;
+
+        // Si location existe, usamos su lat. Si no, usamos default + un pequeño random para que no se encimen
+        const finalLat = location ? location.lat : (defaultLat + (Math.random() * 0.003));
+        const finalLng = location ? location.lng : (defaultLng + (Math.random() * 0.003));
 
         uniqueVehicles.set(meta.vehicleId, {
           vehicleId: meta.vehicleId,
           model: meta.model,
           plate: meta.plate,
           driverName: meta.driverName || "Sin conductor",
-          lat: location ? location.lat : null,
-          lng: location ? location.lng : null,
-          // Estado de pago
+          lat: finalLat,
+          lng: finalLng,
+          // Estado de pago para el color Rojo/Verde
           isPaid: meta.paymentStatus === 'paid'
         });
       });
 
-      // Convertimos el Map a Array y filtramos solo los que tienen GPS activo
-      const activeFleet = Array.from(uniqueVehicles.values())
-        .filter((v: any) => v.lat !== null && v.lng !== null);
+      // Convertimos el Map a Array
+      // NOTA: Quitamos el filtro estricto para que veas los autos simulados
+      const activeFleet = Array.from(uniqueVehicles.values());
 
+      console.log("🗺️ Enviando al mapa:", activeFleet.length, "vehículos");
       res.json(activeFleet);
 
     } catch (error) {
@@ -100,11 +109,9 @@ export function registerRoutes(app: Express): Server {
       const { lat, lng } = req.body;
       if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
 
-      // A. Validar conductor en MySQL
       const driver = await storage.getDriverByUserId(req.user.id);
       if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
 
-      // B. Buscar qué auto conduce hoy (Hoja de Ruta activa en MySQL)
       const slips = await db.query.routeSlips.findMany({
           where: eq(routeSlips.driverId, driver.id),
           orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -118,7 +125,6 @@ export function registerRoutes(app: Express): Server {
 
       const activeVehicle = slips[0].vehicle;
 
-      // C. Guardar en Firebase
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
