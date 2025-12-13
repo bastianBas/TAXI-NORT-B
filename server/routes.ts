@@ -12,7 +12,7 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
-// 🟢 CORRECCIÓN: Importación por defecto (sin llaves)
+// ✅ CORRECCIÓN: Importación por defecto (sin llaves)
 import storage from "./storage"; 
 import { firebaseDb } from "./firebase"; 
 
@@ -35,11 +35,11 @@ export function registerRoutes(app: Express): Server {
 
   // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
 
-  // 1. GET: El Dashboard pide todas las ubicaciones
+  // 1. GET: El Dashboard pide todas las ubicaciones (Usa el filtro de 1s de Storage)
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       
-      // ✅ Lectura Filtrada: Obtiene solo los autos que han reportado ubicación en los últimos 30s
+      // ✅ Lectura Filtrada: Obtiene solo los autos que han reportado ubicación en los últimos 1s
       const firebaseLocations: any[] = await storage.getAllVehicleLocations();
       
       // B. Obtenemos metadatos de MySQL

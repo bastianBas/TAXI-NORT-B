@@ -1,10 +1,15 @@
+// server/auth.ts
+
 import { Express, Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs"; 
 import jwt from "jsonwebtoken";
-import { storage } from "./storage";
+// ✅ CORRECCIÓN: Importación por defecto (sin llaves)
+import storage from "./storage"; 
 import { type User } from "@shared/schema";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
+
+// ... (El resto del código de verifyAuth se mantiene igual) ...
 
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -91,13 +96,11 @@ export function setupAuth(app: Express) {
       });
 
       // 2. Crear Ficha de Conductor Automática (Vinculada)
-      // Como el registro básico solo pide Nombre/Email/Pass, 
-      // rellenamos lo demás como "Pendiente" y usamos el RUT que nos pase el form (debemos agregarlo al form).
       await storage.createDriver({
           userId: user.id, // VINCULACIÓN
           name: user.name,
           email: user.email,
-          rut: req.body.rut || "SIN-RUT", // Ahora pediremos el RUT en el registro
+          rut: req.body.rut || "SIN-RUT", 
           phone: req.body.phone || "SIN-FONO",
           commune: "Copiapó",
           address: "",
