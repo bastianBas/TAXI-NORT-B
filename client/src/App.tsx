@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar"; 
+import { LocationTracker } from "@/components/location-tracker"; // 🟢 IMPORTANTE
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -42,6 +43,9 @@ function AppRouter() {
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
       
+      {/* 🟢 RASTREADOR GPS ACTIVADO */}
+      <LocationTracker />
+
       {/* Header Fijo Arriba */}
       <AppSidebar />
 
@@ -69,7 +73,6 @@ function AppRouter() {
               </ProtectedRoute>
             </Route>
             
-            {/* 🟢 CORRECCIÓN AQUÍ: Agregado "driver" */}
             <Route path="/payments">
               <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
                 <Payments />

@@ -10,8 +10,9 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
+import { storage } from "./storage"; // Importante: usamos storage para acceder a Firebase
 
-const storage = multer.diskStorage({
+const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.resolve(process.cwd(), "uploads");
     if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
@@ -22,11 +23,71 @@ const storage = multer.diskStorage({
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage: storageMulter });
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+
+  // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
+
+  // 1. GET: El Dashboard pide todas las ubicaciones
+  // El servidor las busca en Firebase y las devuelve
+  app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
+    try {
+      const locations = await storage.getAllVehicleLocations();
+      res.json(locations);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json([]);
+    }
+  });
+
+  // 2. POST: El Conductor envía su ubicación GPS
+  // El servidor valida en MySQL quién es y luego guarda en Firebase
+  app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
+
+    try {
+      const { lat, lng } = req.body;
+      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
+
+      // A. Validar conductor en MySQL
+      const driver = await storage.getDriverByUserId(req.user.id);
+      if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
+
+      // B. Buscar qué auto conduce hoy (Hoja de Ruta activa en MySQL)
+      const slips = await db.query.routeSlips.findMany({
+          where: eq(routeSlips.driverId, driver.id),
+          orderBy: (t, { desc }) => [desc(t.createdAt)],
+          limit: 1,
+          with: { vehicle: true }
+      });
+
+      if (slips.length === 0 || !slips[0].vehicle) {
+         return res.status(400).send("No tienes vehículo asignado (Crea una Hoja de Ruta)");
+      }
+
+      const activeVehicle = slips[0].vehicle;
+
+      // C. Guardar en Firebase
+      await storage.updateVehicleLocation({
+        vehicleId: activeVehicle.id,
+        plate: activeVehicle.plate,
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+        status: 'active',
+        timestamp: Date.now()
+      });
+
+      res.sendStatus(200);
+    } catch (e) {
+      console.error(e);
+      res.status(500).send("Error guardando ubicación");
+    }
+  });
+
+  // --- RESTO DE RUTAS (Sin cambios) ---
 
   // RESET ADMIN
   app.get("/api/emergency-reset-admin", async (req, res) => {
@@ -167,7 +228,7 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).json([]); }
   });
 
-  // 🟢 CREAR PAGO (Para Drivers y Admin)
+  // CREAR PAGO
   app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => {
     if (!['admin', 'driver', 'finance'].includes(req.user?.role || '')) return res.status(403).send("No autorizado");
     try {
