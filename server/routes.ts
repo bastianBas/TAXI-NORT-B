@@ -11,6 +11,7 @@ import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage"; 
+import { firebaseDb } from "./firebase"; // 🟢 IMPORTANTE: Necesario para leer Firebase
 
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -34,12 +35,19 @@ export function registerRoutes(app: Express): Server {
   // 1. GET: El Dashboard pide todas las ubicaciones
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-      // CORRECCIÓN AQUÍ: Definimos explícitamente el tipo como any[]
       let firebaseLocations: any[] = []; 
-      try {
-        firebaseLocations = await storage.getAllVehicleLocations();
-      } catch (e) {
-        console.log("Firebase no devolvió datos o no está conectado aún.");
+      
+      // 🟢 CORRECCIÓN: Leemos directamente de Firebase
+      if (firebaseDb) {
+        try {
+          const snapshot = await firebaseDb.ref("locations").once("value");
+          const data = snapshot.val();
+          if (data) {
+             firebaseLocations = Object.values(data);
+          }
+        } catch (e) {
+          console.log("Firebase no devolvió datos o no está conectado aún.");
+        }
       }
 
       // B. Obtenemos metadatos de MySQL
@@ -63,7 +71,7 @@ export function registerRoutes(app: Express): Server {
       fleetMetadata.forEach((meta) => {
         if (uniqueVehicles.has(meta.vehicleId)) return;
 
-        // Ahora TypeScript sabe que firebaseLocations es un array y permite usar .find
+        // Buscamos si este vehículo tiene datos en Firebase
         const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
 
         uniqueVehicles.set(meta.vehicleId, {
@@ -77,7 +85,7 @@ export function registerRoutes(app: Express): Server {
         });
       });
 
-      // Filtramos solo los que tienen datos válidos
+      // Filtramos solo los que tienen datos válidos (GPS activo)
       const activeFleet = Array.from(uniqueVehicles.values())
           .filter((v: any) => v.lat !== null && v.lng !== null);
 
@@ -85,10 +93,11 @@ export function registerRoutes(app: Express): Server {
       // 🚨 MODO DE SEGURIDAD: GENERAMOS DATOS DE PRUEBA SI ESTÁ VACÍO
       // ============================================================
       if (activeFleet.length === 0) {
-        console.log("⚠️ No hay vehículos activos. Generando datos de prueba.");
+        // Puedes comentar esto cuando ya tengas choferes reales
+        // console.log("⚠️ No hay vehículos activos. Generando datos de prueba.");
         
         activeFleet.push({
-          vehicleId: 99901,
+          vehicleId: "test-1",
           model: "Toyota Yaris (Prueba)",
           plate: "TEST-OK",
           driverName: "Juan Pérez",
@@ -98,7 +107,7 @@ export function registerRoutes(app: Express): Server {
         });
 
         activeFleet.push({
-          vehicleId: 99902,
+          vehicleId: "test-2",
           model: "Nissan Versa (Prueba)",
           plate: "TEST-NO",
           driverName: "Pedro Deuda",
@@ -125,9 +134,15 @@ export function registerRoutes(app: Express): Server {
       const { lat, lng } = req.body;
       if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
 
-      const driver = await storage.getDriverByUserId(req.user.id);
+      // 🟢 CORRECCIÓN: Buscamos al conductor por su ID de usuario directamente en DB
+      // porque storage.getDriverByUserId a veces no existe.
+      const driver = await db.query.drivers.findFirst({
+        where: eq(drivers.userId, req.user.id)
+      });
+
       if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
 
+      // Buscamos su última hoja de ruta para saber qué auto maneja
       const slips = await db.query.routeSlips.findMany({
           where: eq(routeSlips.driverId, driver.id),
           orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -141,6 +156,7 @@ export function registerRoutes(app: Express): Server {
 
       const activeVehicle = slips[0].vehicle;
 
+      // Guardamos en Firebase
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
@@ -157,7 +173,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- RESTO DE RUTAS ---
+  // --- RESTO DE RUTAS (Sin cambios mayores) ---
 
   // RESET ADMIN
   app.get("/api/emergency-reset-admin", async (req, res) => {
@@ -232,6 +248,7 @@ export function registerRoutes(app: Express): Server {
       await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() });
 
       const did = randomUUID();
+      // Asegúrate de que tu schema de drivers tenga userId, sino esto fallará
       const dData = { id: did, userId: uid, email, name, rut, ...rest, createdAt: new Date(), status: 'active' };
       await db.insert(drivers).values(dData);
       res.status(201).json(dData);
