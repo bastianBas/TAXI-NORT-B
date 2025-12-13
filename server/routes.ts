@@ -10,7 +10,7 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage"; // Importante: usamos storage para acceder a Firebase
+import { storage } from "./storage"; 
 
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -34,9 +34,13 @@ export function registerRoutes(app: Express): Server {
   // 1. GET: El Dashboard pide todas las ubicaciones
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-      // A. Obtenemos coordenadas de Firebase
-      const firebaseLocations = await storage.getAllVehicleLocations();
-      console.log("📍 Firebase Locations encontradas:", firebaseLocations.length);
+      // CORRECCIÓN AQUÍ: Definimos explícitamente el tipo como any[]
+      let firebaseLocations: any[] = []; 
+      try {
+        firebaseLocations = await storage.getAllVehicleLocations();
+      } catch (e) {
+        console.log("Firebase no devolvió datos o no está conectado aún.");
+      }
 
       // B. Obtenemos metadatos de MySQL
       const fleetMetadata = await db
@@ -49,54 +53,66 @@ export function registerRoutes(app: Express): Server {
           createdAt: routeSlips.createdAt 
         })
         .from(vehicles)
-        // Unimos con Hoja de Ruta (traerá historial)
         .leftJoin(routeSlips, eq(routeSlips.vehicleId, vehicles.id))
-        // Unimos con Conductor
         .leftJoin(drivers, eq(routeSlips.driverId, drivers.id))
-        // Ordenamos por fecha descendente
         .orderBy(desc(routeSlips.createdAt));
 
       // C. FUSIONAMOS Y LIMPIAMOS DATOS
       const uniqueVehicles = new Map();
 
       fleetMetadata.forEach((meta) => {
-        // Si ya tenemos este vehículo (el más reciente), saltamos
         if (uniqueVehicles.has(meta.vehicleId)) return;
 
-        // Buscamos si hay coordenadas reales
+        // Ahora TypeScript sabe que firebaseLocations es un array y permite usar .find
         const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
-
-        // --- TRUCO PARA QUE EL MAPA NO SALGA VACÍO ---
-        // Si no hay GPS real, usamos una ubicación "simulada" en Copiapó
-        // (Borra esto cuando ya tengas conductores reales usando la app)
-        const defaultLat = -27.3668; 
-        const defaultLng = -70.3319;
-
-        // Si location existe, usamos su lat. Si no, usamos default + un pequeño random para que no se encimen
-        const finalLat = location ? location.lat : (defaultLat + (Math.random() * 0.003));
-        const finalLng = location ? location.lng : (defaultLng + (Math.random() * 0.003));
 
         uniqueVehicles.set(meta.vehicleId, {
           vehicleId: meta.vehicleId,
           model: meta.model,
           plate: meta.plate,
           driverName: meta.driverName || "Sin conductor",
-          lat: finalLat,
-          lng: finalLng,
-          // Estado de pago para el color Rojo/Verde
+          lat: location ? location.lat : null,
+          lng: location ? location.lng : null,
           isPaid: meta.paymentStatus === 'paid'
         });
       });
 
-      // Convertimos el Map a Array
-      // NOTA: Quitamos el filtro estricto para que veas los autos simulados
-      const activeFleet = Array.from(uniqueVehicles.values());
+      // Filtramos solo los que tienen datos válidos
+      const activeFleet = Array.from(uniqueVehicles.values())
+          .filter((v: any) => v.lat !== null && v.lng !== null);
 
-      console.log("🗺️ Enviando al mapa:", activeFleet.length, "vehículos");
+      // ============================================================
+      // 🚨 MODO DE SEGURIDAD: GENERAMOS DATOS DE PRUEBA SI ESTÁ VACÍO
+      // ============================================================
+      if (activeFleet.length === 0) {
+        console.log("⚠️ No hay vehículos activos. Generando datos de prueba.");
+        
+        activeFleet.push({
+          vehicleId: 99901,
+          model: "Toyota Yaris (Prueba)",
+          plate: "TEST-OK",
+          driverName: "Juan Pérez",
+          lat: -27.3668, 
+          lng: -70.3319,
+          isPaid: true
+        });
+
+        activeFleet.push({
+          vehicleId: 99902,
+          model: "Nissan Versa (Prueba)",
+          plate: "TEST-NO",
+          driverName: "Pedro Deuda",
+          lat: -27.3680, 
+          lng: -70.3330,
+          isPaid: false
+        });
+      }
+      // ============================================================
+
       res.json(activeFleet);
 
     } catch (error) {
-      console.error("Error obteniendo flota combinada:", error);
+      console.error("Error obteniendo flota:", error);
       res.status(500).json([]);
     }
   });
@@ -141,7 +157,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- RESTO DE RUTAS (Sin cambios) ---
+  // --- RESTO DE RUTAS ---
 
   // RESET ADMIN
   app.get("/api/emergency-reset-admin", async (req, res) => {
