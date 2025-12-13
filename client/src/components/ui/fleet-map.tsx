@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-// Importamos L de Leaflet para usar L.divIcon
 import L from "leaflet"; 
 import "leaflet/dist/leaflet.css";
 
@@ -23,9 +22,7 @@ const carIconSvg = (color: string) => `
 const createCarIcon = (color: string) => L.divIcon({
     html: carIconSvg(color),
     className: 'custom-car-icon',
-    // Ajustamos el tamaño para que se vea bien
     iconSize: [30, 30], 
-    // Ajustamos el anclaje para que la base de las ruedas esté en la coordenada
     iconAnchor: [15, 30], 
 });
 
@@ -45,7 +42,8 @@ function SetViewOnMount({ center }: { center: [number, number] }) {
   return null;
 }
 
-export default function FleetMap() {
+// 🟢 CORRECCIÓN: Cambiamos 'export default' a 'export'
+export function FleetMap() { 
   const [vehicles, setVehicles] = useState<any[]>([]);
 
   // Función para obtener datos de la API
@@ -71,9 +69,6 @@ export default function FleetMap() {
   return (
     // Contenedor visual del mapa
     <div className="h-full w-full rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0">
-      {/* Asegúrate de que este contenedor tiene altura (h-full en este caso, 
-        que depende del contenedor padre. Si no funciona, pon h-[500px]) 
-      */}
       <MapContainer center={center} zoom={12} style={{ height: "500px", width: "100%" }}>
         <SetViewOnMount center={center} />
         
