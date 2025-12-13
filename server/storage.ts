@@ -3,8 +3,8 @@ import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, Ro
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { firebaseDb } from "./firebase";
-import bcrypt from "bcryptjs"; // Necesario para crear passwords
+import { firebaseDb } from "./firebase"; // Asegúrate de que server/firebase.ts esté bien configurado
+import bcrypt from "bcryptjs";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -13,9 +13,9 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   
   getDriver(id: string): Promise<Driver | undefined>;
-  getDriverByUserId(userId: string): Promise<Driver | undefined>; // NUEVO
+  getDriverByUserId(userId: string): Promise<Driver | undefined>;
   getAllDrivers(): Promise<Driver[]>;
-  createDriver(driver: InsertDriver): Promise<Driver>; // AHORA CREA USUARIO TAMBIÉN
+  createDriver(driver: InsertDriver): Promise<Driver>;
   updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
   deleteDriver(id: string): Promise<boolean>;
   
@@ -38,8 +38,11 @@ export interface IStorage {
   
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  
+  // MÉTODOS GPS (CONECTADOS A FIREBASE)
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
   getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
+  getAllVehicleLocations(): Promise<VehicleLocation[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -61,7 +64,6 @@ export class DatabaseStorage implements IStorage {
   
   async getDriver(id: string): Promise<Driver | undefined> { const [driver] = await db.select().from(drivers).where(eq(drivers.id, id)); return driver; }
   
-  // 🟢 NUEVO: Busca el conductor asociado al usuario logueado
   async getDriverByUserId(userId: string): Promise<Driver | undefined> { 
     const [driver] = await db.select().from(drivers).where(eq(drivers.userId, userId)); 
     return driver; 
@@ -69,18 +71,15 @@ export class DatabaseStorage implements IStorage {
 
   async getAllDrivers(): Promise<Driver[]> { return await db.select().from(drivers); }
   
-  // 🟢 MODIFICADO: Crea Conductor Y Usuario automáticamente
   async createDriver(insertDriver: InsertDriver): Promise<Driver> { 
     const id = randomUUID(); 
     let userId = null;
 
-    // Si el conductor tiene email, intentamos crearle un usuario
     if (insertDriver.email) {
         const existingUser = await this.getUserByEmail(insertDriver.email);
         if (existingUser) {
-            userId = existingUser.id; // Ya existe, lo vinculamos
+            userId = existingUser.id; 
         } else {
-            // No existe, creamos usuario. Contraseña = RUT (sin puntos ni guión idealmente, pero usamos lo que venga)
             const hashedPassword = await bcrypt.hash(insertDriver.rut, 10);
             const newUser = await this.createUser({
                 email: insertDriver.email,
@@ -95,7 +94,7 @@ export class DatabaseStorage implements IStorage {
     const newDriver = { 
         ...insertDriver, 
         id, 
-        userId, // Vinculamos el ID del usuario
+        userId, 
         createdAt: new Date(), 
         status: insertDriver.status ?? "active" 
     } as Driver; 
@@ -148,7 +147,52 @@ export class DatabaseStorage implements IStorage {
   async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }
   async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> { const id = randomUUID(); const newLog = { ...insertLog, id, timestamp: new Date(), entityId: insertLog.entityId ?? null, details: insertLog.details ?? null } as AuditLog; await db.insert(auditLogs).values(newLog); return newLog; }
   
-  async updateVehicleLocation(location: VehicleLocation): Promise<void> { if (!firebaseDb) return; try { const ref = firebaseDb.ref(`locations/${location.vehicleId}`); await ref.set({ ...location, timestamp: Date.now() }); } catch (error) { console.error("Error actualizando ubicación en Firebase:", error); } }
-  async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> { if (!firebaseDb) return null; try { const ref = firebaseDb.ref(`locations/${vehicleId}`); const snapshot = await ref.once('value'); return snapshot.val() as VehicleLocation | null; } catch (error) { console.error("Error obteniendo ubicación de Firebase:", error); return null; } }
+  // 🟢 IMPLEMENTACIÓN: GUARDAR Y LEER DESDE FIREBASE REALTIME DATABASE
+  
+  // 1. Guardar (Escritura)
+  async updateVehicleLocation(location: VehicleLocation): Promise<void> {
+    if (!firebaseDb) return;
+    try {
+      // Guardamos bajo 'locations/ID_DEL_VEHICULO'
+      const ref = firebaseDb.ref(`locations/${location.vehicleId}`);
+      await ref.set({ 
+        ...location, 
+        timestamp: Date.now() 
+      });
+    } catch (error) {
+      console.error("Error guardando ubicación en Firebase:", error);
+    }
+  }
+
+  // 2. Leer uno (Lectura)
+  async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> {
+    if (!firebaseDb) return null;
+    try {
+      const ref = firebaseDb.ref(`locations/${vehicleId}`);
+      const snapshot = await ref.once('value');
+      return snapshot.val() as VehicleLocation | null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // 3. Leer todos (Lectura masiva para el Mapa)
+  async getAllVehicleLocations(): Promise<VehicleLocation[]> {
+    if (!firebaseDb) return [];
+    try {
+      const ref = firebaseDb.ref('locations');
+      const snapshot = await ref.once('value');
+      const data = snapshot.val();
+      
+      if (!data) return [];
+      
+      // Convertimos el objeto de Firebase en un Array para el frontend
+      return Object.values(data) as VehicleLocation[];
+    } catch (error) {
+      console.error("Error obteniendo ubicaciones de Firebase:", error);
+      return [];
+    }
+  }
 }
+
 export const storage = new DatabaseStorage();

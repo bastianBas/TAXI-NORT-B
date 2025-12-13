@@ -7,13 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil, DollarSign, Eye } from "lucide-react";
 import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
+// 👇 IMPORTANTE: Asegúrate de que este archivo exista en esta ruta exacta
 import PdfViewerModal from "@/components/route-slips/pdf-viewer-modal"; 
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 
-// Interfaz auxiliar para el PDF (id es string)
+// Definimos la interfaz localmente para evitar conflictos de importación
 interface PdfData {
-  id: string; 
+  id: string; // Asegurado como string
   date: string;
   driverName: string;
   vehiclePlate: string;
@@ -26,10 +27,11 @@ interface PdfData {
 export default function RouteSlips() {
   const { user } = useAuth();
   
-  // Estado para el modal de PDF
+  // Estado para controlar el Modal PDF
   const [selectedSlip, setSelectedSlip] = useState<PdfData | null>(null);
   const [isPdfOpen, setIsPdfOpen] = useState(false);
 
+  // Consultas de datos
   const { data: routeSlips, isLoading: isLoadingSlips } = useQuery<RouteSlip[]>({
     queryKey: ["/api/route-slips"],
   });
@@ -42,6 +44,7 @@ export default function RouteSlips() {
     queryKey: ["/api/vehicles"],
   });
 
+  // Helpers para obtener nombres
   const getDriverInfo = (id: string) => {
     const d = drivers?.find((d) => d.id === id);
     return d ? d.name : "Desconocido";
@@ -52,10 +55,10 @@ export default function RouteSlips() {
     return v ? v.plate : "Desconocido";
   };
 
-  // Función para abrir el PDF
+  // Función para abrir el PDF (Mapeo de datos)
   const handleOpenPdf = (slip: RouteSlip) => {
     const pdfData: PdfData = {
-      id: slip.id, // slip.id ya es string en tu schema, así que esto es compatible
+      id: slip.id,
       date: slip.date,
       driverName: getDriverInfo(slip.driverId),
       vehiclePlate: getVehicleInfo(slip.vehicleId),
@@ -76,7 +79,7 @@ export default function RouteSlips() {
     );
   }
 
-  // Identificar conductor
+  // Lógica de filtrado
   const currentDriver = user?.role === "driver" 
     ? drivers?.find(d => d.userId === user.id) 
     : null;
@@ -174,7 +177,7 @@ export default function RouteSlips() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2 items-center">
                           
-                          {/* BOTÓN VER PDF (Para todos) */}
+                          {/* BOTÓN VER PDF */}
                           <Button 
                             size="sm" 
                             variant="ghost" 
@@ -194,7 +197,7 @@ export default function RouteSlips() {
                             </Link>
                           )}
 
-                          {/* EDITAR (Solo Admin/Op) */}
+                          {/* BOTÓN EDITAR */}
                           {canEdit && (
                             <RouteSlipDialog 
                               slipToEdit={slip} 
@@ -216,7 +219,7 @@ export default function RouteSlips() {
         </CardContent>
       </Card>
       
-      {/* Modal Renderizado */}
+      {/* Componente Modal */}
       <PdfViewerModal 
         isOpen={isPdfOpen} 
         onClose={() => setIsPdfOpen(false)} 
