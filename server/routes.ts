@@ -10,8 +10,8 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage"; 
-import { firebaseDb } from "./firebase"; // 🟢 IMPORTANTE: Necesario para leer Firebase
+import { storage } from "./storage"; // ✅ Usamos storage para obtener la ubicación filtrada
+import { firebaseDb } from "./firebase"; // Se mantiene por si se usa en otras partes
 
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -35,21 +35,10 @@ export function registerRoutes(app: Express): Server {
   // 1. GET: El Dashboard pide todas las ubicaciones
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-      let firebaseLocations: any[] = []; 
       
-      // 🟢 CORRECCIÓN: Leemos directamente de Firebase
-      if (firebaseDb) {
-        try {
-          const snapshot = await firebaseDb.ref("locations").once("value");
-          const data = snapshot.val();
-          if (data) {
-             firebaseLocations = Object.values(data);
-          }
-        } catch (e) {
-          console.log("Firebase no devolvió datos o no está conectado aún.");
-        }
-      }
-
+      // 🟢 CORRECCIÓN: Llamamos a la función de storage que ya aplica el filtro de 30 segundos
+      const firebaseLocations: any[] = await storage.getAllVehicleLocations();
+      
       // B. Obtenemos metadatos de MySQL
       const fleetMetadata = await db
         .select({
@@ -71,7 +60,7 @@ export function registerRoutes(app: Express): Server {
       fleetMetadata.forEach((meta) => {
         if (uniqueVehicles.has(meta.vehicleId)) return;
 
-        // Buscamos si este vehículo tiene datos en Firebase
+        // Buscamos si este vehículo tiene datos en la lista filtrada (solo activos)
         const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
 
         uniqueVehicles.set(meta.vehicleId, {
@@ -102,7 +91,7 @@ export function registerRoutes(app: Express): Server {
           plate: "TEST-OK",
           driverName: "Juan Pérez",
           lat: -27.3668, 
-          lng: -70.3319,
+          lng: -70.3319, // Coordenada de Copiapó
           isPaid: true
         });
 
@@ -112,7 +101,7 @@ export function registerRoutes(app: Express): Server {
           plate: "TEST-NO",
           driverName: "Pedro Deuda",
           lat: -27.3680, 
-          lng: -70.3330,
+          lng: -70.3330, // Coordenada de Copiapó
           isPaid: false
         });
       }
@@ -134,8 +123,7 @@ export function registerRoutes(app: Express): Server {
       const { lat, lng } = req.body;
       if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
 
-      // 🟢 CORRECCIÓN: Buscamos al conductor por su ID de usuario directamente en DB
-      // porque storage.getDriverByUserId a veces no existe.
+      // Buscamos al conductor por su ID de usuario directamente en DB
       const driver = await db.query.drivers.findFirst({
         where: eq(drivers.userId, req.user.id)
       });
@@ -156,14 +144,14 @@ export function registerRoutes(app: Express): Server {
 
       const activeVehicle = slips[0].vehicle;
 
-      // Guardamos en Firebase
+      // Guardamos en Firebase (updateVehicleLocation ahora guarda el timestamp)
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         status: 'active',
-        timestamp: Date.now()
+        timestamp: Date.now() // Se mantiene porque es la hora de la actualización
       });
 
       res.sendStatus(200);

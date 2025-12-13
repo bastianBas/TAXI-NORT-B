@@ -1,10 +1,12 @@
+// server/storage.ts
+
 import { users, drivers, vehicles, routeSlips, payments, auditLogs } from "@shared/schema";
 import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { firebaseDb } from "./firebase"; // Asegúrate de que server/firebase.ts esté bien configurado
-import bcrypt from "bcryptjs";
+import { firebaseDb } from "./firebase"; 
+import bcrypt from "bcryptjs"; 
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -13,9 +15,9 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   
   getDriver(id: string): Promise<Driver | undefined>;
-  getDriverByUserId(userId: string): Promise<Driver | undefined>;
+  getDriverByUserId(userId: string): Promise<Driver | undefined>; 
   getAllDrivers(): Promise<Driver[]>;
-  createDriver(driver: InsertDriver): Promise<Driver>;
+  createDriver(driver: InsertDriver): Promise<Driver>; 
   updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
   deleteDriver(id: string): Promise<boolean>;
   
@@ -42,7 +44,7 @@ export interface IStorage {
   // MÉTODOS GPS (CONECTADOS A FIREBASE)
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
   getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
-  getAllVehicleLocations(): Promise<VehicleLocation[]>;
+  getAllVehicleLocations(): Promise<VehicleLocation[]>; // ✅ NUEVO: Ahora está en la interfaz
 }
 
 export class DatabaseStorage implements IStorage {
@@ -149,48 +151,56 @@ export class DatabaseStorage implements IStorage {
   
   // 🟢 IMPLEMENTACIÓN: GUARDAR Y LEER DESDE FIREBASE REALTIME DATABASE
   
-  // 1. Guardar (Escritura)
-  async updateVehicleLocation(location: VehicleLocation): Promise<void> {
-    if (!firebaseDb) return;
-    try {
-      // Guardamos bajo 'locations/ID_DEL_VEHICULO'
-      const ref = firebaseDb.ref(`locations/${location.vehicleId}`);
-      await ref.set({ 
-        ...location, 
-        timestamp: Date.now() 
-      });
-    } catch (error) {
-      console.error("Error guardando ubicación en Firebase:", error);
-    }
+  // 1. Guardar (Ahora siempre incluye el timestamp)
+  async updateVehicleLocation(location: VehicleLocation): Promise<void> { 
+    if (!firebaseDb) return; 
+    try { 
+        const ref = firebaseDb.ref(`locations/${location.vehicleId}`); 
+        await ref.set({ 
+            ...location, 
+            timestamp: Date.now() // ✅ CRÍTICO: Guardamos la hora actual
+        }); 
+    } catch (error) { 
+        console.error("Error actualizando ubicación en Firebase:", error); 
+    } 
   }
 
   // 2. Leer uno (Lectura)
-  async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> {
-    if (!firebaseDb) return null;
-    try {
-      const ref = firebaseDb.ref(`locations/${vehicleId}`);
-      const snapshot = await ref.once('value');
-      return snapshot.val() as VehicleLocation | null;
-    } catch (error) {
-      return null;
-    }
+  async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> { 
+    if (!firebaseDb) return null; 
+    try { 
+        const ref = firebaseDb.ref(`locations/${vehicleId}`); 
+        const snapshot = await ref.once('value'); 
+        return snapshot.val() as VehicleLocation | null; 
+    } catch (error) { 
+        console.error("Error obteniendo ubicación de Firebase:", error); 
+        return null; 
+    } 
   }
 
   // 3. Leer todos (Lectura masiva para el Mapa)
   async getAllVehicleLocations(): Promise<VehicleLocation[]> {
     if (!firebaseDb) return [];
     try {
-      const ref = firebaseDb.ref('locations');
-      const snapshot = await ref.once('value');
-      const data = snapshot.val();
-      
-      if (!data) return [];
-      
-      // Convertimos el objeto de Firebase en un Array para el frontend
-      return Object.values(data) as VehicleLocation[];
+        const snapshot = await firebaseDb.ref("locations").once("value");
+        const data = snapshot.val();
+        
+        if (!data) return [];
+        
+        const locations: any[] = Object.values(data);
+        const currentTime = Date.now();
+        const TIMEOUT_MS = 30000; // 30 segundos de timeout
+
+        // ✅ LÓGICA DE FILTRO (TIMEOUT)
+        const activeLocations = locations.filter((loc: any) => {
+            // Un vehículo está activo si el timestamp existe Y no es más viejo que 30s.
+            return loc.timestamp && (currentTime - loc.timestamp < TIMEOUT_MS);
+        });
+        
+        return activeLocations as VehicleLocation[];
     } catch (error) {
-      console.error("Error obteniendo ubicaciones de Firebase:", error);
-      return [];
+        console.error("Error obteniendo ubicaciones de Firebase:", error);
+        return [];
     }
   }
 }

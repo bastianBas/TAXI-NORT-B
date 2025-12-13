@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet"; 
 import "leaflet/dist/leaflet.css";
 
-// --- DEFINICIÓN DE ÍCONOS DE COCHE PERSONALIZADOS ---
+// --- DEFINICIÓN DE ÍCONOS DE COCHE PERSONALIZADOS (Se mantiene igual) ---
 
-// 1. Plantilla SVG de un coche (Icono de Lucide-React, adaptado a SVG)
 const carIconSvg = (color: string) => `
     <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" 
         fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
@@ -18,7 +17,6 @@ const carIconSvg = (color: string) => `
     </svg>
 `;
 
-// 2. Función para crear el ícono con el color dinámico
 const createCarIcon = (color: string) => L.divIcon({
     html: carIconSvg(color),
     className: 'custom-car-icon',
@@ -26,32 +24,54 @@ const createCarIcon = (color: string) => L.divIcon({
     iconAnchor: [15, 30], 
 });
 
-// 3. Creación de las instancias de íconos (Verde/Rojo)
-const iconPaid = createCarIcon('#10B981'); // Verde esmeralda de Tailwind
-const iconUnpaid = createCarIcon('#EF4444'); // Rojo de Tailwind
+const iconPaid = createCarIcon('#10B981'); 
+const iconUnpaid = createCarIcon('#EF4444'); 
 
-// Centro del mapa (Santiago)
-const center: [number, number] = [-33.4489, -70.6693]; 
+// 🟢 CORRECCIÓN 1: Centro Predeterminado en Copiapó
+const COPIAPO_CENTER: [number, number] = [-27.3668, -70.3319]; 
 
-// Componente auxiliar para centrar el mapa al cargar
-function SetViewOnMount({ center }: { center: [number, number] }) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView(center, 12);
-  }, [map, center]);
-  return null;
+// --- NUEVO COMPONENTE: Maneja la vista y el centrado dinámico ---
+function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCenter: [number, number] }) {
+    const map = useMap();
+    const hasInitializedRef = useRef(false);
+
+    useEffect(() => {
+        if (locations.length > 0) {
+            // Si hay autos activos, centramos en el primero
+            const firstLocation = locations[0];
+            const lat = Number(firstLocation.lat);
+            const lng = Number(firstLocation.lng);
+            
+            if (!hasInitializedRef.current || map.getZoom() < 13) {
+                // Centramos y hacemos zoom en el primer auto activo (si no se ha inicializado o si el zoom es muy bajo)
+                map.setView([lat, lng], 14);
+                hasInitializedRef.current = true;
+            } else {
+                // Solo movemos el centro sin cambiar el zoom si ya está inicializado
+                map.panTo([lat, lng]);
+            }
+        } else if (!hasInitializedRef.current) {
+            // Si no hay autos y no se ha inicializado, centramos en Copiapó (default)
+            map.setView(defaultCenter, 12);
+            hasInitializedRef.current = true;
+        }
+    }, [map, locations, defaultCenter]);
+
+    return null;
 }
+// -----------------------------------------------------------------
 
-// 🟢 CORRECCIÓN: Cambiamos 'export default' a 'export'
-export function FleetMap() { 
+
+export function FleetMap() {
   const [vehicles, setVehicles] = useState<any[]>([]);
 
-  // Función para obtener datos de la API
+  // Función para obtener datos de la API (incluye el filtro de timeout de 30s)
   const fetchFleet = async () => {
     try {
       const res = await fetch("/api/vehicle-locations");
       if (res.ok) {
         const data = await res.json();
+        // Los datos ya están filtrados por el servidor por el timestamp de 30s
         setVehicles(data);
       }
     } catch (error) {
@@ -65,12 +85,29 @@ export function FleetMap() {
     const interval = setInterval(fetchFleet, 5000); 
     return () => clearInterval(interval);
   }, []);
+  
+  // Usamos useMemo para establecer el centro inicial
+  const initialCenter = useMemo(() => {
+      // Si hay vehículos de prueba (TEST-OK) o reales, centramos en el primero.
+      // Sino, usamos el centro de Copiapó.
+      if (vehicles.length > 0) {
+          const first = vehicles[0];
+          return [Number(first.lat), Number(first.lng)] as [number, number];
+      }
+      return COPIAPO_CENTER;
+  }, [vehicles]);
+
 
   return (
-    // Contenedor visual del mapa
     <div className="h-full w-full rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0">
-      <MapContainer center={center} zoom={12} style={{ height: "500px", width: "100%" }}>
-        <SetViewOnMount center={center} />
+      <MapContainer 
+        // 🟢 CORRECCIÓN 2: Usamos el centro inicial, que será Copiapó si no hay autos
+        center={initialCenter} 
+        zoom={12} 
+        style={{ height: "500px", width: "100%" }}
+      >
+        {/* 🟢 CORRECCIÓN 3: Usamos el nuevo componente para manejar el centrado dinámico */}
+        <ViewHandler locations={vehicles} defaultCenter={COPIAPO_CENTER} />
         
         {/* Capa de OpenStreetMap (Gratis) */}
         <TileLayer
@@ -78,22 +115,20 @@ export function FleetMap() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Marcadores de Vehículos */}
+        {/* Marcadores de Vehículos (Se mantienen igual) */}
         {vehicles.map((v) => {
           const lat = Number(v.lat);
           const lng = Number(v.lng);
-          // Si las coordenadas no son válidas, no mostramos nada
           if (isNaN(lat) || isNaN(lng)) return null;
 
           return (
             <Marker 
               key={v.vehicleId} 
               position={[lat, lng]} 
-              // Usamos el ícono de auto verde o rojo
               icon={v.isPaid ? iconPaid : iconUnpaid}
             >
               <Popup>
-                {/* Diseño del Popup (Se mantiene igual) */}
+                {/* ... Código del Popup ... */}
                 <div className="min-w-[200px] p-1 font-sans text-sm">
                   <div className="border-b pb-2 mb-2">
                     <h3 className="font-bold text-base">{v.model}</h3>
@@ -105,7 +140,6 @@ export function FleetMap() {
                     <p className="font-medium">{v.driverName}</p>
                   </div>
 
-                  {/* Etiqueta de Estado (Roja o Verde) */}
                   <div>
                     {v.isPaid ? (
                       <span className="text-green-700 font-bold text-xs bg-green-100 px-2 py-1 rounded-full border border-green-200">
