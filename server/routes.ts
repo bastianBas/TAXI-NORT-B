@@ -1,3 +1,5 @@
+// server/routes.ts
+
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
@@ -10,7 +12,8 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage"; // ✅ Usamos storage para obtener/guardar la ubicación
+// 🟢 CORRECCIÓN: Importación por defecto (sin llaves)
+import storage from "./storage"; 
 import { firebaseDb } from "./firebase"; 
 
 const storageMulter = multer.diskStorage({
@@ -32,7 +35,7 @@ export function registerRoutes(app: Express): Server {
 
   // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
 
-  // 1. GET: El Dashboard pide todas las ubicaciones (Usa el filtro de 30s de Storage)
+  // 1. GET: El Dashboard pide todas las ubicaciones
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       
@@ -78,7 +81,7 @@ export function registerRoutes(app: Express): Server {
       const activeFleet = Array.from(uniqueVehicles.values())
           .filter((v: any) => v.lat !== null && v.lng !== null);
 
-      // ❌ Se eliminaron los autos de prueba. Si la lista está vacía, se devuelve vacía.
+      // ❌ ELIMINADO: Se quitó el código de generación de datos de prueba.
 
       res.json(activeFleet);
 
@@ -117,15 +120,14 @@ export function registerRoutes(app: Express): Server {
 
       const activeVehicle = slips[0].vehicle;
 
-      // 🟢 CORRECCIÓN: Llamamos a storage.updateVehicleLocation.
-      // Eliminamos el 'timestamp: Date.now()' de aquí, ya que storage.ts lo añade.
+      // 🟢 CORRECCIÓN: Llamamos a storage.updateVehicleLocation. storage.ts añade el timestamp.
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         status: 'active',
-      } as any); // Usamos 'as any' para compatibilidad de tipos
+      } as any); 
 
       res.sendStatus(200);
     } catch (e) {
