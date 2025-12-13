@@ -1,16 +1,34 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { RouteSlip, Driver, Vehicle } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil, DollarSign } from "lucide-react";
+import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil, DollarSign, Eye } from "lucide-react";
 import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
+import PdfViewerModal from "@/components/route-slips/pdf-viewer-modal"; 
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 
+// Interfaz auxiliar para el PDF (id es string)
+interface PdfData {
+  id: string; 
+  date: string;
+  driverName: string;
+  vehiclePlate: string;
+  startTime: string;
+  endTime: string;
+  paymentStatus: string;
+  firma: string | null;
+}
+
 export default function RouteSlips() {
   const { user } = useAuth();
+  
+  // Estado para el modal de PDF
+  const [selectedSlip, setSelectedSlip] = useState<PdfData | null>(null);
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
 
   const { data: routeSlips, isLoading: isLoadingSlips } = useQuery<RouteSlip[]>({
     queryKey: ["/api/route-slips"],
@@ -34,6 +52,22 @@ export default function RouteSlips() {
     return v ? v.plate : "Desconocido";
   };
 
+  // Función para abrir el PDF
+  const handleOpenPdf = (slip: RouteSlip) => {
+    const pdfData: PdfData = {
+      id: slip.id, // slip.id ya es string en tu schema, así que esto es compatible
+      date: slip.date,
+      driverName: getDriverInfo(slip.driverId),
+      vehiclePlate: getVehicleInfo(slip.vehicleId),
+      startTime: slip.startTime,
+      endTime: slip.endTime,
+      paymentStatus: slip.paymentStatus,
+      firma: slip.signatureUrl
+    };
+    setSelectedSlip(pdfData);
+    setIsPdfOpen(true);
+  };
+
   if (isLoadingSlips) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -42,15 +76,13 @@ export default function RouteSlips() {
     );
   }
 
-  // 🟢 Identificar al conductor actual
+  // Identificar conductor
   const currentDriver = user?.role === "driver" 
     ? drivers?.find(d => d.userId === user.id) 
     : null;
 
   const displayedSlips = (routeSlips || []).filter((slip) => {
     if (["admin", "operator", "finance"].includes(user?.role || "")) return true;
-    
-    // 🟢 Filtro correcto para conductores
     if (user?.role === "driver" && currentDriver) {
         return slip.driverId === currentDriver.id;
     }
@@ -140,21 +172,34 @@ export default function RouteSlips() {
                       </TableCell>
 
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {/* 🟢 Botón Pagar */}
+                        <div className="flex justify-end gap-2 items-center">
+                          
+                          {/* BOTÓN VER PDF (Para todos) */}
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="h-8 gap-1 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                            onClick={() => handleOpenPdf(slip)}
+                            title="Ver Hoja de Ruta"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+
+                          {/* BOTÓN PAGAR (Solo Conductor) */}
                           {isDriver && slip.paymentStatus !== "paid" && (
                             <Link href="/payments">
                               <Button size="sm" variant="outline" className="h-8 gap-1 text-green-600 border-green-200 hover:bg-green-50">
-                                <DollarSign className="h-3 w-3" /> Pagar
+                                <DollarSign className="h-3 w-3" />
                               </Button>
                             </Link>
                           )}
 
+                          {/* EDITAR (Solo Admin/Op) */}
                           {canEdit && (
                             <RouteSlipDialog 
                               slipToEdit={slip} 
                               trigger={
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-gray-900">
                                   <Pencil className="h-4 w-4" />
                                 </Button>
                               }
@@ -170,6 +215,13 @@ export default function RouteSlips() {
           )}
         </CardContent>
       </Card>
+      
+      {/* Modal Renderizado */}
+      <PdfViewerModal 
+        isOpen={isPdfOpen} 
+        onClose={() => setIsPdfOpen(false)} 
+        data={selectedSlip} 
+      />
     </div>
   );
 }
