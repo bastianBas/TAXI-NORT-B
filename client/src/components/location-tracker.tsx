@@ -1,38 +1,59 @@
 import { useEffect } from "react";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth"; // O tu hook de autenticación
+import { useToast } from "@/hooks/use-toast"; // Si tienes notificaciones
 
 export function LocationTracker() {
   const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Si no es conductor, no hacemos nada (ahorramos batería al admin)
+    // 1. Solo activamos si el usuario es CONDUCTOR
     if (!user || user.role !== 'driver') return;
 
-    // Función que envía los datos a nuestra nueva ruta
-    const sendLocation = (position: GeolocationPosition) => {
-      const { latitude, longitude } = position.coords;
-      
-      fetch("/api/vehicle-locations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat: latitude, lng: longitude }),
-      }).catch(err => console.error("Error enviando GPS:", err));
+    if (!('geolocation' in navigator)) {
+      console.error("Tu dispositivo no soporta GPS");
+      return;
+    }
+
+    // 2. Función que envía la ubicación al servidor
+    const sendLocation = async (position: GeolocationPosition) => {
+      try {
+        const { latitude, longitude } = position.coords;
+        
+        await fetch("/api/vehicle-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: latitude, lng: longitude }),
+        });
+        
+      } catch (error) {
+        console.error("Error enviando ubicación:", error);
+      }
     };
 
-    // Activamos el sensor GPS del navegador
+    // 3. Activamos el rastreo (Esto pedirá permisos en el móvil)
     const watchId = navigator.geolocation.watchPosition(
       sendLocation,
-      (err) => console.error("Error obteniendo GPS:", err),
+      (error) => {
+        console.error("Error de GPS:", error);
+        if (error.code === 1) {
+          toast({
+            variant: "destructive",
+            title: "GPS Desactivado",
+            description: "Por favor permite el acceso a la ubicación para trabajar.",
+          });
+        }
+      },
       {
-        enableHighAccuracy: true, // Usar GPS real
+        enableHighAccuracy: true, // Modo alta precisión para autos
         timeout: 10000,
-        maximumAge: 5000 
+        maximumAge: 5000,
       }
     );
 
-    // Limpieza al cerrar sesión
+    // Limpieza al salir
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [user]);
+  }, [user, toast]);
 
-  return null; // Es invisible
-}
+  return null; // Este componente no renderiza nada visual
+}s
