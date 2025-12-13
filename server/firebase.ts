@@ -21,7 +21,7 @@ if (!admin.apps.length) {
           // Render a veces escapa los saltos de línea como "\\n", esto lo arregla.
           privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
         }),
-        databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`
+        databaseURL: `https://taxinort-96bc8-default-rtdb.firebaseio.com`
       });
       console.log("✅ [Firebase] Conectado vía Variables.");
     } 
@@ -38,7 +38,7 @@ if (!admin.apps.length) {
         
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccountPath),
-          databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com`
+          databaseURL: `https://taxinort-96bc8-default-rtdb.firebaseio.com`
         });
         console.log("✅ [Firebase] Conectado vía Archivo Local.");
       } else {
