@@ -6,6 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar"; 
 import { LocationTracker } from "@/components/location-tracker";
+import { Loader2 } from "lucide-react";
+
+// Páginas
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -19,24 +22,25 @@ import NotFound from "@/pages/not-found";
 function AppRouter() {
   const { user, isLoading } = useAuth();
 
-  // Pantalla de carga centralizada para evitar parpadeos
+  // 1. PANTALLA DE CARGA (Evita el blanco inicial)
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-sm text-muted-foreground animate-pulse">Cargando TaxiNort...</p>
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground font-medium animate-pulse">Cargando TaxiNort...</p>
         </div>
       </div>
     );
   }
 
+  // 2. SI NO HAY USUARIO -> Solo permite Login/Registro
   if (!user) {
     return (
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
-        {/* Cualquier otra ruta redirige a login */}
+        {/* Cualquier otra ruta redirige al login */}
         <Route path="/:rest*">
           <Redirect to="/login" />
         </Route>
@@ -44,24 +48,15 @@ function AppRouter() {
     );
   }
 
+  // 3. SI HAY USUARIO -> Muestra la App Completa
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
-      
-      {/* Tracker GPS activo solo si hay usuario logueado */}
       <LocationTracker />
-
       <AppSidebar />
-
-      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6">
-        <div className="animate-in fade-in duration-500">
+      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-4 md:p-6 overflow-x-hidden">
+        <div className="animate-in fade-in zoom-in-95 duration-300">
           <Switch>
             <Route path="/" component={Dashboard} />
-            
-            {/* Si un usuario logueado intenta ir a login, va al dashboard */}
-            <Route path="/login">
-              <Redirect to="/" />
-            </Route>
-
             <Route path="/drivers">
               <ProtectedRoute allowedRoles={["admin", "operator"]}>
                 <Drivers />
@@ -77,18 +72,18 @@ function AppRouter() {
                 <RouteSlips />
               </ProtectedRoute>
             </Route>
-            
             <Route path="/payments">
               <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
                 <Payments />
               </ProtectedRoute>
             </Route>
-
             <Route path="/audit">
               <ProtectedRoute allowedRoles={["admin"]}>
                 <Audit />
               </ProtectedRoute>
             </Route>
+            {/* Si intenta ir a login estando logueado, vuelve al inicio */}
+            <Route path="/login"><Redirect to="/" /></Route>
             <Route component={NotFound} />
           </Switch>
         </div>

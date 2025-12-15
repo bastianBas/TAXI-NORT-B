@@ -1,227 +1,266 @@
-import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
+import { Page, Text, View, Document, StyleSheet } from '@react-pdf/renderer';
 
-// Estilos estandarizados para formato A4
 const styles = StyleSheet.create({
   page: { 
-    flexDirection: 'column', 
-    backgroundColor: '#FFFFFF', 
-    padding: 40, 
-    fontFamily: 'Helvetica',
-    fontSize: 10 
+    padding: 20, 
+    fontFamily: 'Helvetica', 
+    fontSize: 8 
   },
   
-  // Encabezado Corporativo
-  header: { 
-    marginBottom: 20, 
-    borderBottomWidth: 2, 
-    borderBottomColor: '#111827', 
-    paddingBottom: 10, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between',
-    alignItems: 'flex-start'
+  // --- TÍTULOS SUPERIORES ---
+  headerContainer: { alignItems: 'center', marginBottom: 10 },
+  titleMain: { fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
+  titleSub: { fontSize: 10, fontWeight: 'bold', marginTop: 2 },
+  
+  // Logo superior derecha (Simulado como H1.jpeg)
+  topStamp: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 60,
+    height: 60,
+    borderWidth: 2,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000',
   },
-  companyInfo: { flexDirection: 'column' },
-  companyTitle: { fontSize: 16, fontWeight: 'bold', textTransform: 'uppercase', color: '#111827' },
-  companySub: { fontSize: 9, color: '#4B5563', marginTop: 1 },
-  folioBox: { 
+  topStampText: { color: '#FFF', fontSize: 8, fontWeight: 'bold' },
+
+  // --- ESTRUCTURA DE TABLAS ---
+  tableContainer: { 
+    width: '100%', 
     borderWidth: 1, 
-    borderColor: '#111827', 
-    padding: 5, 
-    alignItems: 'center', 
-    minWidth: 100 
+    borderColor: '#000', 
+    marginBottom: 5 
   },
-  folioTitle: { fontSize: 8, fontWeight: 'bold', textTransform: 'uppercase' },
-  folioValue: { fontSize: 12, fontWeight: 'bold', color: '#DC2626' },
-
-  // Título del Documento
-  docTitleContainer: { 
-    marginVertical: 15, 
-    alignItems: 'center', 
+  row: { 
+    flexDirection: 'row', 
     borderBottomWidth: 1, 
-    borderBottomColor: '#E5E7EB', 
-    paddingBottom: 15 
+    borderBottomColor: '#000', 
+    alignItems: 'center',
+    minHeight: 16
   },
-  docTitle: { fontSize: 14, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1 },
   
-  // Secciones de Datos
-  section: { marginVertical: 8 },
-  sectionTitle: { 
-    fontSize: 9, 
-    fontWeight: 'bold', 
-    backgroundColor: '#F3F4F6', 
-    padding: 4, 
-    marginBottom: 5,
-    textTransform: 'uppercase',
-    color: '#374151'
+  // Celdas
+  cellLabel: { 
+    backgroundColor: '#e5e5e5', 
+    padding: 2,
+    borderRightWidth: 1,
+    borderRightColor: '#000',
+    fontWeight: 'bold',
+    fontSize: 7,
+    textAlign: 'center',
+    height: '100%',
+    justifyContent: 'center'
   },
-  row: { flexDirection: 'row', marginBottom: 4 },
-  label: { width: 130, fontWeight: 'bold', color: '#4B5563' },
-  value: { flex: 1, color: '#111827' },
+  cellValue: {
+    padding: 2,
+    borderRightWidth: 1,
+    borderRightColor: '#000',
+    fontSize: 8,
+    textAlign: 'center',
+    height: '100%',
+    justifyContent: 'center'
+  },
 
-  // Timbre de "PAGADO" (Marca de agua simulada)
-  stampContainer: { 
-    position: 'absolute', 
-    top: 200, 
-    right: 150, 
-    opacity: 0.25, 
-    transform: 'rotate(-20deg)' 
-  },
-  stampCircle: { 
-    width: 120, 
-    height: 120, 
-    borderRadius: 60, 
-    borderWidth: 4, 
-    borderColor: '#059669', // Verde Esmeralda
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    padding: 10 
-  },
-  stampText: { color: '#059669', fontSize: 10, textAlign: 'center', fontWeight: 'bold' },
-  stampBig: { color: '#059669', fontSize: 18, fontWeight: 'bold', marginVertical: 5 },
+  // Sección especial Patente
+  patenteRow: { flexDirection: 'row', marginBottom: 10, marginTop: 10, alignItems: 'center' },
+  patenteLabel: { fontSize: 12, fontWeight: 'bold', marginRight: 5 },
+  patenteLine: { borderBottomWidth: 1, width: 200, textAlign: 'center', fontSize: 14, fontWeight: 'bold' },
 
-  // Área Legal (Pie de página)
-  legalSection: { 
-    marginTop: 'auto', 
-    paddingTop: 10, 
-    borderTopWidth: 1, 
-    borderTopColor: '#111827',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end'
+  // Timbre Grande "PAGADO"
+  watermark: {
+    position: 'absolute',
+    top: 350,
+    left: 150,
+    opacity: 0.3,
+    transform: 'rotate(-30deg)'
   },
-  qrCode: { width: 70, height: 70 },
-  signatureArea: { alignItems: 'center', width: 150 },
-  signatureLine: { width: '100%', borderBottomWidth: 1, borderBottomColor: '#000', marginBottom: 5 },
-  signatureText: { fontSize: 8, color: '#4B5563' },
-  
-  disclaimer: { fontSize: 7, color: '#9CA3AF', marginTop: 10, textAlign: 'center' }
+  watermarkText: { fontSize: 60, color: 'red', fontWeight: 'bold' }
 });
 
 export interface PdfData {
   id: string;
   date: string;
   driverName: string;
+  driverRut: string;
   vehiclePlate: string;
+  ownerName: string;
+  ownerRut: string;
+  technicalReview: string;
+  permCirculation: string;
+  soap: string;
+  paymentStatus: string;
+  authorizedBy: string | null;
   startTime: string;
   endTime: string;
-  paymentStatus: string;
-  authorizedBy?: string | null;
-  qrData?: string | null;
 }
 
-export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
-  <Document>
-    <Page size="A4" style={styles.page}>
-      
-      {/* 1. Encabezado Corporativo */}
-      <View style={styles.header}>
-        <View style={styles.companyInfo}>
-          <Text style={styles.companyTitle}>TAXI NORT S.A.</Text>
-          <Text style={styles.companySub}>RUT: 76.123.456-K</Text>
-          <Text style={styles.companySub}>GIRO: TRANSPORTE DE PASAJEROS</Text>
-          <Text style={styles.companySub}>DIRECCIÓN: COPIAPÓ, REGIÓN DE ATACAMA</Text>
-          <Text style={styles.companySub}>CONTACTO: contacto@taxinort.cl</Text>
-        </View>
+export const RouteSlipPdf = ({ data }: { data: PdfData }) => {
+  // Función para separar nombres (Simulación para llenar casillas)
+  const splitName = (fullName: string) => {
+    const parts = fullName.split(' ');
+    const apellidoM = parts.length > 1 ? parts.pop() : '';
+    const apellidoP = parts.length > 1 ? parts.pop() : '';
+    const nombres = parts.join(' ');
+    return { nombres, apellidoP, apellidoM };
+  };
+
+  const driverParts = splitName(data.driverName);
+  const ownerParts = splitName(data.ownerName);
+
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
         
-        <View style={styles.folioBox}>
-          <Text style={styles.folioTitle}>FOLIO INTERNO</Text>
-          <Text style={styles.folioValue}>#{data.id.slice(0, 6).toUpperCase()}</Text>
+        {/* --- ENCABEZADO LEGAL H1 --- */}
+        <View style={styles.headerContainer}>
+          <Text style={styles.titleMain}>SISTEMA INTERNO DE CONTROL DIARIO</Text>
+          <Text style={styles.titleSub}>Articulo 49 Bis, DS 212/92 - MTT</Text>
         </View>
-      </View>
 
-      <View style={styles.docTitleContainer}>
-        <Text style={styles.docTitle}>HOJA DE RUTA Y CONTROL DIARIO</Text>
-      </View>
+        {/* LOGO CIRCULAR NEGRO */}
+        <View style={styles.topStamp}>
+          <Text style={styles.topStampText}>LINEA 2</Text>
+          <Text style={styles.topStampText}>COPIAPÓ</Text>
+        </View>
 
-      {/* 2. Timbre de Pagado (Solo si corresponde) */}
-      {data.paymentStatus === 'paid' && (
-        <View style={styles.stampContainer}>
-          <View style={styles.stampCircle}>
-            <Text style={styles.stampText}>TAXI NORT S.A.</Text>
-            <Text style={styles.stampBig}>PAGADO</Text>
-            <Text style={styles.stampText}>{data.date}</Text>
-            <Text style={{...styles.stampText, fontSize: 8, marginTop: 2}}>TESORERÍA</Text>
+        {/* --- PLACA PATENTE --- */}
+        <View style={styles.patenteRow}>
+          <Text style={styles.patenteLabel}>PLACA PATENTE:</Text>
+          <Text style={styles.patenteLine}>{data.vehiclePlate.toUpperCase()}</Text>
+        </View>
+
+        {/* --- BLOQUE 1: DATOS GENERALES --- */}
+        <View style={styles.tableContainer}>
+          <View style={styles.row}>
+            <Text style={{...styles.cellLabel, width: '30%'}}>Nº LINEA</Text>
+            <Text style={{...styles.cellLabel, width: '40%'}}>COMUNA SERVICIO</Text>
+            <Text style={{...styles.cellLabel, width: '30%', borderRightWidth: 0}}>FOLIO SERVICIO</Text>
+          </View>
+          <View style={{...styles.row, borderBottomWidth: 0}}>
+            <Text style={{...styles.cellValue, width: '30%'}}>2</Text>
+            <Text style={{...styles.cellValue, width: '40%'}}>COPIAPÓ</Text>
+            <Text style={{...styles.cellValue, width: '30%', borderRightWidth: 0, color: 'red', fontWeight: 'bold'}}>{data.id.slice(0,8).toUpperCase()}</Text>
           </View>
         </View>
-      )}
 
-      {/* 3. Datos del Conductor y Vehículo */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>IDENTIFICACIÓN DEL SERVICIO</Text>
-        
-        <View style={styles.row}>
-          <Text style={styles.label}>CONDUCTOR:</Text>
-          <Text style={styles.value}>{data.driverName.toUpperCase()}</Text>
+        {/* --- BLOQUE 2: CONDUCTOR --- */}
+        <View style={styles.tableContainer}>
+          <View style={{...styles.row, backgroundColor: '#e5e5e5', justifyContent: 'center'}}>
+            <Text style={{fontSize: 8, fontWeight: 'bold'}}>CONDUCTOR</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={{...styles.cellLabel, width: '30%'}}>NOMBRES</Text>
+            <Text style={{...styles.cellLabel, width: '25%'}}>APELLIDO PATERNO</Text>
+            <Text style={{...styles.cellLabel, width: '25%'}}>APELLIDO MATERNO</Text>
+            <Text style={{...styles.cellLabel, width: '20%', borderRightWidth: 0}}>RUT</Text>
+          </View>
+          <View style={{...styles.row, borderBottomWidth: 0}}>
+            <Text style={{...styles.cellValue, width: '30%'}}>{driverParts.nombres.toUpperCase()}</Text>
+            <Text style={{...styles.cellValue, width: '25%'}}>{driverParts.apellidoP?.toUpperCase()}</Text>
+            <Text style={{...styles.cellValue, width: '25%'}}>{driverParts.apellidoM?.toUpperCase()}</Text>
+            <Text style={{...styles.cellValue, width: '20%', borderRightWidth: 0}}>{data.driverRut}</Text>
+          </View>
         </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>VEHÍCULO (PATENTE):</Text>
-          <Text style={styles.value}>{data.vehiclePlate.toUpperCase()}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>FECHA OPERACIÓN:</Text>
-          <Text style={styles.value}>{data.date}</Text>
-        </View>
-      </View>
 
-      {/* 4. Tiempos y Jornada */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>CONTROL DE JORNADA</Text>
-        
-        <View style={styles.row}>
-          <Text style={styles.label}>HORA INICIO:</Text>
-          <Text style={styles.value}>{data.startTime}</Text>
+        {/* --- BLOQUE 3: LICENCIA --- */}
+        <View style={styles.tableContainer}>
+          <View style={{...styles.row, backgroundColor: '#e5e5e5', justifyContent: 'center'}}>
+            <Text style={{fontSize: 8, fontWeight: 'bold'}}>LICENCIA CONDUCTOR</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={{...styles.cellLabel, width: '20%'}}>Nº</Text>
+            <Text style={{...styles.cellLabel, width: '10%'}}>CLASE</Text>
+            <Text style={{...styles.cellLabel, width: '30%'}}>FECHA PROX. CONTROL</Text>
+            <Text style={{...styles.cellLabel, width: '40%', borderRightWidth: 0}}>COMUNA</Text>
+          </View>
+          <View style={{...styles.row, borderBottomWidth: 0}}>
+            <Text style={{...styles.cellValue, width: '20%'}}>[Nº]</Text>
+            <Text style={{...styles.cellValue, width: '10%'}}>[A2]</Text>
+            <Text style={{...styles.cellValue, width: '30%'}}>[FECHA]</Text>
+            <Text style={{...styles.cellValue, width: '40%', borderRightWidth: 0}}>COPIAPÓ</Text>
+          </View>
         </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>HORA TÉRMINO:</Text>
-          <Text style={styles.value}>{data.endTime}</Text>
-        </View>
-      </View>
 
-      {/* 5. Estado Financiero */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>ESTADO FINANCIERO</Text>
-        <View style={styles.row}>
-          <Text style={styles.label}>ESTADO:</Text>
-          <Text style={{ ...styles.value, color: data.paymentStatus === 'paid' ? '#059669' : '#D97706', fontWeight: 'bold' }}>
-            {data.paymentStatus === 'paid' ? 'DOCUMENTO PAGADO' : 'PENDIENTE DE PAGO'}
-          </Text>
+        {/* --- BLOQUE 4: PROPIETARIO --- */}
+        <View style={styles.tableContainer}>
+          <View style={{...styles.row, backgroundColor: '#e5e5e5', justifyContent: 'center'}}>
+            <Text style={{fontSize: 8, fontWeight: 'bold'}}>PROPIETARIO VEHICULO</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={{...styles.cellLabel, width: '30%'}}>NOMBRES</Text>
+            <Text style={{...styles.cellLabel, width: '25%'}}>APELLIDO PATERNO</Text>
+            <Text style={{...styles.cellLabel, width: '25%'}}>APELLIDO MATERNO</Text>
+            <Text style={{...styles.cellLabel, width: '20%', borderRightWidth: 0}}>RUT</Text>
+          </View>
+          <View style={{...styles.row, borderBottomWidth: 0}}>
+            <Text style={{...styles.cellValue, width: '30%'}}>{ownerParts.nombres.toUpperCase()}</Text>
+            <Text style={{...styles.cellValue, width: '25%'}}>{ownerParts.apellidoP?.toUpperCase()}</Text>
+            <Text style={{...styles.cellValue, width: '25%'}}>{ownerParts.apellidoM?.toUpperCase()}</Text>
+            <Text style={{...styles.cellValue, width: '20%', borderRightWidth: 0}}>{data.ownerRut}</Text>
+          </View>
         </View>
-      </View>
 
-      {/* 6. Sección Legal (QR y Firmas) */}
-      <View style={styles.legalSection}>
-        
-        {/* Código QR (Generado vía API pública para demostración) */}
-        <View>
-            {data.qrData ? (
-                <Image 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data.qrData)}`} 
-                    style={styles.qrCode}
-                />
-            ) : (
-                <View style={{...styles.qrCode, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center'}}>
-                    <Text style={{fontSize: 6, color: '#9CA3AF'}}>QR NO DISPONIBLE</Text>
+         {/* --- BLOQUE 5: VEHÍCULO --- */}
+         <View style={styles.tableContainer}>
+          <View style={{...styles.row, backgroundColor: '#e5e5e5', justifyContent: 'center'}}>
+            <Text style={{fontSize: 8, fontWeight: 'bold'}}>VEHICULO</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={{...styles.cellLabel, width: '25%'}}>REV. TÉCNICA</Text>
+            <Text style={{...styles.cellLabel, width: '25%'}}>PERM. CIRCULACIÓN</Text>
+            <Text style={{...styles.cellLabel, width: '25%'}}>SOAP</Text>
+            <Text style={{...styles.cellLabel, width: '25%', borderRightWidth: 0}}>CIRNSTP</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={{...styles.cellLabel, width: '25%', fontSize: 6}}>VENCIMIENTO</Text>
+            <Text style={{...styles.cellLabel, width: '25%', fontSize: 6}}>VENCIMIENTO</Text>
+            <Text style={{...styles.cellLabel, width: '25%', fontSize: 6}}>VENCIMIENTO</Text>
+            <Text style={{...styles.cellLabel, width: '25%', fontSize: 6, borderRightWidth: 0}}>VENCIMIENTO</Text>
+          </View>
+          <View style={{...styles.row, borderBottomWidth: 0}}>
+            <Text style={{...styles.cellValue, width: '25%'}}>{data.technicalReview}</Text>
+            <Text style={{...styles.cellValue, width: '25%'}}>{data.permCirculation}</Text>
+            <Text style={{...styles.cellValue, width: '25%'}}>{data.soap}</Text>
+            <Text style={{...styles.cellValue, width: '25%', borderRightWidth: 0}}>[FECHA]</Text>
+          </View>
+        </View>
+
+        {/* --- BLOQUE CONTROL DIARIO (Foto H2) --- */}
+        <View style={{...styles.tableContainer, marginTop: 10}}>
+             <View style={{...styles.row, backgroundColor: '#e5e5e5', justifyContent: 'center'}}>
+                <Text style={{fontSize: 8, fontWeight: 'bold'}}>CONTROL DIARIO</Text>
+             </View>
+             <View style={styles.row}>
+                <Text style={{...styles.cellLabel, width: '15%'}}>FECHA</Text>
+                <Text style={{...styles.cellLabel, width: '20%'}}>HORA INICIO</Text>
+                <Text style={{...styles.cellLabel, width: '20%'}}>HORA TERMINO</Text>
+                <Text style={{...styles.cellLabel, width: '45%', borderRightWidth: 0}}>FIRMA / TIMBRE CONTROLADOR</Text>
+             </View>
+             <View style={{...styles.row, minHeight: 40, borderBottomWidth: 0}}>
+                <Text style={{...styles.cellValue, width: '15%'}}>{data.date}</Text>
+                <Text style={{...styles.cellValue, width: '20%'}}>{data.startTime}</Text>
+                <Text style={{...styles.cellValue, width: '20%'}}>{data.endTime}</Text>
+                <View style={{width: '45%', alignItems: 'center', justifyContent: 'center'}}>
+                    {data.authorizedBy ? (
+                         <Text style={{color: 'blue', fontSize: 8}}>AUTORIZADO DIGITALMENTE</Text>
+                    ) : (
+                         <Text style={{color: '#ccc'}}>PENDIENTE</Text>
+                    )}
                 </View>
-            )}
-            <Text style={{fontSize: 6, marginTop: 4}}>VALIDACIÓN DIGITAL</Text>
+             </View>
         </View>
 
-        {/* Firma Gerencia */}
-        <View style={styles.signatureArea}>
-            <View style={styles.signatureLine} />
-            <Text style={{...styles.signatureText, fontWeight: 'bold'}}>V°B° GERENCIA</Text>
-            <Text style={styles.signatureText}>TAXI NORT S.A.</Text>
-            {data.authorizedBy && <Text style={{fontSize: 6, color: '#059669', marginTop: 2}}>FIRMADO DIGITALMENTE</Text>}
-        </View>
+        {/* TIMBRE PAGADO (Si corresponde) */}
+        {data.paymentStatus === 'paid' && (
+             <View style={styles.watermark}>
+                 <Text style={styles.watermarkText}>PAGADO</Text>
+             </View>
+        )}
 
-      </View>
-
-      <Text style={styles.disclaimer}>
-        Este documento es un comprobante interno de operación y pago de hoja de ruta. 
-        Válido ante fiscalización interna y control de flota. 
-        Generado electrónicamente el {new Date().toLocaleString()}.
-      </Text>
-
-    </Page>
-  </Document>
-);
+      </Page>
+    </Document>
+  );
+};
