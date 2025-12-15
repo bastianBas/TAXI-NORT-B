@@ -1,11 +1,9 @@
-// client/src/components/ui/fleet-map.tsx
-
 import { useEffect, useState, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet"; 
 import "leaflet/dist/leaflet.css";
 
-// --- ÍCONOS (Igual) ---
+// --- ÍCONOS (Se mantienen igual) ---
 const carIconSvg = (color: string) => `
     <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" 
         fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
@@ -30,8 +28,10 @@ const iconUnpaid = createCarIcon('#EF4444');
 
 const COPIAPO_CENTER: [number, number] = [-27.3668, -70.3319]; 
 
+// --- 🟢 COMPONENTE DE VISTA CORREGIDO ---
 function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCenter: [number, number] }) {
     const map = useMap();
+    // Usamos una referencia para saber si ya centramos la vista inicialmente
     const hasInitializedRef = useRef(false);
 
     useEffect(() => {
@@ -40,13 +40,18 @@ function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCe
             const lat = Number(firstLocation.lat);
             const lng = Number(firstLocation.lng);
             
-            if (!hasInitializedRef.current || map.getZoom() < 13) {
-                map.setView([lat, lng], 14);
+            // CORRECCIÓN: Solo centramos la cámara SI NO se ha inicializado todavía.
+            // Una vez que hasInitializedRef es true, el mapa YA NO te forzará a volver al auto.
+            if (!hasInitializedRef.current) {
+                map.setView([lat, lng], 15); // Zoom inicial un poco más cerca (15)
                 hasInitializedRef.current = true;
-            } else {
-                map.panTo([lat, lng]);
             }
+            // ❌ ELIMINADO: else { map.panTo(...) } 
+            // Al quitar el 'else', el mapa deja de perseguir al auto automáticamente, 
+            // permitiéndote moverte libremente.
+            
         } else if (!hasInitializedRef.current) {
+            // Si no hay autos al inicio, centramos en la ciudad por defecto
             map.setView(defaultCenter, 12);
             hasInitializedRef.current = true;
         }
@@ -70,7 +75,6 @@ export function FleetMap() {
     }
   };
 
-  // 🟢 ACTUALIZACIÓN CADA 1 SEGUNDO PARA VER CAMBIOS AL INSTANTE
   useEffect(() => {
     fetchFleet();
     const interval = setInterval(fetchFleet, 1000); 
@@ -93,10 +97,12 @@ export function FleetMap() {
         style={{ height: "500px", width: "100%" }}
       >
         <ViewHandler locations={vehicles} defaultCenter={COPIAPO_CENTER} />
+        
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
         {vehicles.map((v) => {
           const lat = Number(v.lat);
           const lng = Number(v.lng);
@@ -131,6 +137,7 @@ export function FleetMap() {
           );
         })}
       </MapContainer>
+      
       <div className="absolute top-4 right-4 bg-white/90 px-3 py-1 rounded-full text-xs font-semibold shadow-md z-[1000] flex items-center gap-2">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
