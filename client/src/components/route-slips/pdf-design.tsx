@@ -1,19 +1,19 @@
-import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer';
+import { Page, Text, View, Document, StyleSheet } from '@react-pdf/renderer';
 
-// Estilos modernos y limpios (Basado en image_91079d.png)
+// Estilos modernos y limpios (Basado en tu imagen de bloques grises)
 const styles = StyleSheet.create({
   page: {
     flexDirection: 'column',
     backgroundColor: '#FFFFFF',
     padding: 40,
-    fontFamily: 'Helvetica', // Fuente limpia estándar
+    fontFamily: 'Helvetica',
   },
   
   // Encabezado
   header: {
     marginBottom: 20,
     borderBottomWidth: 2,
-    borderBottomColor: '#111827', // Negro suave
+    borderBottomColor: '#111827',
     paddingBottom: 10,
   },
   title: {
@@ -25,18 +25,18 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 12,
-    color: '#6B7280', // Gris medio
+    color: '#6B7280',
   },
 
   // Bloques de datos (Tarjetas grises)
   section: {
-    backgroundColor: '#F9FAFB', // Gris muy claro de fondo
+    backgroundColor: '#F9FAFB',
     padding: 15,
     borderRadius: 6,
     marginBottom: 15,
   },
   
-  // Filas de datos
+  // Filas
   row: {
     flexDirection: 'row',
     marginBottom: 8,
@@ -48,27 +48,19 @@ const styles = StyleSheet.create({
     width: 100,
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#374151', // Gris oscuro
+    color: '#374151',
   },
   value: {
     flex: 1,
     fontSize: 10,
-    color: '#111827', // Casi negro
+    color: '#111827',
   },
 
-  // Estilos especiales
-  statusPaid: {
-    color: '#059669', // Verde éxito
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  statusPending: {
-    color: '#D97706', // Ámbar advertencia
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
+  // Estado
+  statusPaid: { color: '#059669', fontWeight: 'bold', textTransform: 'uppercase' },
+  statusPending: { color: '#D97706', fontWeight: 'bold', textTransform: 'uppercase' },
   
-  // Pie de página
+  // Pie
   footer: {
     position: 'absolute',
     bottom: 30,
@@ -83,7 +75,6 @@ const styles = StyleSheet.create({
   }
 });
 
-// Interfaz de datos (La misma que usas en el backend)
 export interface PdfData {
   id: string;
   date: string;
@@ -92,8 +83,7 @@ export interface PdfData {
   startTime: string;
   endTime: string;
   paymentStatus: string;
-  // Estos campos opcionales no se usan visualmente en este diseño simple, 
-  // pero los dejamos para que no de error TypeScript si vienen del backend.
+  // Campos opcionales para compatibilidad
   driverRut?: string;
   ownerName?: string;
   authorizedBy?: string | null;
@@ -109,7 +99,7 @@ export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
         <Text style={styles.subtitle}>Comprobante de operación interno</Text>
       </View>
 
-      {/* 2. Datos Generales (Bloque Gris 1) */}
+      {/* 2. Datos Generales */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>ID Registro:</Text>
@@ -129,7 +119,7 @@ export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
         </View>
       </View>
 
-      {/* 3. Horarios (Bloque Gris 2) */}
+      {/* 3. Horarios */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>Inicio:</Text>
@@ -141,7 +131,7 @@ export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
         </View>
       </View>
 
-      {/* 4. Estado y Firma (Bloque Gris 3) */}
+      {/* 4. Estado */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>Estado Pago:</Text>
@@ -152,15 +142,14 @@ export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
         <View style={styles.row}>
           <Text style={styles.label}>Firma:</Text>
           <Text style={styles.value}>
-            {data.paymentStatus === 'paid' ? 'FIRMADO DIGITALMENTE' : 'PENDIENTE DE FIRMA'}
+            {data.paymentStatus === 'paid' ? 'FIRMADO DIGITALMENTE' : 'PENDIENTE'}
           </Text>
         </View>
       </View>
 
       {/* Pie de Página */}
       <Text style={styles.footer}>
-        Documento generado electrónicamente por TaxiNort App. 
-        Este comprobante valida la operación diaria del vehículo indicado.
+        Documento generado electrónicamente por TaxiNort App.
       </Text>
 
     </Page>
