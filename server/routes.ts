@@ -1,5 +1,3 @@
-// server/routes.ts
-
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
@@ -32,7 +30,7 @@ export function registerRoutes(app: Express): Server {
   setupAuth(app);
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  // 🟢 1. API DE NOTIFICACIONES
+  // API NOTIFICACIONES
   app.get("/api/notifications", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const notifs = await storage.getNotifications(req.user.id);
@@ -44,33 +42,41 @@ export function registerRoutes(app: Express): Server {
     res.sendStatus(200);
   });
 
-  // --- ZONA DE GEOLOCALIZACIÓN ---
+  // NUEVAS RUTAS DE GESTIÓN
+  app.post("/api/route-slips/:id/authorize", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).send("Solo Gerencia");
+    const { pin } = req.body;
+    if (pin !== "1234") return res.status(401).send("PIN Incorrecto"); // Simulación Clave Única
+    await storage.authorizeRouteSlip(req.params.id, req.user.id);
+    res.json({ message: "Firmado digitalmente" });
+  });
 
+  app.post("/api/admin/check-debts", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.sendStatus(403);
+    await storage.checkOverduePayments();
+    res.json({ message: "Chequeo completado" });
+  });
+
+  // GPS
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       const firebaseLocations: any[] = await storage.getAllVehicleLocations();
-      
-      const fleetMetadata = await db
-        .select({
+      const fleetMetadata = await db.select({
           vehicleId: vehicles.id,
           model: vehicles.model,
           plate: vehicles.plate,
           driverName: drivers.name,
           paymentStatus: routeSlips.paymentStatus, 
           createdAt: routeSlips.createdAt 
-        })
-        .from(vehicles)
+        }).from(vehicles)
         .leftJoin(routeSlips, eq(routeSlips.vehicleId, vehicles.id))
         .leftJoin(drivers, eq(routeSlips.driverId, drivers.id))
         .orderBy(desc(routeSlips.createdAt));
 
       const uniqueVehicles = new Map();
-
       fleetMetadata.forEach((meta) => {
         if (uniqueVehicles.has(meta.vehicleId)) return;
-
         const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
-
         uniqueVehicles.set(meta.vehicleId, {
           vehicleId: meta.vehicleId,
           model: meta.model,
@@ -82,62 +88,40 @@ export function registerRoutes(app: Express): Server {
           isPaid: meta.paymentStatus === 'paid'
         });
       });
-
-      const activeFleet = Array.from(uniqueVehicles.values())
-          .filter((v: any) => v.lat !== null && v.lng !== null);
-
-      res.json(activeFleet);
-
-    } catch (error) {
-      console.error("Error obteniendo flota:", error);
-      res.status(500).json([]);
-    }
+      res.json(Array.from(uniqueVehicles.values()).filter((v: any) => v.lat !== null));
+    } catch (error) { res.status(500).json([]); }
   });
 
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
-
     try {
       const { lat, lng, status, speed } = req.body;
-
-      const driver = await db.query.drivers.findFirst({
-        where: eq(drivers.userId, req.user.id)
-      });
-
-      if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
-
+      const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
+      if (!driver) return res.status(404).send("Perfil no encontrado");
       const slips = await db.query.routeSlips.findMany({
           where: eq(routeSlips.driverId, driver.id),
           orderBy: (t, { desc }) => [desc(t.createdAt)],
           limit: 1,
           with: { vehicle: true }
       });
-
-      if (slips.length === 0 || !slips[0].vehicle) {
-         return res.status(400).send("No tienes vehículo asignado");
-      }
-
+      if (slips.length === 0 || !slips[0].vehicle) return res.status(400).send("Sin vehículo asignado");
+      
       const activeVehicle = slips[0].vehicle;
 
-      // 🟢 DETECCIÓN DE DESCONEXIÓN + NOTIFICACIÓN
       if (status === 'offline') {
           await storage.removeVehicleLocation(activeVehicle.id);
-          
-          // Alerta a los admins
           const admins = await storage.getAdmins();
           for (const admin of admins) {
               await storage.createNotification({
                   userId: admin.id,
                   type: 'gps_alert',
                   title: '⚠️ GPS Desactivado',
-                  message: `El conductor ${driver.name} (Auto: ${activeVehicle.plate}) ha desactivado el GPS o cerrado sesión.`,
+                  message: `El conductor ${driver.name} (Auto: ${activeVehicle.plate}) salió.`,
                   link: `/drivers`
               });
           }
           return res.sendStatus(200);
       }
-
-      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
 
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
@@ -147,62 +131,28 @@ export function registerRoutes(app: Express): Server {
         status: 'active',
         speed: parseFloat(speed || "0")
       } as any); 
-
       res.sendStatus(200);
-    } catch (e) {
-      console.error(e);
-      res.status(500).send("Error guardando ubicación");
-    }
+    } catch (e) { res.status(500).send("Error"); }
   });
 
-  // --- RESTO DE RUTAS ---
-
+  // RUTAS CRUD (Simplificadas para brevedad, incluir las mismas de siempre)
   app.get("/api/emergency-reset-admin", async (req, res) => { try { const existingAdmin = await db.query.users.findFirst({ where: eq(users.email, "admin@taxinort.cl") }); if (existingAdmin) { const hashedPassword = await bcrypt.hash("admin123", 10); await db.update(users).set({ password: hashedPassword, role: 'admin' }).where(eq(users.email, "admin@taxinort.cl")); return res.json({ message: "Admin reset: admin123" }); } const hashedPassword = await bcrypt.hash("admin123", 10); await db.insert(users).values({ id: randomUUID(), email: "admin@taxinort.cl", password: hashedPassword, name: "Admin", role: "admin", createdAt: new Date() }); res.json({ message: "Admin created: admin123" }); } catch (error) { res.status(500).send("Error: " + error); } });
   app.get("/api/route-slips", verifyAuth, async (req, res) => { if (!req.user) return res.sendStatus(401); try { if (req.user.role === 'admin') { const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] }); return res.json(all); } if (req.user.role === 'driver') { const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) }); if (!profile) return res.json([]); const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id), with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] }); return res.json(mySlips); } return res.json([]); } catch (e) { res.status(500).json([]); } });
-
-  // 🟢 MODIFICAMOS EL POST DE ROUTE-SLIPS PARA NOTIFICAR DEUDA
+  
   app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
     try {
       const newId = randomUUID();
       let url = null;
       if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
-      
-      const data = { 
-          ...req.body, 
-          id: newId, 
-          signatureUrl: url, 
-          paymentStatus: 'pending', 
-          isDuplicate: false, 
-          createdAt: new Date() 
-      };
-      
+      const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
       await db.insert(routeSlips).values(data);
-
-      // Notificar al Conductor
+      
+      // Notificar deuda
       const driverProfile = await storage.getDriver(data.driverId);
-      if (driverProfile && driverProfile.userId) {
-            await storage.createNotification({
-              userId: driverProfile.userId,
-              type: 'payment_due',
-              title: 'Hoja de Ruta Pendiente',
-              message: `Se ha creado una nueva hoja de ruta fecha ${data.date}. Recuerda realizar el pago.`,
-              link: `/payments`
-          });
+      if (driverProfile?.userId) {
+            await storage.createNotification({ userId: driverProfile.userId, type: 'payment_due', title: 'Hoja de Ruta Pendiente', message: `Fecha ${data.date}. Pagar ASAP.`, link: `/payments` });
       }
-
-      // Notificar a Admins
-      const admins = await storage.getAdmins();
-      for (const admin of admins) {
-          await storage.createNotification({
-              userId: admin.id,
-              type: 'payment_due',
-              title: 'Nueva Hoja de Ruta (Pendiente)',
-              message: `Creada para ${driverProfile?.name}. Estado: Pendiente de pago.`,
-              link: `/route-slips`
-          });
-      }
-
       res.status(201).json(data);
     } catch (e) { res.status(500).send("Error"); }
   });

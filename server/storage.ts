@@ -1,7 +1,5 @@
-// server/storage.ts
-
-import { users, drivers, vehicles, routeSlips, payments, auditLogs, notifications } from "@shared/schema";
-import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation, Notification, InsertNotification } from "@shared/schema";
+import { users, drivers, vehicles, routeSlips, payments, auditLogs, notifications, gpsHistory } from "@shared/schema";
+import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation, Notification, InsertNotification, InsertGpsHistory } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -41,17 +39,22 @@ export interface IStorage {
   getAllAuditLogs(): Promise<AuditLog[]>;
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
 
-  // 🟢 MÉTODOS DE NOTIFICACIONES
+  // Notificaciones
   getNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<void>;
   getAdmins(): Promise<User[]>; 
   
-  // MÉTODOS GPS
+  // GPS & KPIs
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
   getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
   getAllVehicleLocations(): Promise<VehicleLocation[]>; 
   removeVehicleLocation(vehicleId: string): Promise<void>; 
+  createGpsHistory(data: InsertGpsHistory): Promise<void>; // Nuevo
+
+  // Lógica de Negocio Avanzada
+  authorizeRouteSlip(id: string, managerId: string): Promise<void>;
+  checkOverduePayments(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -87,51 +90,50 @@ export class DatabaseStorage implements IStorage {
   async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }
   async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> { const id = randomUUID(); const newLog = { ...insertLog, id, timestamp: new Date(), entityId: insertLog.entityId ?? null, details: insertLog.details ?? null } as AuditLog; await db.insert(auditLogs).values(newLog); return newLog; }
 
-  // 🟢 IMPLEMENTACIÓN DE NOTIFICACIONES
+  // Notificaciones
   async getNotifications(userId: string): Promise<Notification[]> {
-    return await db.select()
-      .from(notifications)
-      .where(eq(notifications.userId, userId))
-      .orderBy(desc(notifications.createdAt));
+    return await db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
   }
-
   async createNotification(insertNotif: InsertNotification): Promise<Notification> {
     const id = randomUUID();
     const newNotif = { ...insertNotif, id, createdAt: new Date(), read: false };
     await db.insert(notifications).values(newNotif);
     return newNotif as Notification;
   }
-
   async markNotificationAsRead(id: string): Promise<void> {
     await db.update(notifications).set({ read: true }).where(eq(notifications.id, id));
   }
-
   async getAdmins(): Promise<User[]> {
     return await db.select().from(users).where(eq(users.role, "admin"));
   }
   
-  // 🟢 IMPLEMENTACIÓN GPS (Estabilidad + Borrado Inmediato)
-  
+  // GPS & KPIs
+  async createGpsHistory(data: InsertGpsHistory): Promise<void> {
+    const id = randomUUID();
+    await db.insert(gpsHistory).values({ ...data, id, timestamp: new Date() });
+  }
+
   async updateVehicleLocation(location: VehicleLocation): Promise<void> { 
-    if (!firebaseDb) return; 
-    try { 
-        const ref = firebaseDb.ref(`locations/${location.vehicleId}`); 
-        await ref.set({ 
-            ...location, 
-            timestamp: Date.now() 
-        }); 
-    } catch (error) { 
-        console.error("Error actualizando ubicación en Firebase:", error); 
-    } 
+    if (firebaseDb) { 
+        try { 
+            const ref = firebaseDb.ref(`locations/${location.vehicleId}`); 
+            await ref.set({ ...location, timestamp: Date.now() }); 
+        } catch (error) { console.error("Firebase error", error); } 
+    }
+    // Historial para KPIs (solo si se mueve)
+    if (location.speed && location.speed > 0.5) {
+        await this.createGpsHistory({
+            vehicleId: location.vehicleId,
+            lat: location.lat,
+            lng: location.lng,
+            speed: location.speed
+        });
+    }
   }
 
   async removeVehicleLocation(vehicleId: string): Promise<void> {
     if (!firebaseDb) return;
-    try {
-        await firebaseDb.ref(`locations/${vehicleId}`).remove();
-    } catch (error) {
-        console.error("Error eliminando ubicación de Firebase:", error);
-    }
+    try { await firebaseDb.ref(`locations/${vehicleId}`).remove(); } catch (error) { console.error(error); }
   }
 
   async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> { 
@@ -140,42 +142,57 @@ export class DatabaseStorage implements IStorage {
         const ref = firebaseDb.ref(`locations/${vehicleId}`); 
         const snapshot = await ref.once('value'); 
         return snapshot.val() as VehicleLocation | null; 
-    } catch (error) { 
-        return null; 
-    } 
+    } catch (error) { return null; } 
   }
-
-  // ... (imports y código anterior igual) ...
-
-// server/storage.ts - Solo cambia la función getAllVehicleLocations al final
-
-// ...
 
   async getAllVehicleLocations(): Promise<VehicleLocation[]> {
     if (!firebaseDb) return [];
     try {
         const snapshot = await firebaseDb.ref("locations").once("value");
         const data = snapshot.val();
-        
         if (!data) return [];
-        
         const locations: any[] = Object.values(data);
         const currentTime = Date.now();
-        
-        // 🟢 TIMEOUT AJUSTADO: 60 segundos. 
-        // Es suficiente para aguantar mala señal, pero borra el auto 
-        // razonablemente rápido si la app crashea totalmente.
-        // El borrado "normal" lo maneja removeVehicleLocation al instante.
-        const TIMEOUT_MS = 60000; 
+        const TIMEOUT_MS = 60000; // 1 minuto de tolerancia
+        return locations.filter((loc: any) => loc.timestamp && (currentTime - loc.timestamp < TIMEOUT_MS));
+    } catch (error) { return []; }
+  }
 
-        const activeLocations = locations.filter((loc: any) => {
-            return loc.timestamp && (currentTime - loc.timestamp < TIMEOUT_MS);
-        });
-        
-        return activeLocations as VehicleLocation[];
-    } catch (error) {
-        console.error("Error obteniendo ubicaciones:", error);
-        return [];
+  // --- LÓGICA DE NEGOCIO ---
+
+  async authorizeRouteSlip(id: string, managerId: string): Promise<void> {
+    await db.update(routeSlips).set({
+        authorizedBy: managerId,
+        authorizedAt: new Date(),
+        qrCodeData: `TN-${id}-${Date.now()}` // Hash para QR
+    }).where(eq(routeSlips.id, id));
+  }
+
+  async checkOverduePayments(): Promise<void> {
+    // Busca todas las hojas pendientes
+    const pendingSlips = await db.select().from(routeSlips).where(eq(routeSlips.paymentStatus, "pending"));
+    const admins = await this.getAdmins();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    for (const slip of pendingSlips) {
+        // Asumiendo que slip.date viene en formato legible o ISO, intentamos parsear.
+        // Si usas strings como "10-02-2025", esto requiere una librería de fechas.
+        // Aquí asumimos formato standard Date.
+        const slipDate = new Date(slip.createdAt || new Date()).getTime(); 
+        if ((now - slipDate) > sevenDaysMs) {
+            // DEUDA DE 7 DÍAS
+            const driver = await this.getDriver(slip.driverId);
+            for (const admin of admins) {
+                await this.createNotification({
+                    userId: admin.id,
+                    type: 'payment_due',
+                    title: '🚨 DEUDA ACUMULADA',
+                    message: `El conductor ${driver?.name} debe la hoja de hace 7+ días.`,
+                    link: '/payments'
+                });
+            }
+        }
     }
   }
 }

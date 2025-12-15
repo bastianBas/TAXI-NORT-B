@@ -60,7 +60,7 @@ export default function Drivers() {
       email: "",
       rut: "",
       phone: "",
-      commune: "Copiapó",
+      commune: "COPIAPÓ", // Valor por defecto en mayúsculas
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
@@ -143,7 +143,7 @@ export default function Drivers() {
       email: "",
       rut: "",
       phone: "",
-      commune: "Copiapó",
+      commune: "COPIAPÓ",
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
@@ -180,33 +180,49 @@ export default function Drivers() {
                   <div className="p-4 border rounded-md space-y-4">
                     <h3 className="font-semibold flex items-center gap-2"><UserSquare2 className="h-4 w-4" /> Datos Personales</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
+                      {/* 🟢 NOMBRE EN MAYÚSCULAS */}
                       <FormField control={form.control} name="name" render={({ field }) => (
                         <FormItem className="col-span-2">
                           <FormLabel>Nombre Completo</FormLabel>
-                          <FormControl><Input {...field} placeholder="Ej: Juan Andrés Pérez Cotapos" /></FormControl>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              value={field.value?.toUpperCase() || ""} 
+                              onChange={e => field.onChange(e.target.value.toUpperCase())}
+                              placeholder="EJ: JUAN ANDRÉS PÉREZ COTAPOS" 
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       
-                      {/* CAMPO EMAIL NUEVO (CORREGIDO) */}
                       <FormField control={form.control} name="email" render={({ field }) => (
                         <FormItem className="col-span-2">
                           <FormLabel>Email (Para inicio de sesión)</FormLabel>
                           <FormControl>
-                            {/* AQUÍ ESTÁ LA CORRECCIÓN: value={field.value || ""} */}
                             <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
 
+                      {/* 🟢 RUT EN MAYÚSCULAS */}
                       <FormField control={form.control} name="rut" render={({ field }) => (
                         <FormItem>
                           <FormLabel>RUT (Será la contraseña)</FormLabel>
-                          <FormControl><Input {...field} placeholder="12.345.678-9" /></FormControl>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              value={field.value?.toUpperCase() || ""} 
+                              onChange={e => field.onChange(e.target.value.toUpperCase())}
+                              placeholder="12.345.678-K" 
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
+
                       <FormField control={form.control} name="phone" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Teléfono</FormLabel>
@@ -214,17 +230,33 @@ export default function Drivers() {
                           <FormMessage />
                         </FormItem>
                       )} />
+
+                      {/* 🟢 COMUNA EN MAYÚSCULAS */}
                       <FormField control={form.control} name="commune" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Comuna</FormLabel>
-                          <FormControl><Input {...field} /></FormControl>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              value={field.value?.toUpperCase() || ""} 
+                              onChange={e => field.onChange(e.target.value.toUpperCase())}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
+
+                      {/* 🟢 DIRECCIÓN EN MAYÚSCULAS */}
                       <FormField control={form.control} name="address" render={({ field }) => (
                         <FormItem className="col-span-2">
                           <FormLabel>Dirección (Opcional)</FormLabel>
-                          <FormControl><Input {...field} value={field.value || ""} /></FormControl>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              value={(field.value || "").toUpperCase()} 
+                              onChange={e => field.onChange(e.target.value.toUpperCase())}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
