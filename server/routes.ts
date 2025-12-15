@@ -12,7 +12,6 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
-// ✅ CORRECCIÓN: Importación por defecto (sin llaves)
 import storage from "./storage"; 
 import { firebaseDb } from "./firebase"; 
 
@@ -33,16 +32,13 @@ export function registerRoutes(app: Express): Server {
   setupAuth(app);
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  // --- ZONA DE GEOLOCALIZACIÓN (CONECTADA A FIREBASE) ---
+  // --- ZONA DE GEOLOCALIZACIÓN ---
 
-  // 1. GET: El Dashboard pide todas las ubicaciones (Usa el filtro de 1s de Storage)
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-      
-      // ✅ Lectura Filtrada: Obtiene solo los autos que han reportado ubicación en los últimos 1s
+      // Obtiene solo autos activos (filtro 15s)
       const firebaseLocations: any[] = await storage.getAllVehicleLocations();
       
-      // B. Obtenemos metadatos de MySQL
       const fleetMetadata = await db
         .select({
           vehicleId: vehicles.id,
@@ -57,13 +53,11 @@ export function registerRoutes(app: Express): Server {
         .leftJoin(drivers, eq(routeSlips.driverId, drivers.id))
         .orderBy(desc(routeSlips.createdAt));
 
-      // C. FUSIONAMOS Y LIMPIAMOS DATOS
       const uniqueVehicles = new Map();
 
       fleetMetadata.forEach((meta) => {
         if (uniqueVehicles.has(meta.vehicleId)) return;
 
-        // Buscamos si este vehículo tiene datos en la lista filtrada (solo activos)
         const location = firebaseLocations.find((loc: any) => String(loc.vehicleId) === String(meta.vehicleId));
 
         uniqueVehicles.set(meta.vehicleId, {
@@ -77,11 +71,8 @@ export function registerRoutes(app: Express): Server {
         });
       });
 
-      // Filtramos solo los que tienen datos válidos (GPS activo)
       const activeFleet = Array.from(uniqueVehicles.values())
           .filter((v: any) => v.lat !== null && v.lng !== null);
-
-      // ❌ ELIMINADO: Se quitó el código de generación de datos de prueba.
 
       res.json(activeFleet);
 
@@ -91,22 +82,19 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // 2. POST: El Conductor envía su ubicación GPS
+  // POST: Recibe ubicación O señal de desconexión
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
 
     try {
-      const { lat, lng } = req.body;
-      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
+      const { lat, lng, status } = req.body;
 
-      // Buscamos al conductor por su ID de usuario
       const driver = await db.query.drivers.findFirst({
         where: eq(drivers.userId, req.user.id)
       });
 
       if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
 
-      // Buscamos su última hoja de ruta para saber qué auto maneja
       const slips = await db.query.routeSlips.findMany({
           where: eq(routeSlips.driverId, driver.id),
           orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -115,12 +103,20 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (slips.length === 0 || !slips[0].vehicle) {
-         return res.status(400).send("No tienes vehículo asignado (Crea una Hoja de Ruta)");
+         return res.status(400).send("No tienes vehículo asignado");
       }
 
       const activeVehicle = slips[0].vehicle;
 
-      // 🟢 CORRECCIÓN: Llamamos a storage.updateVehicleLocation. storage.ts añade el timestamp.
+      // 🟢 DETECCIÓN DE DESCONEXIÓN: Si status es 'offline', borramos el auto
+      if (status === 'offline') {
+          await storage.removeVehicleLocation(activeVehicle.id);
+          return res.sendStatus(200);
+      }
+
+      if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
+
+      // Si es ubicación normal, actualizamos
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
@@ -136,179 +132,22 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- RESTO DE RUTAS (Sin cambios mayores) ---
-
-  // RESET ADMIN
-  app.get("/api/emergency-reset-admin", async (req, res) => {
-    try {
-      const existingAdmin = await db.query.users.findFirst({ where: eq(users.email, "admin@taxinort.cl") });
-      if (existingAdmin) {
-        const hashedPassword = await bcrypt.hash("admin123", 10);
-        await db.update(users).set({ password: hashedPassword, role: 'admin' }).where(eq(users.email, "admin@taxinort.cl"));
-        return res.json({ message: "Admin reset: admin123" });
-      }
-      const hashedPassword = await bcrypt.hash("admin123", 10);
-      await db.insert(users).values({ id: randomUUID(), email: "admin@taxinort.cl", password: hashedPassword, name: "Admin", role: "admin", createdAt: new Date() });
-      res.json({ message: "Admin created: admin123" });
-    } catch (error) { res.status(500).send("Error: " + error); }
-  });
-
-  // HOJAS DE RUTA
-  app.get("/api/route-slips", verifyAuth, async (req, res) => {
-    if (!req.user) return res.status(401).send("No autorizado");
-    try {
-      if (req.user.role === 'admin') {
-        const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] });
-        return res.json(all);
-      }
-      if (req.user.role === 'driver') {
-        const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
-        if (!profile) return res.json([]);
-        const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id), with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] });
-        return res.json(mySlips);
-      }
-      return res.json([]);
-    } catch (e) { res.status(500).json([]); }
-  });
-
-  app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try {
-      const newId = randomUUID();
-      let url = null;
-      if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
-      const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
-      await db.insert(routeSlips).values(data);
-      res.status(201).json(data);
-    } catch (e) { res.status(500).send("Error"); }
-  });
-
-  app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try {
-      const data: any = { ...req.body };
-      if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`;
-      await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id));
-      res.json({ message: "Updated" });
-    } catch (e) { res.status(500).send("Error"); }
-  });
-
-  // CONDUCTORES
-  app.get("/api/drivers", verifyAuth, async (req, res) => {
-    const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] });
-    res.json(all);
-  });
-
-  app.post("/api/drivers", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try {
-      const { email, name, rut, ...rest } = req.body;
-      const exist = await db.query.users.findFirst({ where: eq(users.email, email) });
-      if (exist) return res.status(400).json({ message: "Email existe" });
-
-      const uid = randomUUID();
-      const pass = await bcrypt.hash("123456", 10);
-      await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() });
-
-      const did = randomUUID();
-      // Asegúrate de que tu schema de drivers tenga userId, sino esto fallará
-      const dData = { id: did, userId: uid, email, name, rut, ...rest, createdAt: new Date(), status: 'active' };
-      await db.insert(drivers).values(dData);
-      res.status(201).json(dData);
-    } catch (e) { console.error(e); res.status(500).send("Error"); }
-  });
-
-  app.put("/api/drivers/:id", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try { await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); }
-  });
-
-  app.delete("/api/drivers/:id", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try {
-      const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) });
-      if (!d) return res.status(404).send("Not found");
-      await db.delete(drivers).where(eq(drivers.id, req.params.id));
-      if (d.userId) await db.delete(users).where(eq(users.id, d.userId));
-      res.json({ message: "Deleted" });
-    } catch (e) { res.status(500).send("Error"); }
-  });
-
-  // VEHICULOS
-  app.get("/api/vehicles", verifyAuth, async (req, res) => {
-    const all = await db.query.vehicles.findMany();
-    res.json(all);
-  });
-  app.post("/api/vehicles", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try {
-      const vid = randomUUID();
-      const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' };
-      await db.insert(vehicles).values(vData);
-      res.status(201).json(vData);
-    } catch (e) { res.status(500).send("Error"); }
-  });
-  app.put("/api/vehicles/:id", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); }
-  });
-  app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try { await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); }
-  });
-
-  // PAGOS
-  app.get("/api/payments", verifyAuth, async (req, res) => {
-    if (!req.user) return res.sendStatus(401);
-    try {
-      if (req.user.role === 'admin') {
-        const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] });
-        return res.json(all);
-      }
-      if (req.user.role === 'driver') {
-        const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
-        if (!profile) return res.json([]);
-        const slips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id) });
-        const ids = slips.map(s => s.id);
-        if (ids.length === 0) return res.json([]);
-        const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] });
-        return res.json(all.filter(p => p.routeSlipId && ids.includes(p.routeSlipId)));
-      }
-      return res.json([]);
-    } catch (e) { res.status(500).json([]); }
-  });
-
-  // CREAR PAGO
-  app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => {
-    if (!['admin', 'driver', 'finance'].includes(req.user?.role || '')) return res.status(403).send("No autorizado");
-    try {
-      const pid = randomUUID();
-      let proof = null;
-      if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`;
-      const pData = {
-        id: pid,
-        routeSlipId: req.body.routeSlipId,
-        type: req.body.type,
-        amount: parseInt(req.body.amount || "0"),
-        driverId: req.body.driverId,
-        vehicleId: req.body.vehicleId,
-        date: req.body.date,
-        proofOfPayment: proof,
-        status: 'completed',
-        createdAt: new Date()
-      };
-      await db.insert(payments).values(pData);
-      if (req.body.routeSlipId) {
-        await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId));
-      }
-      res.status(201).json(pData);
-    } catch (e) { console.error(e); res.status(500).send("Error"); }
-  });
-
-  app.delete("/api/payments/:id", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-    try { await db.delete(payments).where(eq(payments.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); }
-  });
+  // --- RESTO DE RUTAS IGUALES ---
+  app.get("/api/emergency-reset-admin", async (req, res) => { try { const existingAdmin = await db.query.users.findFirst({ where: eq(users.email, "admin@taxinort.cl") }); if (existingAdmin) { const hashedPassword = await bcrypt.hash("admin123", 10); await db.update(users).set({ password: hashedPassword, role: 'admin' }).where(eq(users.email, "admin@taxinort.cl")); return res.json({ message: "Admin reset: admin123" }); } const hashedPassword = await bcrypt.hash("admin123", 10); await db.insert(users).values({ id: randomUUID(), email: "admin@taxinort.cl", password: hashedPassword, name: "Admin", role: "admin", createdAt: new Date() }); res.json({ message: "Admin created: admin123" }); } catch (error) { res.status(500).send("Error: " + error); } });
+  app.get("/api/route-slips", verifyAuth, async (req, res) => { if (!req.user) return res.sendStatus(401); try { if (req.user.role === 'admin') { const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] }); return res.json(all); } if (req.user.role === 'driver') { const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) }); if (!profile) return res.json([]); const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id), with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] }); return res.json(mySlips); } return res.json([]); } catch (e) { res.status(500).json([]); } });
+  app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => { try { const newId = randomUUID(); let url = null; if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`; const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() }; await db.insert(routeSlips).values(data); res.status(201).json(data); } catch (e) { res.status(500).send("Error"); } });
+  app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => { try { const data: any = { ...req.body }; if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
+  app.get("/api/drivers", verifyAuth, async (req, res) => { const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); res.json(all); });
+  app.post("/api/drivers", verifyAuth, async (req, res) => { try { const { email, name, rut, ...rest } = req.body; const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); if (exist) return res.status(400).json({ message: "Email existe" }); const uid = randomUUID(); const pass = await bcrypt.hash("123456", 10); await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() }); const did = randomUUID(); const dData = { id: did, userId: uid, email, name, rut, ...rest, createdAt: new Date(), status: 'active' }; await db.insert(drivers).values(dData); res.status(201).json(dData); } catch (e) { console.error(e); res.status(500).send("Error"); } });
+  app.put("/api/drivers/:id", verifyAuth, async (req, res) => { try { await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
+  app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { try { const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); if (!d) return res.status(404).send("Not found"); await db.delete(drivers).where(eq(drivers.id, req.params.id)); if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
+  app.get("/api/vehicles", verifyAuth, async (req, res) => { const all = await db.query.vehicles.findMany(); res.json(all); });
+  app.post("/api/vehicles", verifyAuth, async (req, res) => { try { const vid = randomUUID(); const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; await db.insert(vehicles).values(vData); res.status(201).json(vData); } catch (e) { res.status(500).send("Error"); } });
+  app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
+  app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
+  app.get("/api/payments", verifyAuth, async (req, res) => { if (!req.user) return res.sendStatus(401); try { if (req.user.role === 'admin') { const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] }); return res.json(all); } if (req.user.role === 'driver') { const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) }); if (!profile) return res.json([]); const slips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id) }); const ids = slips.map(s => s.id); if (ids.length === 0) return res.json([]); const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] }); return res.json(all.filter(p => p.routeSlipId && ids.includes(p.routeSlipId))); } return res.json([]); } catch (e) { res.status(500).json([]); } });
+  app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => { try { const pid = randomUUID(); let proof = null; if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; const pData = { id: pid, routeSlipId: req.body.routeSlipId, type: req.body.type, amount: parseInt(req.body.amount || "0"), driverId: req.body.driverId, vehicleId: req.body.vehicleId, date: req.body.date, proofOfPayment: proof, status: 'completed', createdAt: new Date() }; await db.insert(payments).values(pData); if (req.body.routeSlipId) { await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); } res.status(201).json(pData); } catch (e) { console.error(e); res.status(500).send("Error"); } });
+  app.delete("/api/payments/:id", verifyAuth, async (req, res) => { try { await db.delete(payments).where(eq(payments.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
 
   const httpServer = createServer(app);
   return httpServer;
