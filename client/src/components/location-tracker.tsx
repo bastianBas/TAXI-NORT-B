@@ -1,5 +1,3 @@
-// client/src/components/location-tracker.tsx
-
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -8,7 +6,7 @@ export function LocationTracker() {
   const { user } = useAuth();
   const { toast } = useToast();
   const isOfflineSentRef = useRef(false);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null); // Referencia para el Wake Lock
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   useEffect(() => {
     if (!user || user.role !== 'driver') return;
@@ -18,44 +16,37 @@ export function LocationTracker() {
       return;
     }
 
-    // 🟢 FUNCIÓN PARA MANTENER LA PANTALLA ENCENDIDA (Wake Lock)
+    // 🟢 MANTENER PANTALLA ENCENDIDA (Evita que el navegador corte el GPS por inactividad)
     const requestWakeLock = async () => {
         if ('wakeLock' in navigator) {
             try {
                 wakeLockRef.current = await navigator.wakeLock.request('screen');
-                console.log('Pantalla mantenida activa (Wake Lock)');
+                console.log('Wake Lock activo: Pantalla no se apagará sola.');
             } catch (err) {
-                console.error('No se pudo activar Wake Lock:', err);
+                console.warn('Wake Lock no disponible o denegado:', err);
             }
         }
     };
 
-    // Activamos Wake Lock al iniciar
+    // Solicitar Wake Lock al montar y al volver a ver la app
     requestWakeLock();
-
-    // Re-activar si la página vuelve a ser visible (por si el usuario minimizó y volvió)
-    const handleVisibilityChange = () => {
+    document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && user.role === 'driver') {
             requestWakeLock();
         }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-
-    // --- LÓGICA DE DESCONEXIÓN Y ENVÍO DE DATOS (Igual que antes) ---
+    });
 
     const sendOfflineSignal = () => {
         if (isOfflineSentRef.current) return;
         
         const data = JSON.stringify({ status: 'offline' });
         
+        // Intentamos beacon para máxima fiabilidad al cerrar
         if (navigator.sendBeacon) {
             const blob = new Blob([data], { type: 'application/json' });
-            const success = navigator.sendBeacon("/api/vehicle-locations", blob);
-            if (success) isOfflineSentRef.current = true;
-        } 
-        
-        if (!isOfflineSentRef.current) {
+            navigator.sendBeacon("/api/vehicle-locations", blob);
+            isOfflineSentRef.current = true;
+        } else {
             fetch("/api/vehicle-locations", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -63,7 +54,7 @@ export function LocationTracker() {
                 keepalive: true 
             }).then(() => {
                 isOfflineSentRef.current = true;
-            }).catch(e => console.error("Error enviando offline:", e));
+            }).catch(e => console.error(e));
         }
     };
 
@@ -91,6 +82,7 @@ export function LocationTracker() {
       sendLocation,
       (error) => {
         console.error("Error de GPS:", error);
+        // Si el usuario apaga el GPS manualmente, mandamos offline
         if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
             sendOfflineSignal();
             toast({
@@ -107,13 +99,15 @@ export function LocationTracker() {
       }
     );
 
+    // Evento extra para capturar cierre de pestaña
+    window.addEventListener('beforeunload', sendOfflineSignal);
+
     return () => {
         navigator.geolocation.clearWatch(watchId);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('beforeunload', sendOfflineSignal);
         
-        // Liberar Wake Lock
         if (wakeLockRef.current) {
-            wakeLockRef.current.release().catch(e => console.error(e));
+            wakeLockRef.current.release().catch(() => {});
             wakeLockRef.current = null;
         }
 

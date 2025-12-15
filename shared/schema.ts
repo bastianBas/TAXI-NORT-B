@@ -1,7 +1,7 @@
 import { mysqlTable, varchar, text, timestamp, int, boolean } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { relations } from "drizzle-orm"; // IMPORTANTE: Necesario para las relaciones
+import { relations } from "drizzle-orm";
 
 // --- TABLAS ---
 
@@ -83,7 +83,19 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
-// --- RELACIONES (NUEVO: Esto faltaba) ---
+// 🟢 NUEVA TABLA: Notificaciones
+export const notifications = mysqlTable("notifications", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull(), // Quién recibe la notificación
+  type: varchar("type", { length: 50 }).notNull(), // 'gps_alert', 'payment_due', 'info'
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  link: varchar("link", { length: 255 }), // URL a donde redirige al hacer click
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// --- RELACIONES ---
 
 export const driversRelations = relations(drivers, ({ one, many }) => ({
   user: one(users, {
@@ -116,6 +128,14 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
   }),
 }));
 
+// 🟢 RELACIONES DE NOTIFICACIONES
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+}));
+
 // --- SCHEMAS DE INSERCIÓN ---
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
@@ -124,6 +144,8 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true,
 export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true });
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
+// 🟢 SCHEMA NOTIFICACIONES
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true, read: true });
 
 // --- TYPES ---
 export type User = typeof users.$inferSelect;
@@ -138,5 +160,8 @@ export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+// 🟢 TIPOS NOTIFICACIONES
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
-export type VehicleLocation = { vehicleId: string; plate: string; lat: number; lng: number; status: string; timestamp: number; };
+export type VehicleLocation = { vehicleId: string; plate: string; lat: number; lng: number; status: string; timestamp: number; speed?: number; };

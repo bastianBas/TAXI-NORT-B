@@ -1,11 +1,8 @@
-// client/src/components/ui/fleet-map.tsx
-
 import { useEffect, useState, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet"; 
 import "leaflet/dist/leaflet.css";
 
-// --- NUEVO DISEÑO DE ÍCONO (PIN CON AUTO) ---
 const carIconSvg = (color: string) => `
     <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24">
         <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
@@ -101,7 +98,6 @@ export function FleetMap() {
         {vehicles.map((v) => {
           const lat = Number(v.lat);
           const lng = Number(v.lng);
-          // Convertimos m/s a km/h (multiplicando por 3.6) y redondeamos
           const speedKmH = Math.round((v.speed || 0) * 3.6); 
 
           if (isNaN(lat) || isNaN(lng)) return null;
@@ -113,26 +109,26 @@ export function FleetMap() {
               icon={v.isPaid ? iconPaid : iconUnpaid}
             >
               <Popup>
-                {/* 🟢 DISEÑO CORREGIDO SEGÚN TU PETICIÓN */}
-                <div className="min-w-[200px] p-2 font-sans text-sm">
-                  <div className="grid grid-cols-[130px_1fr] gap-1 items-center">
+                <div className="min-w-[220px] p-2 font-sans text-sm">
+                  <div className="grid grid-cols-[120px_1fr] gap-x-2 gap-y-1 items-start">
                     
-                    <span className="font-bold text-gray-600">nombre conductor:</span>
-                    <span className="font-medium text-black truncate">{v.driverName}</span>
+                    <span className="font-bold text-gray-600">Conductor:</span>
+                    {/* 🟢 CORRECCIÓN: Quitamos 'truncate' y usamos 'break-words' para que se vea completo */}
+                    <span className="font-medium text-black break-words leading-tight">{v.driverName}</span>
 
-                    <span className="font-bold text-gray-600">modelo de auto:</span>
-                    <span className="font-medium text-black truncate">{v.model}</span>
+                    <span className="font-bold text-gray-600">Vehículo:</span>
+                    <span className="font-medium text-black break-words leading-tight">{v.model}</span>
 
-                    <span className="font-bold text-gray-600">hoja de ruta:</span>
+                    <span className="font-bold text-gray-600">Hoja de Ruta:</span>
                     <span>
                         {v.isPaid ? (
-                            <span className="text-green-600 font-bold bg-green-100 px-1 rounded text-xs">PAGADA</span>
+                            <span className="text-green-700 font-bold bg-green-100 px-1.5 py-0.5 rounded text-xs border border-green-200">PAGADA</span>
                         ) : (
-                            <span className="text-red-600 font-bold bg-red-100 px-1 rounded text-xs">NO PAGADA</span>
+                            <span className="text-red-700 font-bold bg-red-100 px-1.5 py-0.5 rounded text-xs border border-red-200">NO PAGADA</span>
                         )}
                     </span>
 
-                    <span className="font-bold text-gray-600">velocidad del vehículo:</span>
+                    <span className="font-bold text-gray-600">Velocidad:</span>
                     <span className="font-bold text-blue-600">{speedKmH} km/h</span>
 
                   </div>
