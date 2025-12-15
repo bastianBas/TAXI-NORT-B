@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar"; 
-import { LocationTracker } from "@/components/location-tracker"; // 🟢 IMPORTANTE
+import { LocationTracker } from "@/components/location-tracker";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -19,10 +19,14 @@ import NotFound from "@/pages/not-found";
 function AppRouter() {
   const { user, isLoading } = useAuth();
 
+  // Pantalla de carga centralizada para evitar parpadeos
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-sm text-muted-foreground animate-pulse">Cargando TaxiNort...</p>
+        </div>
       </div>
     );
   }
@@ -32,10 +36,10 @@ function AppRouter() {
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
-        <Route path="/">
+        {/* Cualquier otra ruta redirige a login */}
+        <Route path="/:rest*">
           <Redirect to="/login" />
         </Route>
-        <Route component={Login} />
       </Switch>
     );
   }
@@ -43,20 +47,21 @@ function AppRouter() {
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
       
-      {/* 🟢 RASTREADOR GPS ACTIVADO */}
+      {/* Tracker GPS activo solo si hay usuario logueado */}
       <LocationTracker />
 
-      {/* Header Fijo Arriba */}
       <AppSidebar />
 
-      {/* Contenido Principal */}
       <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6">
         <div className="animate-in fade-in duration-500">
           <Switch>
             <Route path="/" component={Dashboard} />
+            
+            {/* Si un usuario logueado intenta ir a login, va al dashboard */}
             <Route path="/login">
               <Redirect to="/" />
             </Route>
+
             <Route path="/drivers">
               <ProtectedRoute allowedRoles={["admin", "operator"]}>
                 <Drivers />
