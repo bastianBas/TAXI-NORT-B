@@ -45,7 +45,7 @@ export interface IStorage {
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
   getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
   getAllVehicleLocations(): Promise<VehicleLocation[]>; 
-  removeVehicleLocation(vehicleId: string): Promise<void>; // ✅ NUEVO: Para borrar al instante
+  removeVehicleLocation(vehicleId: string): Promise<void>; 
 }
 
 export class DatabaseStorage implements IStorage {
@@ -77,7 +77,7 @@ export class DatabaseStorage implements IStorage {
   async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }
   async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> { const id = randomUUID(); const newLog = { ...insertLog, id, timestamp: new Date(), entityId: insertLog.entityId ?? null, details: insertLog.details ?? null } as AuditLog; await db.insert(auditLogs).values(newLog); return newLog; }
   
-  // 🟢 IMPLEMENTACIÓN GPS CORREGIDA
+  // 🟢 IMPLEMENTACIÓN GPS
   
   async updateVehicleLocation(location: VehicleLocation): Promise<void> { 
     if (!firebaseDb) return; 
@@ -92,7 +92,7 @@ export class DatabaseStorage implements IStorage {
     } 
   }
 
-  // ✅ NUEVO: Borrado instantáneo cuando el usuario se desconecta
+  // ✅ Borrado instantáneo
   async removeVehicleLocation(vehicleId: string): Promise<void> {
     if (!firebaseDb) return;
     try {
@@ -123,8 +123,10 @@ export class DatabaseStorage implements IStorage {
         
         const locations: any[] = Object.values(data);
         const currentTime = Date.now();
-        // 🟢 CORRECCIÓN CLAVE: 15 segundos para dar ESTABILIDAD (no parpadeo)
-        const TIMEOUT_MS = 15000; 
+        // 🟢 CORRECCIÓN: 5 MINUTOS (300,000 ms)
+        // Esto permite que el auto siga en el mapa aunque la pantalla esté apagada y el GPS
+        // envíe datos muy lento. Si cierras la app, el borrado manual actúa antes que esto.
+        const TIMEOUT_MS = 300000; 
 
         const activeLocations = locations.filter((loc: any) => {
             return loc.timestamp && (currentTime - loc.timestamp < TIMEOUT_MS);

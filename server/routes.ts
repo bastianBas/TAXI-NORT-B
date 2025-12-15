@@ -36,7 +36,6 @@ export function registerRoutes(app: Express): Server {
 
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
-      // Obtiene solo autos activos (filtro 15s)
       const firebaseLocations: any[] = await storage.getAllVehicleLocations();
       
       const fleetMetadata = await db
@@ -67,6 +66,8 @@ export function registerRoutes(app: Express): Server {
           driverName: meta.driverName || "Sin conductor",
           lat: location ? location.lat : null,
           lng: location ? location.lng : null,
+          // 🟢 NUEVO: Enviamos la velocidad al frontend (0 si no existe)
+          speed: location ? (location.speed || 0) : 0,
           isPaid: meta.paymentStatus === 'paid'
         });
       });
@@ -82,12 +83,12 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // POST: Recibe ubicación O señal de desconexión
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
 
     try {
-      const { lat, lng, status } = req.body;
+      // 🟢 Recibimos también la velocidad (speed)
+      const { lat, lng, status, speed } = req.body;
 
       const driver = await db.query.drivers.findFirst({
         where: eq(drivers.userId, req.user.id)
@@ -108,7 +109,6 @@ export function registerRoutes(app: Express): Server {
 
       const activeVehicle = slips[0].vehicle;
 
-      // 🟢 DETECCIÓN DE DESCONEXIÓN: Si status es 'offline', borramos el auto
       if (status === 'offline') {
           await storage.removeVehicleLocation(activeVehicle.id);
           return res.sendStatus(200);
@@ -116,13 +116,14 @@ export function registerRoutes(app: Express): Server {
 
       if (!lat || !lng) return res.status(400).send("Faltan coordenadas");
 
-      // Si es ubicación normal, actualizamos
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         status: 'active',
+        // 🟢 Guardamos la velocidad (o 0 si viene nula)
+        speed: parseFloat(speed || "0")
       } as any); 
 
       res.sendStatus(200);
@@ -132,7 +133,8 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- RESTO DE RUTAS IGUALES ---
+  // ... (RESTO DE RUTAS SE MANTIENEN IGUAL) ...
+  // (Copia el resto del archivo original aquí abajo, no ha cambiado nada más)
   app.get("/api/emergency-reset-admin", async (req, res) => { try { const existingAdmin = await db.query.users.findFirst({ where: eq(users.email, "admin@taxinort.cl") }); if (existingAdmin) { const hashedPassword = await bcrypt.hash("admin123", 10); await db.update(users).set({ password: hashedPassword, role: 'admin' }).where(eq(users.email, "admin@taxinort.cl")); return res.json({ message: "Admin reset: admin123" }); } const hashedPassword = await bcrypt.hash("admin123", 10); await db.insert(users).values({ id: randomUUID(), email: "admin@taxinort.cl", password: hashedPassword, name: "Admin", role: "admin", createdAt: new Date() }); res.json({ message: "Admin created: admin123" }); } catch (error) { res.status(500).send("Error: " + error); } });
   app.get("/api/route-slips", verifyAuth, async (req, res) => { if (!req.user) return res.sendStatus(401); try { if (req.user.role === 'admin') { const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] }); return res.json(all); } if (req.user.role === 'driver') { const profile = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) }); if (!profile) return res.json([]); const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, profile.id), with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.date)] }); return res.json(mySlips); } return res.json([]); } catch (e) { res.status(500).json([]); } });
   app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => { try { const newId = randomUUID(); let url = null; if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`; const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() }; await db.insert(routeSlips).values(data); res.status(201).json(data); } catch (e) { res.status(500).send("Error"); } });

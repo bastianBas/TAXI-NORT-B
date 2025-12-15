@@ -7,11 +7,10 @@ import { useToast } from "@/hooks/use-toast";
 export function LocationTracker() {
   const { user } = useAuth();
   const { toast } = useToast();
-  // Usamos un ref para evitar recrear la función en cada render
   const isOfflineSentRef = useRef(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null); // Referencia para el Wake Lock
 
   useEffect(() => {
-    // 1. Solo activamos si el usuario es CONDUCTOR
     if (!user || user.role !== 'driver') return;
 
     if (!('geolocation' in navigator)) {
@@ -19,21 +18,43 @@ export function LocationTracker() {
       return;
     }
 
-    // Función auxiliar para enviar señal de desconexión inmediata
+    // 🟢 FUNCIÓN PARA MANTENER LA PANTALLA ENCENDIDA (Wake Lock)
+    const requestWakeLock = async () => {
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLockRef.current = await navigator.wakeLock.request('screen');
+                console.log('Pantalla mantenida activa (Wake Lock)');
+            } catch (err) {
+                console.error('No se pudo activar Wake Lock:', err);
+            }
+        }
+    };
+
+    // Activamos Wake Lock al iniciar
+    requestWakeLock();
+
+    // Re-activar si la página vuelve a ser visible (por si el usuario minimizó y volvió)
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && user.role === 'driver') {
+            requestWakeLock();
+        }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+
+    // --- LÓGICA DE DESCONEXIÓN Y ENVÍO DE DATOS (Igual que antes) ---
+
     const sendOfflineSignal = () => {
-        // Evitamos enviar doble señal innecesariamente
         if (isOfflineSentRef.current) return;
         
         const data = JSON.stringify({ status: 'offline' });
         
-        // Intentamos usar beacon (mejor para cierres de página)
         if (navigator.sendBeacon) {
             const blob = new Blob([data], { type: 'application/json' });
             const success = navigator.sendBeacon("/api/vehicle-locations", blob);
             if (success) isOfflineSentRef.current = true;
         } 
         
-        // Si beacon falla o no existe, usamos fetch con keepalive
         if (!isOfflineSentRef.current) {
             fetch("/api/vehicle-locations", {
                 method: "POST",
@@ -46,18 +67,19 @@ export function LocationTracker() {
         }
     };
 
-    // 2. Función que envía la ubicación al servidor (Aparición Inmediata)
     const sendLocation = async (position: GeolocationPosition) => {
       try {
-        // Si volvemos a tener señal, reseteamos la bandera de offline
         isOfflineSentRef.current = false;
-
-        const { latitude, longitude } = position.coords;
+        const { latitude, longitude, speed } = position.coords;
         
         await fetch("/api/vehicle-locations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lat: latitude, lng: longitude }),
+          body: JSON.stringify({ 
+            lat: latitude, 
+            lng: longitude,
+            speed: speed 
+          }),
         });
         
       } catch (error) {
@@ -65,17 +87,15 @@ export function LocationTracker() {
       }
     };
 
-    // 3. Activamos el rastreo
     const watchId = navigator.geolocation.watchPosition(
       sendLocation,
       (error) => {
         console.error("Error de GPS:", error);
-        // SI HAY UN ERROR CRÍTICO (COMO APAGAR EL GPS), BORRAMOS EL AUTO
         if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
             sendOfflineSignal();
             toast({
                 variant: "destructive",
-                title: "GPS Desactivado o Sin Señal",
+                title: "GPS Desactivado",
                 description: "Tu vehículo se ha ocultado del mapa.",
             });
         }
@@ -83,14 +103,21 @@ export function LocationTracker() {
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 0 // Forzamos a no usar caché para que sea "altiro"
+        maximumAge: 0 
       }
     );
 
-    // LIMPIEZA: Al cerrar sesión o salir del componente
     return () => {
         navigator.geolocation.clearWatch(watchId);
-        sendOfflineSignal(); // ¡Desaparición instantánea!
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Liberar Wake Lock
+        if (wakeLockRef.current) {
+            wakeLockRef.current.release().catch(e => console.error(e));
+            wakeLockRef.current = null;
+        }
+
+        sendOfflineSignal();
     };
   }, [user, toast]);
 

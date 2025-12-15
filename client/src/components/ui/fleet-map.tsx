@@ -1,26 +1,30 @@
+// client/src/components/ui/fleet-map.tsx
+
 import { useEffect, useState, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet"; 
 import "leaflet/dist/leaflet.css";
 
-// --- ÍCONOS (Se mantienen igual) ---
+// --- NUEVO DISEÑO DE ÍCONO (PIN CON AUTO) ---
 const carIconSvg = (color: string) => `
-    <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" 
-        fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-        style="position: absolute; bottom: 0; left: 0; transform: translate(-50%, -10%);">
-        <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.3 16.6 10 15 10c-1.8 0-3.5.7-4.7 1.9"/>
-        <path d="M9 18v-5h2"/>
-        <path d="M10 20c-1.1 0-2-.9-2-2h-1c-1.1 0-2 .9-2 2h4Z"/>
-        <path d="M17 20c-1.1 0-2-.9-2-2h-1c-1.1 0-2 .9-2 2h4Z"/>
-        <path d="M22 10h-2V7a1 1 0 0 0-1-1H7.85c-.83 0-1.63.3-2.22.82L3 8"/>
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24">
+        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="rgba(0,0,0,0.3)"/>
+        </filter>
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" 
+              fill="${color}" stroke="white" stroke-width="1" filter="url(#shadow)"/>
+        <circle cx="12" cy="9" r="3.5" fill="white" opacity="0.2"/>
+        <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z" 
+              fill="white" transform="translate(0, 1) scale(0.85) transform-origin(12 9)"/>
     </svg>
 `;
 
 const createCarIcon = (color: string) => L.divIcon({
     html: carIconSvg(color),
-    className: 'custom-car-icon',
-    iconSize: [30, 30], 
-    iconAnchor: [15, 30], 
+    className: 'custom-car-pin',
+    iconSize: [40, 40], 
+    iconAnchor: [20, 40], 
+    popupAnchor: [0, -40] 
 });
 
 const iconPaid = createCarIcon('#10B981'); 
@@ -28,10 +32,8 @@ const iconUnpaid = createCarIcon('#EF4444');
 
 const COPIAPO_CENTER: [number, number] = [-27.3668, -70.3319]; 
 
-// --- 🟢 COMPONENTE DE VISTA CORREGIDO ---
 function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCenter: [number, number] }) {
     const map = useMap();
-    // Usamos una referencia para saber si ya centramos la vista inicialmente
     const hasInitializedRef = useRef(false);
 
     useEffect(() => {
@@ -40,18 +42,11 @@ function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCe
             const lat = Number(firstLocation.lat);
             const lng = Number(firstLocation.lng);
             
-            // CORRECCIÓN: Solo centramos la cámara SI NO se ha inicializado todavía.
-            // Una vez que hasInitializedRef es true, el mapa YA NO te forzará a volver al auto.
             if (!hasInitializedRef.current) {
-                map.setView([lat, lng], 15); // Zoom inicial un poco más cerca (15)
+                map.setView([lat, lng], 15);
                 hasInitializedRef.current = true;
             }
-            // ❌ ELIMINADO: else { map.panTo(...) } 
-            // Al quitar el 'else', el mapa deja de perseguir al auto automáticamente, 
-            // permitiéndote moverte libremente.
-            
         } else if (!hasInitializedRef.current) {
-            // Si no hay autos al inicio, centramos en la ciudad por defecto
             map.setView(defaultCenter, 12);
             hasInitializedRef.current = true;
         }
@@ -106,6 +101,9 @@ export function FleetMap() {
         {vehicles.map((v) => {
           const lat = Number(v.lat);
           const lng = Number(v.lng);
+          // Convertimos m/s a km/h (multiplicando por 3.6) y redondeamos
+          const speedKmH = Math.round((v.speed || 0) * 3.6); 
+
           if (isNaN(lat) || isNaN(lng)) return null;
 
           return (
@@ -115,21 +113,28 @@ export function FleetMap() {
               icon={v.isPaid ? iconPaid : iconUnpaid}
             >
               <Popup>
-                <div className="min-w-[200px] p-1 font-sans text-sm">
-                  <div className="border-b pb-2 mb-2">
-                    <h3 className="font-bold text-base">{v.model}</h3>
-                    <span className="text-xs bg-gray-100 px-1 rounded border text-gray-600">{v.plate}</span>
-                  </div>
-                  <div className="mb-2">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold">Conductor</span>
-                    <p className="font-medium">{v.driverName}</p>
-                  </div>
-                  <div>
-                    {v.isPaid ? (
-                      <span className="text-green-700 font-bold text-xs bg-green-100 px-2 py-1 rounded-full border border-green-200">PAGADA</span>
-                    ) : (
-                      <span className="text-red-700 font-bold text-xs bg-red-100 px-2 py-1 rounded-full border border-red-200">NO PAGADA</span>
-                    )}
+                {/* 🟢 DISEÑO CORREGIDO SEGÚN TU PETICIÓN */}
+                <div className="min-w-[200px] p-2 font-sans text-sm">
+                  <div className="grid grid-cols-[130px_1fr] gap-1 items-center">
+                    
+                    <span className="font-bold text-gray-600">nombre conductor:</span>
+                    <span className="font-medium text-black truncate">{v.driverName}</span>
+
+                    <span className="font-bold text-gray-600">modelo de auto:</span>
+                    <span className="font-medium text-black truncate">{v.model}</span>
+
+                    <span className="font-bold text-gray-600">hoja de ruta:</span>
+                    <span>
+                        {v.isPaid ? (
+                            <span className="text-green-600 font-bold bg-green-100 px-1 rounded text-xs">PAGADA</span>
+                        ) : (
+                            <span className="text-red-600 font-bold bg-red-100 px-1 rounded text-xs">NO PAGADA</span>
+                        )}
+                    </span>
+
+                    <span className="font-bold text-gray-600">velocidad del vehículo:</span>
+                    <span className="font-bold text-blue-600">{speedKmH} km/h</span>
+
                   </div>
                 </div>
               </Popup>
