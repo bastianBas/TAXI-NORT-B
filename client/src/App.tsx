@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { LocationTracker } from "@/components/location-tracker";
 import { Loader2 } from "lucide-react";
 
-// Páginas
+// Imports de Páginas
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -22,7 +22,7 @@ import NotFound from "@/pages/not-found";
 function AppRouter() {
   const { user, isLoading } = useAuth();
 
-  // 1. PANTALLA DE CARGA (Evita el blanco inicial)
+  // 1. PANTALLA DE CARGA (Evita el blanco)
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -34,21 +34,18 @@ function AppRouter() {
     );
   }
 
-  // 2. SI NO HAY USUARIO -> Solo permite Login/Registro
+  // 2. SI NO HAY USUARIO -> LOGIN
   if (!user) {
     return (
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
-        {/* Cualquier otra ruta redirige al login */}
-        <Route path="/:rest*">
-          <Redirect to="/login" />
-        </Route>
+        <Route path="/:rest*"><Redirect to="/login" /></Route>
       </Switch>
     );
   }
 
-  // 3. SI HAY USUARIO -> Muestra la App Completa
+  // 3. SI HAY USUARIO -> APP
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
       <LocationTracker />
@@ -82,7 +79,6 @@ function AppRouter() {
                 <Audit />
               </ProtectedRoute>
             </Route>
-            {/* Si intenta ir a login estando logueado, vuelve al inicio */}
             <Route path="/login"><Redirect to="/" /></Route>
             <Route component={NotFound} />
           </Switch>

@@ -47,12 +47,15 @@ export default function Drivers() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Solo admin y operadores pueden editar
   const canEdit = ["admin", "operator"].includes(user?.role || "");
 
+  // Cargar conductores
   const { data: drivers, isLoading } = useQuery<Driver[]>({
     queryKey: ["/api/drivers"],
   });
 
+  // Configuración del formulario
   const form = useForm<InsertDriver>({
     resolver: zodResolver(insertDriverSchema),
     defaultValues: {
@@ -60,7 +63,7 @@ export default function Drivers() {
       email: "",
       rut: "",
       phone: "",
-      commune: "COPIAPÓ", // Valor por defecto en mayúsculas
+      commune: "COPIAPÓ", // Valor por defecto
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
@@ -69,6 +72,7 @@ export default function Drivers() {
     },
   });
 
+  // Mutación para CREAR
   const createMutation = useMutation({
     mutationFn: async (data: InsertDriver) => {
       await apiRequestJson("/api/drivers", "POST", data);
@@ -87,6 +91,7 @@ export default function Drivers() {
     },
   });
 
+  // Mutación para ACTUALIZAR
   const updateMutation = useMutation({
     mutationFn: async (data: InsertDriver) => {
       if (!editingId) return;
@@ -97,17 +102,18 @@ export default function Drivers() {
       setOpen(false);
       setEditingId(null);
       form.reset();
-      toast({ title: "Actualizado", description: "Datos modificados." });
+      toast({ title: "Actualizado", description: "Datos modificados correctamente." });
     },
   });
 
+  // Mutación para ELIMINAR
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequestJson(`/api/drivers/${id}`, "DELETE");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
-      toast({ title: "Eliminado", description: "Conductor eliminado." });
+      toast({ title: "Eliminado", description: "Conductor eliminado del sistema." });
     },
   });
 
@@ -153,15 +159,20 @@ export default function Drivers() {
     setOpen(true);
   };
 
-  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  if (isLoading) return (
+    <div className="flex justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Conductores</h1>
-          <p className="text-muted-foreground">Fichas de personal y licencias</p>
+          <p className="text-muted-foreground">Gestión de personal y licencias</p>
         </div>
+        
         {canEdit && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -171,14 +182,18 @@ export default function Drivers() {
             </DialogTrigger>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingId ? "Editar Ficha" : "Nueva Ficha de Conductor"}</DialogTitle>
+                <DialogTitle>{editingId ? "Editar Ficha" : "Registrar Nuevo Conductor"}</DialogTitle>
               </DialogHeader>
+              
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   
-                  {/* DATOS PERSONALES */}
-                  <div className="p-4 border rounded-md space-y-4">
-                    <h3 className="font-semibold flex items-center gap-2"><UserSquare2 className="h-4 w-4" /> Datos Personales</h3>
+                  {/* --- DATOS PERSONALES --- */}
+                  <div className="p-4 border rounded-md space-y-4 bg-white dark:bg-transparent">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <UserSquare2 className="h-4 w-4" /> Datos Personales
+                    </h3>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       
                       {/* 🟢 NOMBRE EN MAYÚSCULAS */}
@@ -197,9 +212,10 @@ export default function Drivers() {
                         </FormItem>
                       )} />
                       
+                      {/* EMAIL (Normal) */}
                       <FormField control={form.control} name="email" render={({ field }) => (
                         <FormItem className="col-span-2">
-                          <FormLabel>Email (Para inicio de sesión)</FormLabel>
+                          <FormLabel>Email (Usuario de acceso)</FormLabel>
                           <FormControl>
                             <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
                           </FormControl>
@@ -249,12 +265,13 @@ export default function Drivers() {
                       {/* 🟢 DIRECCIÓN EN MAYÚSCULAS */}
                       <FormField control={form.control} name="address" render={({ field }) => (
                         <FormItem className="col-span-2">
-                          <FormLabel>Dirección (Opcional)</FormLabel>
+                          <FormLabel>Dirección</FormLabel>
                           <FormControl>
                             <Input 
                               {...field} 
                               value={(field.value || "").toUpperCase()} 
                               onChange={e => field.onChange(e.target.value.toUpperCase())}
+                              placeholder="CALLE EJEMPLO 123"
                             />
                           </FormControl>
                           <FormMessage />
@@ -263,10 +280,13 @@ export default function Drivers() {
                     </div>
                   </div>
 
-                  {/* LICENCIA */}
+                  {/* --- LICENCIA DE CONDUCIR --- */}
                   <div className="p-4 border rounded-md bg-slate-50 dark:bg-slate-900/50 space-y-4">
-                    <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4" /> Licencia de Conducir</h3>
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <Car className="h-4 w-4" /> Licencia de Conducir
+                    </h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      
                       <FormField control={form.control} name="licenseNumber" render={({ field }) => (
                         <FormItem>
                           <FormLabel>N° Licencia</FormLabel>
@@ -274,6 +294,7 @@ export default function Drivers() {
                           <FormMessage />
                         </FormItem>
                       )} />
+                      
                       <FormField control={form.control} name="licenseClass" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Clase</FormLabel>
@@ -290,6 +311,7 @@ export default function Drivers() {
                           <FormMessage />
                         </FormItem>
                       )} />
+                      
                       <FormField control={form.control} name="licenseDate" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Próx. Control</FormLabel>
@@ -301,7 +323,11 @@ export default function Drivers() {
                   </div>
 
                   <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
-                    {editingId ? "Guardar Cambios" : "Registrar Conductor"}
+                    {createMutation.isPending || updateMutation.isPending ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...</>
+                    ) : (
+                        editingId ? "Guardar Cambios" : "Registrar Conductor"
+                    )}
                   </Button>
                 </form>
               </Form>

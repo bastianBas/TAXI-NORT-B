@@ -3,8 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
-// --- TABLAS ---
-
+// --- USUARIOS ---
 export const users = mysqlTable("users", {
   id: varchar("id", { length: 36 }).primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -14,6 +13,7 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// --- CONDUCTORES ---
 export const drivers = mysqlTable("drivers", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }), 
@@ -30,6 +30,7 @@ export const drivers = mysqlTable("drivers", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- VEHÍCULOS ---
 export const vehicles = mysqlTable("vehicles", {
   id: varchar("id", { length: 36 }).primaryKey(),
   plate: varchar("plate", { length: 20 }).notNull().unique(),
@@ -45,7 +46,7 @@ export const vehicles = mysqlTable("vehicles", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// 🟢 ACTUALIZADO: Hojas de ruta con campos legales
+// --- HOJAS DE RUTA (Actualizada con Firma y QR) ---
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
@@ -58,7 +59,7 @@ export const routeSlips = mysqlTable("route_slips", {
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
   
-  // Nuevos campos para firma digital y QR
+  // Nuevos campos legales
   authorizedBy: varchar("authorized_by", { length: 36 }), 
   authorizedAt: timestamp("authorized_at"),
   qrCodeData: text("qr_code_data"),
@@ -66,6 +67,7 @@ export const routeSlips = mysqlTable("route_slips", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- PAGOS ---
 export const payments = mysqlTable("payments", {
   id: varchar("id", { length: 36 }).primaryKey(),
   routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(),
@@ -79,6 +81,7 @@ export const payments = mysqlTable("payments", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- AUDITORÍA ---
 export const auditLogs = mysqlTable("audit_logs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
@@ -90,6 +93,7 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
+// --- NOTIFICACIONES ---
 export const notifications = mysqlTable("notifications", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
@@ -101,7 +105,7 @@ export const notifications = mysqlTable("notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// 🟢 NUEVO: Historial GPS para KPIs
+// --- HISTORIAL GPS (KPIs) ---
 export const gpsHistory = mysqlTable("gps_history", {
   id: varchar("id", { length: 36 }).primaryKey(),
   vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
