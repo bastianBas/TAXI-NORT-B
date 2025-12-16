@@ -68,13 +68,14 @@ export default function RouteSlipsPage() {
           </p>
         </div>
         
-        {/* 🟢 CAMBIO FINAL: Colores exactos para igualar a Vehículos
-            - bg-zinc-900: Negro (Modo Claro)
-            - dark:bg-blue-900: Azul Oscuro (Modo Oscuro)
+        {/* 🟢 CAMBIO DEFINITIVO:
+            - Modo Claro: bg-zinc-950 (Negro intenso)
+            - Modo Oscuro: dark:bg-[#0f172a] (Azul oscuro/Slate profundo) + Borde sutil
+            Esto iguala exactamente al botón de la página "Vehículos".
         */}
         <Button 
           onClick={() => setIsCreateOpen(true)} 
-          className="gap-2 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-blue-900 dark:hover:bg-blue-800 dark:text-white border-0"
+          className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
         >
           <Plus className="h-4 w-4" /> Nuevo Control Diario
         </Button>
