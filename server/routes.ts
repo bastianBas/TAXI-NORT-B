@@ -31,7 +31,7 @@ export function registerRoutes(app: Express): Server {
   
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  // 🟢 CORRECCIÓN AQUÍ: Agregamos ": any" a (req: any, ...) para que reconozca req.login
+  // --- REGISTRO PÚBLICO ---
   app.post("/api/register", async (req: any, res, next) => {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
@@ -46,7 +46,6 @@ export function registerRoutes(app: Express): Server {
       const uid = randomUUID();
       const hashedPassword = await bcrypt.hash(password, 10);
       
-      // Creamos el objeto usuario
       const newUser = {
         id: uid,
         email,
@@ -75,20 +74,14 @@ export function registerRoutes(app: Express): Server {
         createdAt: new Date()
       });
 
-      // LOGIN AUTOMÁTICO (Ahora sí funcionará sin error rojo)
       req.login(newUser, (err: any) => {
-        if (err) {
-          console.error("Error en login automático:", err);
-          return next(err);
-        }
-        console.log(`✅ Usuario registrado y logueado: ${email}`);
-        // Devolvemos usuario sin password
+        if (err) return next(err);
         const { password: _, ...userWithoutPassword } = newUser;
         return res.status(201).json(userWithoutPassword);
       });
 
     } catch (e) {
-      console.error("❌ Error en registro:", e);
+      console.error("Error registro:", e);
       if (e instanceof Error && e.message.includes("Duplicate entry")) {
          return res.status(400).send("Error: El RUT o Email ya existe.");
       }
@@ -162,14 +155,6 @@ export function registerRoutes(app: Express): Server {
 
       if (status === 'offline') {
         await storage.removeVehicleLocation(activeVehicle.id);
-        try {
-          const admins = await storage.getAdmins();
-          for (const admin of admins) {
-             await storage.createNotification({
-               userId: admin.id, type: 'gps_alert', title: '⚠️ GPS Desactivado', message: `El conductor ${driver.name} ha cerrado sesión.`, link: `/drivers`
-             });
-          }
-        } catch (notifErr) { console.error(notifErr); }
         return res.sendStatus(200);
       }
 
@@ -204,6 +189,7 @@ export function registerRoutes(app: Express): Server {
        
        await db.insert(routeSlips).values(data);
 
+       // Notificación al conductor
        try {
          const driverProfile = await storage.getDriver(data.driverId);
          if (driverProfile && driverProfile.userId) {
@@ -224,7 +210,7 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { console.error(e); res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES Y OTROS ---
+  // --- CONDUCTORES Y VEHÍCULOS ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); res.json(all); });
   
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
@@ -252,9 +238,69 @@ export function registerRoutes(app: Express): Server {
   app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
   app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
   
-  app.get("/api/payments", verifyAuth, async (req, res) => { if (!req.user) return res.sendStatus(401); try { const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] }); res.json(all); } catch (e) { res.status(500).json([]); } });
-  app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => { try { const pid = randomUUID(); let proof = null; if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; const pData = { id: pid, routeSlipId: req.body.routeSlipId, type: req.body.type, amount: parseInt(req.body.amount || "0"), driverId: req.body.driverId, vehicleId: req.body.vehicleId, date: req.body.date, proofOfPayment: proof, status: 'completed', createdAt: new Date() }; await db.insert(payments).values(pData); if (req.body.routeSlipId) { await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); } res.status(201).json(pData); } catch (e) { console.error(e); res.status(500).send("Error"); } });
-  app.delete("/api/payments/:id", verifyAuth, async (req, res) => { try { await db.delete(payments).where(eq(payments.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
+  // --- PAGOS (RUTAS CORREGIDAS) ---
+  app.get("/api/payments", verifyAuth, async (req, res) => { 
+      if (!req.user) return res.sendStatus(401); 
+      try { 
+          const all = await db.query.payments.findMany({ with: { routeSlip: true }, orderBy: (p, { desc }) => [desc(p.date)] }); 
+          res.json(all); 
+      } catch (e) { res.status(500).json([]); } 
+  });
+
+  app.post("/api/payments", verifyAuth, upload.any(), async (req, res) => { 
+      try { 
+          const pid = randomUUID(); 
+          let proof = null; 
+          if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; 
+          
+          const pData = { 
+              id: pid, 
+              routeSlipId: req.body.routeSlipId, 
+              type: req.body.type, 
+              amount: parseInt(req.body.amount || "0"), 
+              driverId: req.body.driverId, 
+              vehicleId: req.body.vehicleId, 
+              date: req.body.date, 
+              proofOfPayment: proof, 
+              status: 'completed', 
+              createdAt: new Date() 
+          }; 
+          
+          await db.insert(payments).values(pData); 
+          if (req.body.routeSlipId) { 
+              await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); 
+          } 
+          res.status(201).json(pData); 
+      } catch (e) { console.error(e); res.status(500).send("Error"); } 
+  });
+
+  // 🟢 RUTA NUEVA: PUT PARA EDITAR PAGOS (Esto soluciona el error)
+  app.put("/api/payments/:id", verifyAuth, upload.any(), async (req, res) => {
+    try {
+        const pId = req.params.id;
+        const data: any = { ...req.body };
+
+        // Si hay archivo nuevo, actualizar la ruta
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+            data.proofOfPayment = `uploads/${req.files[0].filename}`;
+        }
+
+        // Aseguramos que amount sea número si viene en el body
+        if (data.amount) data.amount = parseInt(data.amount);
+
+        await db.update(payments).set(data).where(eq(payments.id, pId));
+        res.json({ message: "Pago actualizado" });
+    } catch (e) {
+        console.error("Error actualizando pago:", e);
+        // Respondemos con JSON, no con HTML
+        res.status(500).json({ message: "Error al actualizar pago" }); 
+    }
+  });
+
+  app.delete("/api/payments/:id", verifyAuth, async (req, res) => { 
+      try { await db.delete(payments).where(eq(payments.id, req.params.id)); res.json({ message: "Deleted" }); } 
+      catch (e) { res.status(500).send("Error"); } 
+  });
 
   const httpServer = createServer(app);
   return httpServer;
