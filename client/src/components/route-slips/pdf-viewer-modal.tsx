@@ -3,7 +3,7 @@ import QRCode from "react-qr-code";
 import { PDFViewer, PDFDownloadLink } from '@react-pdf/renderer';
 import { X, QrCode, FileText, ArrowLeft, Download, Loader2 } from 'lucide-react';
 // Importamos la interfaz desde el diseño para mantener consistencia
-import { RouteSlipPdf, type PdfData } from './pdf-design'; 
+import { RouteSlipPdf, type PdfData } from './pdf-design';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 

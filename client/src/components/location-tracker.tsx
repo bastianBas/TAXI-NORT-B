@@ -1,14 +1,13 @@
-import { useEffect, useRef } from "react";
-import { useAuth } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
+import { useAuth } from "@/lib/auth"; // O tu hook de autenticación
+import { useToast } from "@/hooks/use-toast"; // Si tienes notificaciones
 
 export function LocationTracker() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const isOfflineSentRef = useRef(false);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   useEffect(() => {
+    // 1. Solo activamos si el usuario es CONDUCTOR
     if (!user || user.role !== 'driver') return;
 
     if (!('geolocation' in navigator)) {
@@ -16,61 +15,15 @@ export function LocationTracker() {
       return;
     }
 
-    // 🟢 MANTENER PANTALLA ENCENDIDA (Evita que el navegador corte el GPS por inactividad)
-    const requestWakeLock = async () => {
-        if ('wakeLock' in navigator) {
-            try {
-                wakeLockRef.current = await navigator.wakeLock.request('screen');
-                console.log('Wake Lock activo: Pantalla no se apagará sola.');
-            } catch (err) {
-                console.warn('Wake Lock no disponible o denegado:', err);
-            }
-        }
-    };
-
-    // Solicitar Wake Lock al montar y al volver a ver la app
-    requestWakeLock();
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && user.role === 'driver') {
-            requestWakeLock();
-        }
-    });
-
-    const sendOfflineSignal = () => {
-        if (isOfflineSentRef.current) return;
-        
-        const data = JSON.stringify({ status: 'offline' });
-        
-        // Intentamos beacon para máxima fiabilidad al cerrar
-        if (navigator.sendBeacon) {
-            const blob = new Blob([data], { type: 'application/json' });
-            navigator.sendBeacon("/api/vehicle-locations", blob);
-            isOfflineSentRef.current = true;
-        } else {
-            fetch("/api/vehicle-locations", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: data,
-                keepalive: true 
-            }).then(() => {
-                isOfflineSentRef.current = true;
-            }).catch(e => console.error(e));
-        }
-    };
-
+    // 2. Función que envía la ubicación al servidor
     const sendLocation = async (position: GeolocationPosition) => {
       try {
-        isOfflineSentRef.current = false;
-        const { latitude, longitude, speed } = position.coords;
+        const { latitude, longitude } = position.coords;
         
         await fetch("/api/vehicle-locations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            lat: latitude, 
-            lng: longitude,
-            speed: speed 
-          }),
+          body: JSON.stringify({ lat: latitude, lng: longitude }),
         });
         
       } catch (error) {
@@ -78,42 +31,29 @@ export function LocationTracker() {
       }
     };
 
+    // 3. Activamos el rastreo (Esto pedirá permisos en el móvil)
     const watchId = navigator.geolocation.watchPosition(
       sendLocation,
       (error) => {
         console.error("Error de GPS:", error);
-        // Si el usuario apaga el GPS manualmente, mandamos offline
-        if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
-            sendOfflineSignal();
-            toast({
-                variant: "destructive",
-                title: "GPS Desactivado",
-                description: "Tu vehículo se ha ocultado del mapa.",
-            });
+        if (error.code === 1) {
+          toast({
+            variant: "destructive",
+            title: "GPS Desactivado",
+            description: "Por favor permite el acceso a la ubicación para trabajar.",
+          });
         }
       },
       {
-        enableHighAccuracy: true,
+        enableHighAccuracy: true, // Modo alta precisión para autos
         timeout: 10000,
-        maximumAge: 0 
+        maximumAge: 5000,
       }
     );
 
-    // Evento extra para capturar cierre de pestaña
-    window.addEventListener('beforeunload', sendOfflineSignal);
-
-    return () => {
-        navigator.geolocation.clearWatch(watchId);
-        window.removeEventListener('beforeunload', sendOfflineSignal);
-        
-        if (wakeLockRef.current) {
-            wakeLockRef.current.release().catch(() => {});
-            wakeLockRef.current = null;
-        }
-
-        sendOfflineSignal();
-    };
+    // Limpieza al salir
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [user, toast]);
 
-  return null;
+  return null; // Este componente no renderiza nada visual
 }

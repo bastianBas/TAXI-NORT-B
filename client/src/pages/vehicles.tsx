@@ -149,52 +149,14 @@ export default function Vehicles() {
                   <div className="p-4 border rounded-md space-y-4">
                     <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4"/> Datos del Vehículo</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      
-                      {/* 🟢 PATENTE EN MAYÚSCULAS */}
                       <FormField control={form.control} name="plate" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Patente</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field} 
-                              value={field.value?.toUpperCase() || ""} 
-                              onChange={e => field.onChange(e.target.value.toUpperCase())}
-                              placeholder="ABCD-12" 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <FormItem><FormLabel>Patente</FormLabel><FormControl><Input {...field} placeholder="ABCD-12" /></FormControl><FormMessage /></FormItem>
                       )} />
-
-                      {/* 🟢 MODELO EN MAYÚSCULAS */}
                       <FormField control={form.control} name="model" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Modelo</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field} 
-                              value={field.value?.toUpperCase() || ""} 
-                              onChange={e => field.onChange(e.target.value.toUpperCase())}
-                              placeholder="EJ: TOYOTA YARIS" 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <FormItem><FormLabel>Modelo</FormLabel><FormControl><Input {...field} placeholder="Ej: Toyota Yaris" /></FormControl><FormMessage /></FormItem>
                       )} />
-
-                      {/* 🟢 COLOR EN MAYÚSCULAS */}
                       <FormField control={form.control} name="color" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Color</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field} 
-                              value={field.value?.toUpperCase() || ""} 
-                              onChange={e => field.onChange(e.target.value.toUpperCase())}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <FormItem><FormLabel>Color</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
                     </div>
                   </div>
@@ -203,36 +165,11 @@ export default function Vehicles() {
                   <div className="p-4 border rounded-md space-y-4 bg-slate-50 dark:bg-slate-900/50">
                     <h3 className="font-semibold flex items-center gap-2"><User className="h-4 w-4"/> Propietario</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      
-                      {/* 🟢 NOMBRE PROPIETARIO EN MAYÚSCULAS */}
                       <FormField control={form.control} name="ownerName" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nombre Completo</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field} 
-                              value={field.value?.toUpperCase() || ""} 
-                              onChange={e => field.onChange(e.target.value.toUpperCase())}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <FormItem><FormLabel>Nombre Completo</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
-
-                      {/* 🟢 RUT PROPIETARIO EN MAYÚSCULAS */}
                       <FormField control={form.control} name="ownerRut" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>RUT Propietario</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field} 
-                              value={field.value?.toUpperCase() || ""} 
-                              onChange={e => field.onChange(e.target.value.toUpperCase())}
-                              placeholder="12.345.678-K" 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <FormItem><FormLabel>RUT Propietario</FormLabel><FormControl><Input {...field} placeholder="12.345.678-9" /></FormControl><FormMessage /></FormItem>
                       )} />
                     </div>
                   </div>
