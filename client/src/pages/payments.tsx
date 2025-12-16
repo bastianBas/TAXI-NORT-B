@@ -9,7 +9,8 @@ import {
   FileText,
   ExternalLink,
   Upload,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -73,7 +74,7 @@ export default function PaymentsPage() {
 
   // 2. OBTENER HOJAS DE RUTA (Para calcular pendientes y llenar el select)
   const { data: routeSlips = [] } = useQuery({
-    queryKey: ["route-slips"], // Traemos todas para poder filtrar
+    queryKey: ["route-slips"], // Traemos todas
     queryFn: async () => {
       const res = await fetch("/api/route-slips");
       if (!res.ok) return [];
@@ -81,11 +82,11 @@ export default function PaymentsPage() {
     }
   });
 
-  // --- LÓGICA DE TARJETAS (KPIs) ---
-  // Calculamos cuántas hojas están pendientes de pago
+  // --- LÓGICA DE TARJETAS (KPIs - RESTAURADAS COMO EN LA IMAGEN 3) ---
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
+  const totalPaymentsCount = payments.length;
   
-  // Filtro de búsqueda en tabla
+  // Filtro de búsqueda
   const filteredPayments = payments.filter((p: any) => {
     const searchLower = searchTerm.toLowerCase();
     const driverName = p.routeSlip?.driver?.name?.toLowerCase() || "";
@@ -99,7 +100,7 @@ export default function PaymentsPage() {
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
-      amount: "1800", // 🟢 RESTAURADO: Valor por defecto fijo
+      amount: "1800", // 🟢 RESTAURADO: Valor automático de $1800
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     }
@@ -160,11 +161,10 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 CORRECCIÓN VISUALIZADOR: Limpia la ruta para evitar errores 404
+  // 🟢 CORRECCIÓN VISUALIZADOR: Esta es la única parte "nueva" necesaria para que no falle la imagen
   const getFileUrl = (path: string) => {
     if (!path) return "";
-    // Si viene como "uploads/archivo.jpg", le aseguramos la barra inicial "/uploads/archivo.jpg"
-    // Y evitamos duplicados tipo "/uploads/uploads/"
+    // Limpia rutas duplicadas tipo "uploads/uploads/imagen.jpg"
     const cleanPath = path.replace(/^(\/?uploads\/)+/, ''); 
     return `/uploads/${cleanPath}`;
   };
@@ -178,7 +178,7 @@ export default function PaymentsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Pagos</h1>
           <p className="text-muted-foreground">Registro de pagos diarios de Hojas de Ruta</p>
         </div>
-        {/* Botón con estilo oscuro correcto */}
+        {/* Botón estilo oscuro correcto */}
         <Button 
           onClick={handleOpenCreate} 
           className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
@@ -187,25 +187,33 @@ export default function PaymentsPage() {
         </Button>
       </div>
 
-      {/* TARJETAS (RESTAURADAS: Ahora muestra Hojas por Cobrar) */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* 🟢 TARJETAS RESTAURADAS (3 KPIs como en la imagen) */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
+          <div className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <h3 className="tracking-tight text-sm font-medium">Total Pagos</h3>
+            <CheckCircle2 className="h-4 w-4 text-blue-600" />
+          </div>
+          <div className="text-2xl font-bold">{totalPaymentsCount}</div>
+          <p className="text-xs text-muted-foreground">Registrados históricamente</p>
+        </div>
+
+        <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
+          <div className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <h3 className="tracking-tight text-sm font-medium">Hojas Pendientes</h3>
+            <AlertCircle className="h-4 w-4 text-orange-600" />
+          </div>
+          <div className="text-2xl font-bold">{pendingSlipsCount}</div>
+          <p className="text-xs text-muted-foreground">Por cobrar</p>
+        </div>
+
         <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
             <h3 className="tracking-tight text-sm font-medium">Recaudación Total</h3>
             <DollarSign className="h-4 w-4 text-green-600" />
           </div>
           <div className="text-2xl font-bold">${totalAmount.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">En los registros filtrados</p>
-        </div>
-        
-        {/* 🟢 TARJETA RESTAURADA: Muestra pendientes */}
-        <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
-          <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <h3 className="tracking-tight text-sm font-medium">Hojas por Cobrar</h3>
-            <AlertCircle className="h-4 w-4 text-orange-600" />
-          </div>
-          <div className="text-2xl font-bold">{pendingSlipsCount}</div>
-          <p className="text-xs text-muted-foreground">Pendientes de pago</p>
+          <p className="text-xs text-muted-foreground">En registros filtrados</p>
         </div>
       </div>
 
@@ -273,7 +281,7 @@ export default function PaymentsPage() {
         </Table>
       </div>
 
-      {/* 🟢 MODAL FORMULARIO: Estilo oscuro original restaurado */}
+      {/* 🟢 MODAL FORMULARIO RESTAURADO (Estilo oscuro original) */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[500px] bg-zinc-950 text-white border-zinc-800">
           <DialogHeader>
@@ -286,7 +294,7 @@ export default function PaymentsPage() {
               <Select 
                 onValueChange={(val) => setValue("routeSlipId", val)} 
                 defaultValue={watch("routeSlipId")}
-                disabled={!!editingPayment} // No cambiar hoja al editar
+                disabled={!!editingPayment}
               >
                 <SelectTrigger className="bg-zinc-900 border-zinc-800 text-white">
                   <SelectValue placeholder="Seleccionar hoja pendiente" />
@@ -305,16 +313,21 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-2 gap-4">
                <div className="space-y-2">
                  <Label>Monto a Pagar</Label>
-                 {/* Input de monto por defecto en 1800 */}
                  <Input 
                    type="number" 
                    {...register("amount")} 
+                   // 🟢 Estilo oscuro restaurado
                    className="bg-zinc-900 border-zinc-800 text-white" 
                  />
                </div>
                <div className="space-y-2">
                  <Label>Fecha</Label>
-                 <Input type="date" {...register("date")} className="bg-zinc-900 border-zinc-800 text-white" />
+                 <Input 
+                   type="date" 
+                   {...register("date")} 
+                   // 🟢 Estilo oscuro restaurado
+                   className="bg-zinc-900 border-zinc-800 text-white" 
+                 />
                </div>
             </div>
 
@@ -352,7 +365,7 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZADOR (Corregido para 404) */}
+      {/* MODAL VISUALIZADOR (Con la corrección para que no falle la imagen) */}
       <Dialog open={!!viewFile} onOpenChange={(open) => !open && setViewFile(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
