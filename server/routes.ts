@@ -29,10 +29,77 @@ const upload = multer({ storage: storageMulter });
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // Servir archivos subidos (fotos)
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  // --- NOTIFICACIONES ---
+  // 🟢 CORRECCIÓN AQUÍ: Agregamos ": any" a (req: any, ...) para que reconozca req.login
+  app.post("/api/register", async (req: any, res, next) => {
+    try {
+      const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
+
+      if (!email || !password || !name || !rut) {
+        return res.status(400).send("Faltan datos obligatorios (Email, Password, Nombre, RUT)");
+      }
+
+      const exist = await db.query.users.findFirst({ where: eq(users.email, email) });
+      if (exist) return res.status(400).send("El email ya está registrado");
+
+      const uid = randomUUID();
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Creamos el objeto usuario
+      const newUser = {
+        id: uid,
+        email,
+        password: hashedPassword,
+        name,
+        role: 'driver',
+        createdAt: new Date()
+      };
+      
+      await db.insert(users).values(newUser);
+
+      const did = randomUUID();
+      await db.insert(drivers).values({
+        id: did,
+        userId: uid,
+        email,
+        name,
+        rut,
+        phone: phone || "Por completar",
+        commune: commune || "Por completar",
+        address: address || null,
+        licenseNumber: licenseNumber || "Por completar",
+        licenseClass: licenseClass || "B",
+        licenseDate: licenseDate || new Date().toISOString().split('T')[0],
+        status: 'active',
+        createdAt: new Date()
+      });
+
+      // LOGIN AUTOMÁTICO (Ahora sí funcionará sin error rojo)
+      req.login(newUser, (err: any) => {
+        if (err) {
+          console.error("Error en login automático:", err);
+          return next(err);
+        }
+        console.log(`✅ Usuario registrado y logueado: ${email}`);
+        // Devolvemos usuario sin password
+        const { password: _, ...userWithoutPassword } = newUser;
+        return res.status(201).json(userWithoutPassword);
+      });
+
+    } catch (e) {
+      console.error("❌ Error en registro:", e);
+      if (e instanceof Error && e.message.includes("Duplicate entry")) {
+         return res.status(400).send("Error: El RUT o Email ya existe.");
+      }
+      res.status(500).send("Error interno.");
+    }
+  });
+
+  // =================================================================
+  // ZONA PROTEGIDA
+  // =================================================================
+
   app.get("/api/notifications", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const notifs = await storage.getNotifications(req.user.id);
@@ -44,17 +111,14 @@ export function registerRoutes(app: Express): Server {
     res.sendStatus(200);
   });
 
-  // --- GEOLOCALIZACIÓN (GPS) ---
+  // --- GPS ---
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       const activeLocations = await storage.getAllVehicleLocations();
       const enrichedFleet = [];
       
       for (const loc of activeLocations) {
-        const vehicleInfo = await db.query.vehicles.findFirst({
-           where: eq(vehicles.id, loc.vehicleId)
-        });
-        
+        const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, loc.vehicleId) });
         const slip = await db.query.routeSlips.findFirst({
            where: eq(routeSlips.vehicleId, loc.vehicleId),
            orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -82,10 +146,7 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const { lat, lng, status, speed } = req.body;
-
-      const driver = await db.query.drivers.findFirst({
-        where: eq(drivers.userId, req.user.id)
-      });
+      const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
       if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
 
       const slips = await db.query.routeSlips.findMany({
@@ -95,24 +156,17 @@ export function registerRoutes(app: Express): Server {
         with: { vehicle: true }
       });
 
-      if (slips.length === 0 || !slips[0].vehicle) {
-        return res.sendStatus(200); 
-      }
+      if (slips.length === 0 || !slips[0].vehicle) return res.sendStatus(200); 
       
       const activeVehicle = slips[0].vehicle;
 
-      // DETECCIÓN DE DESCONEXIÓN
       if (status === 'offline') {
         await storage.removeVehicleLocation(activeVehicle.id);
         try {
           const admins = await storage.getAdmins();
           for (const admin of admins) {
              await storage.createNotification({
-               userId: admin.id,
-               type: 'gps_alert',
-               title: '⚠️ GPS Desactivado',
-               message: `El conductor ${driver.name} ha cerrado sesión.`,
-               link: `/drivers`
+               userId: admin.id, type: 'gps_alert', title: '⚠️ GPS Desactivado', message: `El conductor ${driver.name} ha cerrado sesión.`, link: `/drivers`
              });
           }
         } catch (notifErr) { console.error(notifErr); }
@@ -141,109 +195,58 @@ export function registerRoutes(app: Express): Server {
   // --- HOJAS DE RUTA ---
   app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
      if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
-     
      try {
        const newId = randomUUID();
        let url = null;
        if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
 
-       const data = {
-         ...req.body,
-         id: newId,
-         signatureUrl: url,
-         paymentStatus: 'pending',
-         isDuplicate: false,
-         createdAt: new Date()
-       };
+       const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
        
        await db.insert(routeSlips).values(data);
 
        try {
          const driverProfile = await storage.getDriver(data.driverId);
          if (driverProfile && driverProfile.userId) {
-            await storage.createNotification({
-              userId: driverProfile.userId,
-              type: 'payment_due',
-              title: 'Hoja de Ruta Creada',
-              message: `Nueva hoja de ruta del ${data.date}.`,
-              link: '/payments'
-            });
+            await storage.createNotification({ userId: driverProfile.userId, type: 'payment_due', title: 'Hoja de Ruta Creada', message: `Nueva hoja de ruta del ${data.date}.`, link: '/payments' });
          }
        } catch (notifError) { console.error(notifError); }
 
        res.status(201).json(data);
-     } catch (e) {
-       console.error("Error creando hoja de ruta:", e);
-       res.status(500).send("Error al guardar en DB.");
-     }
+     } catch (e) { console.error(e); res.status(500).send("Error al guardar en DB."); }
   });
 
   app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => { try { const data: any = { ...req.body }; if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
   
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
-        const all = await db.query.routeSlips.findMany({
-            with: { driver: true, vehicle: true },
-            orderBy: (t, { desc }) => [desc(t.createdAt)]
-        });
+        const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.createdAt)] });
         res.json(all);
-    } catch (e) {
-        console.error(e);
-        res.status(500).json([]); 
-    }
+    } catch (e) { console.error(e); res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES (Ruta Corregida) ---
+  // --- CONDUCTORES Y OTROS ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); res.json(all); });
   
-  // 🟢 AQUÍ ESTÁ LA CORRECCIÓN DE LA LÍNEA 223
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
     try { 
-      // Desestructuramos explícitamente para evitar errores con ...rest
       const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body; 
-      
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); 
       if (exist) return res.status(400).json({ message: "Email existe" }); 
       
       const uid = randomUUID(); 
       const pass = await bcrypt.hash("123456", 10); 
-      
-      // Crear Usuario
-      await db.insert(users).values({ 
-        id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() 
-      }); 
+      await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() }); 
       
       const did = randomUUID(); 
-      
-      // Crear Datos del Conductor (Objeto explícito)
-      const dData = { 
-        id: did, 
-        userId: uid, 
-        email, 
-        name, 
-        rut, 
-        phone,
-        commune,
-        address: address || null, // Manejo de opcional
-        licenseNumber,
-        licenseClass,
-        licenseDate,
-        createdAt: new Date(), 
-        status: 'active' 
-      }; 
-      
+      const dData = { id: did, userId: uid, email, name, rut, phone, commune, address: address || null, licenseNumber, licenseClass, licenseDate, createdAt: new Date(), status: 'active' }; 
       await db.insert(drivers).values(dData); 
       res.status(201).json(dData); 
-    } catch (e) { 
-      console.error(e); 
-      res.status(500).send("Error"); 
-    } 
+    } catch (e) { console.error(e); res.status(500).send("Error"); } 
   });
 
   app.put("/api/drivers/:id", verifyAuth, async (req, res) => { try { await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { try { const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); if (!d) return res.status(404).send("Not found"); await db.delete(drivers).where(eq(drivers.id, req.params.id)); if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
   
-  // --- VEHÍCULOS Y PAGOS ---
   app.get("/api/vehicles", verifyAuth, async (req, res) => { const all = await db.query.vehicles.findMany(); res.json(all); });
   app.post("/api/vehicles", verifyAuth, async (req, res) => { try { const vid = randomUUID(); const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; await db.insert(vehicles).values(vData); res.status(201).json(vData); } catch (e) { res.status(500).send("Error"); } });
   app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
