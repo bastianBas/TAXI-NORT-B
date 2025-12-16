@@ -174,12 +174,13 @@ export default function RouteSlipsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZAR PDF (Corregido) */}
+      {/* MODAL VISUALIZAR PDF (Con la X corregida en color) */}
       {viewSlip && (
         <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
-          <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-zinc-900 border-zinc-800">
+          {/* 🟢 AQUÍ ESTÁ EL CAMBIO: Agregamos clases para forzar el color del botón de cierre */}
+          <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-zinc-900 border-zinc-800 [&>button]:text-zinc-400 [&>button]:hover:text-white">
             
-            {/* 1. ENCABEZADO (Solo Título y X automática) */}
+            {/* 1. ENCABEZADO */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950 text-white">
               <div className="flex flex-col">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -190,7 +191,6 @@ export default function RouteSlipsPage() {
                   Generando documento localmente...
                 </p>
               </div>
-              {/* Aquí ya no hay botones, solo queda la X automática a la derecha */}
             </div>
 
             {/* 2. CUERPO (Visor PDF) */}
@@ -210,7 +210,7 @@ export default function RouteSlipsPage() {
               </PDFViewer>
             </div>
 
-            {/* 3. PIE DE PÁGINA (Botones abajo, separados de la X) */}
+            {/* 3. PIE DE PÁGINA */}
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-800 bg-zinc-950">
                 <Button variant="secondary" size="sm" className="gap-2 hidden sm:flex">
                   <QrCode className="h-4 w-4" /> Mostrar QR Móvil
