@@ -9,7 +9,7 @@ export function LocationTracker() {
   const wakeLockRef = useRef<any>(null);
 
   useEffect(() => {
-    // Solo activar si es un conductor
+    // Solo activar si el usuario es conductor
     if (!user || user.role !== 'driver') return;
 
     if (!('geolocation' in navigator)) {
@@ -17,7 +17,32 @@ export function LocationTracker() {
       return;
     }
 
-    // 1. MANTENER PANTALLA ENCENDIDA (Wake Lock)
+    // 🚀 1. INICIO INSTANTÁNEO (TRUCO DE MEMORIA)
+    // Apenas carga el componente (al iniciar sesión), buscamos si hay una ubicación guardada
+    // y la enviamos de inmediato al servidor.
+    const savedLoc = localStorage.getItem("taxinort_last_pos");
+    if (savedLoc) {
+      try {
+        const { lat, lng } = JSON.parse(savedLoc);
+        console.log("📍 Enviando última ubicación conocida (Memoria Flash)");
+        
+        // Enviamos sin esperar respuesta para no bloquear nada
+        fetch("/api/vehicle-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat,
+            lng,
+            speed: 0, // Asumimos velocidad 0 al inicio
+            status: 'active'
+          }),
+        }).catch(e => console.error("Error enviando caché:", e));
+      } catch (e) {
+        console.error("Error leyendo memoria local:", e);
+      }
+    }
+
+    // 2. WAKE LOCK (Mantener pantalla encendida)
     const requestWakeLock = async () => {
       if ('wakeLock' in navigator) {
         try {
@@ -31,32 +56,32 @@ export function LocationTracker() {
       if (document.visibilityState === 'visible') requestWakeLock();
     });
 
-    // 2. FUNCIÓN PARA ENVIAR UBICACIÓN AL SERVIDOR
+    // 3. FUNCIÓN DE ENVÍO NORMAL (GPS REAL)
     const sendLocation = async (position: GeolocationPosition) => {
       try {
         isOfflineSentRef.current = false;
         const { latitude, longitude, speed } = position.coords;
 
-        // Enviamos al servidor (sin await para no bloquear la UI)
-        fetch("/api/vehicle-locations", {
+        // 💾 GUARDAR EN MEMORIA PARA LA PRÓXIMA VEZ
+        localStorage.setItem("taxinort_last_pos", JSON.stringify({ lat: latitude, lng: longitude }));
+
+        await fetch("/api/vehicle-locations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             lat: latitude,
             lng: longitude,
-            speed: speed ? (speed * 3.6) : 0 // Convertir a km/h
+            speed: speed ? (speed * 3.6) : 0
           }),
-        }).catch(e => console.error("Error envío silencioso:", e));
-
-      } catch (error) { console.error("Error procesando ubicación:", error); }
+        });
+      } catch (error) { console.error("Error envío GPS:", error); }
     };
 
-    // 3. SEÑAL DE APAGADO INSTANTÁNEO
+    // 4. SEÑAL OFFLINE (Al salir)
     const sendOfflineSignal = () => {
       if (isOfflineSentRef.current) return;
       const data = JSON.stringify({ status: 'offline' });
       
-      // sendBeacon es más rápido y seguro al cerrar la app
       if (navigator.sendBeacon) {
         const blob = new Blob([data], { type: 'application/json' });
         navigator.sendBeacon("/api/vehicle-locations", blob);
@@ -69,24 +94,14 @@ export function LocationTracker() {
       }
     };
 
-    // 🚀 4. INICIO INSTANTÁNEO (EL TRUCO "ALTIRO")
-    // Pedimos ubicación de baja precisión o caché PRIMERO.
-    // Esto responde en milisegundos usando antenas o memoria.
+    // 5. INTENTO RÁPIDO DE GPS (Por si no había memoria)
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        console.log("🚀 Ubicación rápida obtenida");
-        sendLocation(pos);
-      },
-      (e) => console.log("Ubicación rápida no disponible, esperando satélite..."),
-      { 
-        enableHighAccuracy: false, // FALSE = Velocidad (Antenas/Wifi)
-        timeout: 3000, 
-        maximumAge: Infinity // Usa cualquier dato guardado reciente
-      }
+      sendLocation,
+      (e) => console.log("Esperando satélites..."),
+      { maximumAge: Infinity, timeout: 2000, enableHighAccuracy: false }
     );
 
-    // 5. RASTREO CONSTANTE (ALTA PRECISIÓN)
-    // Una vez que el GPS calienta, este toma el control con datos exactos.
+    // 6. RASTREO CONSTANTE DE ALTA PRECISIÓN
     const watchId = navigator.geolocation.watchPosition(
       sendLocation,
       (error) => {
@@ -95,14 +110,9 @@ export function LocationTracker() {
           toast({ variant: "destructive", title: "GPS Perdido", description: "Vehículo oculto." });
         }
       },
-      { 
-        enableHighAccuracy: true, // TRUE = Precisión (Satélite)
-        timeout: 10000, 
-        maximumAge: 0 
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
-    // Limpieza al salir
     window.addEventListener('beforeunload', sendOfflineSignal);
 
     return () => {
