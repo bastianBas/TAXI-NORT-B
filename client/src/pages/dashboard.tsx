@@ -1,5 +1,5 @@
 import { useAuth } from "@/lib/auth";
-import { FleetMap } from "@/components/ui/fleet-map"; // 🟢 Importamos el mapa desde su archivo
+import FleetMap from "@/components/ui/fleet-map"; // 🟢 Importamos el mapa desde su archivo
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function Dashboard() {
