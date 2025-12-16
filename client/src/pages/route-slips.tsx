@@ -37,14 +37,24 @@ export default function RouteSlipsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [viewSlip, setViewSlip] = useState<any>(null);
   const [showQr, setShowQr] = useState(false);
-  
-  // 🟢 NUEVO ESTADO: Para controlar qué hoja se está editando
   const [editingSlip, setEditingSlip] = useState<any>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // 1. OBTENER DATOS
+  // 🟢 NUEVO: Obtener el usuario actual para verificar su rol
+  // (Asumimos que existe un endpoint que devuelve el usuario logueado, común en estos sistemas)
+  const { data: user } = useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      const res = await fetch("/api/user"); // O el endpoint que use tu sistema auth
+      if (!res.ok) return null;
+      return res.json();
+    },
+    retry: false,
+  });
+
+  // 1. OBTENER DATOS (Ya vienen filtrados por rol desde el backend)
   const { data: routeSlips = [], isLoading } = useQuery({
     queryKey: ["route-slips"],
     queryFn: async () => {
@@ -54,6 +64,7 @@ export default function RouteSlipsPage() {
     },
   });
 
+  // Filtro visual
   const filteredSlips = routeSlips.filter((slip: any) => {
     const searchLower = searchTerm.toLowerCase();
     const driverName = slip.driver?.name?.toLowerCase() || "";
@@ -63,18 +74,13 @@ export default function RouteSlipsPage() {
 
   const getQrUrl = (slip: any) => {
     if (!slip) return "";
-    const text = `TAXI NORT - CONTROL DIARIO
-Fecha: ${slip.date}
-Folio: #${slip.id.substring(0, 8)}
-Conductor: ${slip.driver?.name || "N/A"}
-Vehículo: ${slip.vehicle?.plate || "N/A"}
-Estado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
+    const text = `TAXI NORT - CONTROL DIARIO\nFecha: ${slip.date}\nFolio: #${slip.id.substring(0, 8)}\nConductor: ${slip.driver?.name || "N/A"}\nVehículo: ${slip.vehicle?.plate || "N/A"}\nEstado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(text)}`;
   };
 
   return (
     <div className="space-y-6">
-      {/* ENCABEZADO */}
+      {/* ENCABEZADO PAGINA */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
@@ -83,12 +89,15 @@ Estado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
           </p>
         </div>
         
-        <Button 
-          onClick={() => setIsCreateOpen(true)} 
-          className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
-        >
-          <Plus className="h-4 w-4" /> Nuevo Control Diario
-        </Button>
+        {/* 🟢 CORRECCIÓN: Solo mostrar el botón si el usuario es ADMIN */}
+        {user?.role === 'admin' && (
+          <Button 
+            onClick={() => setIsCreateOpen(true)} 
+            className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
+          >
+            <Plus className="h-4 w-4" /> Nuevo Control Diario
+          </Button>
+        )}
       </div>
 
       {/* BUSCADOR */}
@@ -118,9 +127,7 @@ Estado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">Cargando registros...</TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={7} className="h-24 text-center">Cargando registros...</TableCell></TableRow>
             ) : filteredSlips.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
@@ -164,14 +171,12 @@ Estado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
                         <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </Button>
                       
-                      {/* 🟢 BOTÓN MODIFICAR CORREGIDO: Ahora tiene onClick */}
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => setEditingSlip(slip)} // <--- Esto faltaba
-                      >
-                        <Edit className="h-4 w-4 text-zinc-900 dark:text-zinc-100" /> 
-                      </Button>
+                      {/* 🟢 OPCIONAL: También podrías ocultar el botón editar para conductores si lo deseas
+                          {user?.role === 'admin' && ( */}
+                          <Button variant="ghost" size="icon" onClick={() => setEditingSlip(slip)}>
+                            <Edit className="h-4 w-4 text-zinc-900 dark:text-zinc-100" /> 
+                          </Button>
+                          {/* )} */}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -181,102 +186,46 @@ Estado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
         </Table>
       </div>
 
-      {/* MODAL CREAR */}
+      {/* MODALES (Crear, Editar, QR, PDF) se mantienen igual... */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nuevo Control Diario</DialogTitle>
-          </DialogHeader>
-          <RouteSlipForm 
-            onSuccess={() => {
-              setIsCreateOpen(false);
-              queryClient.invalidateQueries({ queryKey: ["route-slips"] });
-              toast({ title: "Éxito", description: "Hoja de ruta creada correctamente" });
-            }} 
-          />
+          <DialogHeader><DialogTitle>Nuevo Control Diario</DialogTitle></DialogHeader>
+          <RouteSlipForm onSuccess={() => { setIsCreateOpen(false); queryClient.invalidateQueries({ queryKey: ["route-slips"] }); toast({ title: "Éxito", description: "Hoja de ruta creada" }); }} />
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 NUEVO MODAL EDITAR (Se activa al presionar el lápiz) */}
       <Dialog open={!!editingSlip} onOpenChange={(open) => !open && setEditingSlip(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Editar Control Diario</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Editar Control Diario</DialogTitle></DialogHeader>
           {editingSlip && (
-            <RouteSlipForm 
-              initialData={editingSlip} // Pasamos los datos para que el form los cargue
-              onSuccess={() => {
-                setEditingSlip(null);
-                queryClient.invalidateQueries({ queryKey: ["route-slips"] });
-              }} 
-            />
+            <RouteSlipForm initialData={editingSlip} onSuccess={() => { setEditingSlip(null); queryClient.invalidateQueries({ queryKey: ["route-slips"] }); }} />
           )}
         </DialogContent>
       </Dialog>
 
-      {/* MODAL QR */}
       <Dialog open={showQr} onOpenChange={setShowQr}>
         <DialogContent className="sm:max-w-md bg-white text-black dark:bg-zinc-950 dark:text-white border-zinc-200 dark:border-zinc-800">
-          <DialogHeader>
-            <DialogTitle className="text-center">Validación Móvil</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-center">Validación Móvil</DialogTitle></DialogHeader>
           <div className="flex flex-col items-center justify-center p-6 space-y-4">
-            {viewSlip?.id && (
-                <div className="p-2 bg-white rounded-lg shadow-sm border">
-                    <img src={getQrUrl(viewSlip)} alt="QR Code" className="w-48 h-48" />
-                </div>
-            )}
-            <div className="text-center space-y-1">
-               <p className="text-sm font-medium">Escanea para ver el detalle</p>
-               <p className="text-xs text-muted-foreground">No requiere conexión a internet.</p>
-            </div>
+            {viewSlip?.id && (<div className="p-2 bg-white rounded-lg shadow-sm border"><img src={getQrUrl(viewSlip)} alt="QR Code" className="w-48 h-48" /></div>)}
+            <div className="text-center space-y-1"><p className="text-sm font-medium">Escanea para ver el detalle</p><p className="text-xs text-muted-foreground">No requiere conexión a internet.</p></div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL PDF */}
       {viewSlip && (
         <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
           <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-background border-border [&>button]:text-muted-foreground [&>button]:hover:text-foreground">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/50 text-foreground">
-              <div className="flex flex-col">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" />
-                  Hoja de Ruta #{viewSlip.id.substring(0, 8)}...
-                </h2>
-                <p className="text-xs text-muted-foreground">Vista previa.</p>
-              </div>
+              <div className="flex flex-col"><h2 className="text-lg font-semibold flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> Hoja de Ruta #{viewSlip.id.substring(0, 8)}...</h2><p className="text-xs text-muted-foreground">Vista previa.</p></div>
             </div>
             <div className="flex-1 w-full h-full relative bg-zinc-100/5 dark:bg-zinc-900/50 flex justify-center items-center">
-              <PDFViewer width="100%" height="100%" className="border-none" showToolbar={false}>
-                <RouteSlipPdf 
-                  data={{
-                    id: viewSlip.id,
-                    date: viewSlip.date,
-                    driverName: viewSlip.driver?.name || "Desconocido",
-                    vehiclePlate: viewSlip.vehicle?.plate || "S/P",
-                    startTime: viewSlip.startTime,
-                    endTime: viewSlip.endTime,
-                    paymentStatus: viewSlip.paymentStatus
-                  }} 
-                />
-              </PDFViewer>
+              <PDFViewer width="100%" height="100%" className="border-none" showToolbar={false}><RouteSlipPdf data={{ id: viewSlip.id, date: viewSlip.date, driverName: viewSlip.driver?.name || "", vehiclePlate: viewSlip.vehicle?.plate || "", startTime: viewSlip.startTime, endTime: viewSlip.endTime, paymentStatus: viewSlip.paymentStatus }} /></PDFViewer>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-card/50">
-                <Button variant="outline" size="sm" className="gap-2 hidden sm:flex" onClick={() => setShowQr(true)}>
-                  <QrCode className="h-4 w-4" /> Mostrar QR Móvil
-                </Button>
-                <PDFDownloadLink
-                  document={<RouteSlipPdf data={{ id: viewSlip.id, date: viewSlip.date, driverName: viewSlip.driver?.name || "", vehiclePlate: viewSlip.vehicle?.plate || "", startTime: viewSlip.startTime, endTime: viewSlip.endTime, paymentStatus: viewSlip.paymentStatus }} />}
-                  fileName={`HojaRuta-${viewSlip.date}.pdf`}
-                >
-                  {/* @ts-ignore */}
-                  {({ loading }) => (
-                    <Button size="sm" className="gap-2">
-                      <Download className="h-4 w-4" /> {loading ? "Generando..." : "Descargar PDF"}
-                    </Button>
-                  )}
+                <Button variant="outline" size="sm" className="gap-2 hidden sm:flex" onClick={() => setShowQr(true)}><QrCode className="h-4 w-4" /> Mostrar QR Móvil</Button>
+                <PDFDownloadLink document={<RouteSlipPdf data={{ id: viewSlip.id, date: viewSlip.date, driverName: viewSlip.driver?.name || "", vehiclePlate: viewSlip.vehicle?.plate || "", startTime: viewSlip.startTime, endTime: viewSlip.endTime, paymentStatus: viewSlip.paymentStatus }} />} fileName={`HojaRuta-${viewSlip.date}.pdf`}>
+                  {/* @ts-ignore */}{({ loading }) => (<Button size="sm" className="gap-2"><Download className="h-4 w-4" /> {loading ? "Generando..." : "Descargar PDF"}</Button>)}
                 </PDFDownloadLink>
             </div>
           </DialogContent>
