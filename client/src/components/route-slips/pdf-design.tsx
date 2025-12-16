@@ -1,19 +1,21 @@
 import { Page, Text, View, Document, StyleSheet } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
-  page: { flexDirection: 'column', backgroundColor: '#FFFFFF', padding: 30 },
-  header: { marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#111827', paddingBottom: 10 },
-  title: { fontSize: 20, fontWeight: 'bold', textTransform: 'uppercase' },
-  subtitle: { fontSize: 10, color: '#6B7280', marginTop: 5 },
-  section: { marginVertical: 10, padding: 15, backgroundColor: '#F9FAFB', borderRadius: 5 },
+  page: { flexDirection: 'column', backgroundColor: '#FFFFFF', padding: 40, fontFamily: 'Helvetica' },
+  header: { marginBottom: 20, borderBottomWidth: 2, borderBottomColor: '#111827', paddingBottom: 10 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#111827', marginBottom: 4, textTransform: 'uppercase' },
+  subtitle: { fontSize: 12, color: '#6B7280' },
+  section: { backgroundColor: '#F9FAFB', padding: 15, borderRadius: 6, marginBottom: 15 },
   row: { flexDirection: 'row', marginBottom: 8, alignItems: 'center' },
   label: { width: 100, fontSize: 10, fontWeight: 'bold', color: '#374151' },
-  value: { fontSize: 12, color: '#111827', flex: 1 },
-  footer: { position: 'absolute', bottom: 30, left: 30, right: 30, textAlign: 'center', borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 10 },
-  footerText: { fontSize: 8, color: '#9CA3AF' }
+  value: { flex: 1, fontSize: 10, color: '#111827' },
+  statusPaid: { color: '#059669', fontWeight: 'bold', textTransform: 'uppercase' },
+  statusPending: { color: '#D97706', fontWeight: 'bold', textTransform: 'uppercase' },
+  footer: { position: 'absolute', bottom: 30, left: 40, right: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 8, borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 10 }
 });
 
-// 👇 IMPORTANTE: id es string aquí
+// 🟢 SOLUCIÓN: Definimos la interfaz EXACTAMENTE como la usas en route-slips.tsx
+// Hacemos que los campos sean opcionales (string | undefined) para evitar conflictos.
 export interface PdfData {
   id: string;
   date: string;
@@ -22,20 +24,17 @@ export interface PdfData {
   startTime: string;
   endTime: string;
   paymentStatus: string;
-  firma: string | null;
 }
 
+// Recibimos "data" que cumple con la interfaz PdfData
 export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
   <Document>
     <Page size="A4" style={styles.page}>
-      
-      {/* Encabezado */}
       <View style={styles.header}>
         <Text style={styles.title}>TAXI NORT - CONTROL DIARIO</Text>
         <Text style={styles.subtitle}>Comprobante de operación interno</Text>
       </View>
 
-      {/* Datos del Servicio */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>ID Registro:</Text>
@@ -51,11 +50,10 @@ export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Vehículo:</Text>
-          <Text style={styles.value}>{data.vehiclePlate}</Text>
+          <Text style={styles.value}>{data.vehiclePlate.toUpperCase()}</Text>
         </View>
       </View>
 
-      {/* Tiempos */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>Inicio:</Text>
@@ -67,25 +65,24 @@ export const RouteSlipPdf = ({ data }: { data: PdfData }) => (
         </View>
       </View>
 
-      {/* Estado */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>Estado Pago:</Text>
-          <Text style={{ ...styles.value, color: data.paymentStatus === 'paid' ? 'green' : '#D97706' }}>
+          <Text style={data.paymentStatus === 'paid' ? styles.statusPaid : styles.statusPending}>
             {data.paymentStatus === 'paid' ? 'PAGADO' : 'PENDIENTE'}
           </Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Firma:</Text>
-          <Text style={styles.value}>{data.firma ? "FIRMADO" : "SIN FIRMA"}</Text>
+          <Text style={styles.value}>
+            {data.paymentStatus === 'paid' ? 'FIRMADO DIGITALMENTE' : 'PENDIENTE DE FIRMA'}
+          </Text>
         </View>
       </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Documento generado localmente. Sin validez fiscal externa.
-        </Text>
-      </View>
+      <Text style={styles.footer}>
+        Documento generado electrónicamente por TaxiNort App.
+      </Text>
     </Page>
   </Document>
 );

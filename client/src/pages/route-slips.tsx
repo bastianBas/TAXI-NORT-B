@@ -1,230 +1,259 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/lib/auth";
-import { RouteSlip, Driver, Vehicle } from "@shared/schema";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, Info, Clock, CheckCircle, AlertCircle, Pencil, DollarSign, Eye } from "lucide-react";
-import RouteSlipDialog from "@/components/route-slips/route-slip-dialog";
-// 👇 IMPORTANTE: Asegúrate de que este archivo exista en esta ruta exacta
-import PdfViewerModal from "@/components/route-slips/pdf-viewer-modal"; 
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { 
+  Plus, 
+  Search, 
+  FileText, 
+  Eye, 
+  Edit, 
+  Download, 
+  QrCode 
+} from "lucide-react";
+import { PDFViewer, PDFDownloadLink } from "@react-pdf/renderer";
+
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { RouteSlipForm } from "@/components/route-slips/route-slip-form";
+// Asegúrate de que la ruta de importación coincida con donde guardaste el diseño del PDF
+import { RouteSlipPdf } from "@/components/route-slips/pdf-design"; 
+import { useToast } from "@/hooks/use-toast";
 
-// Definimos la interfaz localmente para evitar conflictos de importación
-interface PdfData {
-  id: string; // Asegurado como string
-  date: string;
-  driverName: string;
-  vehiclePlate: string;
-  startTime: string;
-  endTime: string;
-  paymentStatus: string;
-  firma: string | null;
-}
+export default function RouteSlipsPage() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [viewSlip, setViewSlip] = useState<any>(null); // Estado para el modal de visualización
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-export default function RouteSlips() {
-  const { user } = useAuth();
-  
-  // Estado para controlar el Modal PDF
-  const [selectedSlip, setSelectedSlip] = useState<PdfData | null>(null);
-  const [isPdfOpen, setIsPdfOpen] = useState(false);
-
-  // Consultas de datos
-  const { data: routeSlips, isLoading: isLoadingSlips } = useQuery<RouteSlip[]>({
-    queryKey: ["/api/route-slips"],
+  // 1. OBTENER DATOS (Query Robusta)
+  const { data: routeSlips = [], isLoading } = useQuery({
+    queryKey: ["route-slips"],
+    queryFn: async () => {
+      const res = await fetch("/api/route-slips");
+      if (!res.ok) throw new Error("Error al cargar hojas de ruta");
+      return res.json();
+    },
   });
 
-  const { data: drivers } = useQuery<Driver[]>({
-    queryKey: ["/api/drivers"],
+  // Filtro de búsqueda
+  const filteredSlips = routeSlips.filter((slip: any) => {
+    const searchLower = searchTerm.toLowerCase();
+    const driverName = slip.driver?.name?.toLowerCase() || "";
+    const vehiclePlate = slip.vehicle?.plate?.toLowerCase() || "";
+    return driverName.includes(searchLower) || vehiclePlate.includes(searchLower);
   });
-
-  const { data: vehicles } = useQuery<Vehicle[]>({
-    queryKey: ["/api/vehicles"],
-  });
-
-  // Helpers para obtener nombres
-  const getDriverInfo = (id: string) => {
-    const d = drivers?.find((d) => d.id === id);
-    return d ? d.name : "Desconocido";
-  };
-
-  const getVehicleInfo = (id: string) => {
-    const v = vehicles?.find((v) => v.id === id);
-    return v ? v.plate : "Desconocido";
-  };
-
-  // Función para abrir el PDF (Mapeo de datos)
-  const handleOpenPdf = (slip: RouteSlip) => {
-    const pdfData: PdfData = {
-      id: slip.id,
-      date: slip.date,
-      driverName: getDriverInfo(slip.driverId),
-      vehiclePlate: getVehicleInfo(slip.vehicleId),
-      startTime: slip.startTime,
-      endTime: slip.endTime,
-      paymentStatus: slip.paymentStatus,
-      firma: slip.signatureUrl
-    };
-    setSelectedSlip(pdfData);
-    setIsPdfOpen(true);
-  };
-
-  if (isLoadingSlips) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-      </div>
-    );
-  }
-
-  // Lógica de filtrado
-  const currentDriver = user?.role === "driver" 
-    ? drivers?.find(d => d.userId === user.id) 
-    : null;
-
-  const displayedSlips = (routeSlips || []).filter((slip) => {
-    if (["admin", "operator", "finance"].includes(user?.role || "")) return true;
-    if (user?.role === "driver" && currentDriver) {
-        return slip.driverId === currentDriver.id;
-    }
-    return false; 
-  });
-
-  const canEdit = ["admin", "operator"].includes(user?.role || "");
-  const isDriver = user?.role === "driver";
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* ENCABEZADO */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
-          <p className="text-muted-foreground">Bitácora de servicios y estado de pagos.</p>
+          <p className="text-muted-foreground">
+            Bitácora de servicios y estado de pagos.
+          </p>
         </div>
-        {canEdit && <RouteSlipDialog />}
+        <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> Nuevo Control Diario
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Registros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {displayedSlips.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-              <Info className="h-10 w-10 text-gray-300" />
-              <p>No hay controles diarios registrados para ti.</p>
+      {/* BARRA DE BÚSQUEDA */}
+      <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm max-w-md">
+        <Search className="h-4 w-4 text-gray-500" />
+        <Input
+          placeholder="Buscar por conductor o patente..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border-0 focus-visible:ring-0"
+        />
+      </div>
+
+      {/* TABLA DE REGISTROS */}
+      <div className="rounded-md border bg-white shadow-sm overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-gray-50/50">
+              <TableHead>Fecha</TableHead>
+              <TableHead>Conductor</TableHead>
+              <TableHead>Vehículo</TableHead>
+              <TableHead>Horario</TableHead>
+              <TableHead>Estado Pago</TableHead>
+              <TableHead>Firma</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-24 text-center">
+                  Cargando registros...
+                </TableCell>
+              </TableRow>
+            ) : filteredSlips.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <FileText className="h-8 w-8 text-gray-300" />
+                    <p>No se encontraron controles diarios.</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredSlips.map((slip: any) => (
+                <TableRow key={slip.id} className="hover:bg-gray-50">
+                  <TableCell className="font-medium">
+                    {slip.date}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-gray-900">{slip.driver?.name || "Desconocido"}</span>
+                      <span className="text-xs text-gray-500">{slip.driver?.rut || "-"}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="font-mono bg-gray-50">
+                      {slip.vehicle?.plate || "S/P"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-gray-600">
+                    {slip.startTime} - {slip.endTime}
+                  </TableCell>
+                  <TableCell>
+                    {slip.paymentStatus === 'paid' ? (
+                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">
+                        Pagado
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
+                        Pendiente
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {slip.signatureUrl ? (
+                      <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">Firmado</span>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">Pendiente</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => setViewSlip(slip)}>
+                        <Eye className="h-4 w-4 text-blue-600" />
+                      </Button>
+                      <Button variant="ghost" size="icon">
+                        <Edit className="h-4 w-4 text-gray-400" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* MODAL DE CREACIÓN */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nuevo Control Diario</DialogTitle>
+          </DialogHeader>
+          <RouteSlipForm 
+            onSuccess={() => {
+              setIsCreateOpen(false);
+              queryClient.invalidateQueries({ queryKey: ["route-slips"] });
+              toast({ title: "Éxito", description: "Hoja de ruta creada correctamente" });
+            }} 
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE VISUALIZACIÓN PDF (Sin la X duplicada) */}
+      {viewSlip && (
+        <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
+          <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-zinc-900 border-zinc-800">
+            
+            {/* ENCABEZADO DEL VISOR */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950 text-white">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-blue-400" />
+                  Hoja de Ruta #{viewSlip.id.substring(0, 8)}...
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Generando documento localmente...
+                </p>
+              </div>
+
+              {/* Botones de acción (Sin la X manual) */}
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" className="gap-2 hidden sm:flex">
+                  <QrCode className="h-4 w-4" /> Mostrar QR Móvil
+                </Button>
+                
+                <PDFDownloadLink
+                  document={
+                    <RouteSlipPdf 
+                      data={{
+                        id: viewSlip.id,
+                        date: viewSlip.date,
+                        driverName: viewSlip.driver?.name || "Desconocido",
+                        vehiclePlate: viewSlip.vehicle?.plate || "S/P",
+                        startTime: viewSlip.startTime,
+                        endTime: viewSlip.endTime,
+                        paymentStatus: viewSlip.paymentStatus
+                      }} 
+                    />
+                  }
+                  fileName={`HojaRuta-${viewSlip.date}.pdf`}
+                >
+                  {/* @ts-ignore */}
+                  {({ loading }) => (
+                    <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-700 text-white border-0">
+                      <Download className="h-4 w-4" />
+                      {loading ? "Cargando..." : "Descargar PDF"}
+                    </Button>
+                  )}
+                </PDFDownloadLink>
+              </div>
             </div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Conductor</TableHead>
-                    <TableHead>Vehículo</TableHead>
-                    <TableHead>Horario</TableHead>
-                    <TableHead>Estado Pago</TableHead>
-                    <TableHead>Firma</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayedSlips.map((slip) => (
-                    <TableRow key={slip.id}>
-                      <TableCell className="font-medium">
-                        {slip.date}
-                        {slip.isDuplicate && (
-                          <Badge variant="destructive" className="ml-2 text-[10px]">DUPLICADO</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>{getDriverInfo(slip.driverId)}</TableCell>
-                      <TableCell>{getVehicleInfo(slip.vehicleId)}</TableCell>
-                      
-                      <TableCell className="font-mono text-sm">
-                         <div className="flex flex-col gap-1">
-                            <span className="flex items-center gap-1 text-xs">
-                                <Clock className="h-3 w-3 text-muted-foreground" /> {slip.startTime} - {slip.endTime}
-                            </span>
-                         </div>
-                      </TableCell>
 
-                      <TableCell>
-                        {slip.paymentStatus === "paid" ? (
-                          <Badge className="bg-green-600 hover:bg-green-700 flex w-fit items-center gap-1">
-                            <CheckCircle className="h-3 w-3" /> Pagado
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-yellow-600 border-yellow-600 flex w-fit items-center gap-1">
-                            <AlertCircle className="h-3 w-3" /> Pendiente
-                          </Badge>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                         {slip.signatureUrl ? (
-                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                             Firmado
-                           </Badge>
-                         ) : (
-                           <span className="text-muted-foreground text-xs">-</span>
-                         )}
-                      </TableCell>
-
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2 items-center">
-                          
-                          {/* BOTÓN VER PDF */}
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            className="h-8 gap-1 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                            onClick={() => handleOpenPdf(slip)}
-                            title="Ver Hoja de Ruta"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-
-                          {/* BOTÓN PAGAR (Solo Conductor) */}
-                          {isDriver && slip.paymentStatus !== "paid" && (
-                            <Link href="/payments">
-                              <Button size="sm" variant="outline" className="h-8 gap-1 text-green-600 border-green-200 hover:bg-green-50">
-                                <DollarSign className="h-3 w-3" />
-                              </Button>
-                            </Link>
-                          )}
-
-                          {/* BOTÓN EDITAR */}
-                          {canEdit && (
-                            <RouteSlipDialog 
-                              slipToEdit={slip} 
-                              trigger={
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-gray-900">
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              }
-                            />
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            {/* VISOR PDF */}
+            <div className="flex-1 bg-zinc-100 w-full h-full relative">
+              <PDFViewer width="100%" height="100%" className="border-none">
+                <RouteSlipPdf 
+                  data={{
+                    id: viewSlip.id,
+                    date: viewSlip.date,
+                    driverName: viewSlip.driver?.name || "Desconocido",
+                    vehiclePlate: viewSlip.vehicle?.plate || "S/P",
+                    startTime: viewSlip.startTime,
+                    endTime: viewSlip.endTime,
+                    paymentStatus: viewSlip.paymentStatus
+                  }} 
+                />
+              </PDFViewer>
             </div>
-          )}
-        </CardContent>
-      </Card>
-      
-      {/* Componente Modal */}
-      <PdfViewerModal 
-        isOpen={isPdfOpen} 
-        onClose={() => setIsPdfOpen(false)} 
-        data={selectedSlip} 
-      />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
