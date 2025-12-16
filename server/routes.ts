@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
-import { drivers, routeSlips, vehicles, payments, users, notifications, gpsHistory } from "@shared/schema";
+import { drivers, routeSlips, vehicles, payments, users, notifications, auditLogs, gpsHistory } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import multer from "multer";
@@ -31,17 +31,34 @@ export function registerRoutes(app: Express): Server {
   
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  // --- REGISTRO PÚBLICO ---
+  // 🟢 HELPER: REGISTER AUDIT LOG
+  const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
+    if (!user) return;
+    try {
+      await db.insert(auditLogs).values({
+        id: randomUUID(),
+        userId: user.id,
+        userName: user.name || "Unknown",
+        action: action,
+        entity: entity,
+        entityId: entityId || null,
+        details: details,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      console.error("Error saving audit log:", error);
+    }
+  };
+
+  // --- PUBLIC REGISTER ---
   app.post("/api/register", async (req: any, res, next) => {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
 
-      if (!email || !password || !name || !rut) {
-        return res.status(400).send("Faltan datos obligatorios");
-      }
+      if (!email || !password || !name || !rut) return res.status(400).send("Missing required fields");
 
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) });
-      if (exist) return res.status(400).send("El email ya está registrado");
+      if (exist) return res.status(400).send("Email already registered");
 
       const uid = randomUUID();
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -64,15 +81,18 @@ export function registerRoutes(app: Express): Server {
         email,
         name,
         rut,
-        phone: phone || "Por completar",
-        commune: commune || "Por completar",
+        phone: phone || "To Complete",
+        commune: commune || "To Complete",
         address: address || null,
-        licenseNumber: licenseNumber || "Por completar",
+        licenseNumber: licenseNumber || "To Complete",
         licenseClass: licenseClass || "B",
         licenseDate: licenseDate || new Date().toISOString().split('T')[0],
         status: 'active',
         createdAt: new Date()
       });
+
+      // Log action (Self-registration)
+      await logAction({ id: uid, name: name }, "REGISTER", "User", `New driver registered: ${name}`, uid);
 
       req.login(newUser, (err: any) => {
         if (err) return next(err);
@@ -81,15 +101,31 @@ export function registerRoutes(app: Express): Server {
       });
 
     } catch (e) {
-      console.error("Error registro:", e);
-      res.status(500).send("Error interno.");
+      console.error("Registration error:", e);
+      res.status(500).send("Internal server error.");
     }
   });
 
   // =================================================================
-  // ZONA PROTEGIDA
+  // PROTECTED ZONE
   // =================================================================
 
+  // --- AUDIT LOGS ---
+  app.get("/api/audit-logs", verifyAuth, async (req, res) => {
+    if (req.user?.role !== 'admin') return res.sendStatus(403);
+    try {
+      const logs = await db.query.auditLogs.findMany({
+        orderBy: (t, { desc }) => [desc(t.timestamp)],
+        limit: 100
+      });
+      res.json(logs);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json([]);
+    }
+  });
+
+  // --- NOTIFICATIONS ---
   app.get("/api/notifications", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const notifs = await storage.getNotifications(req.user.id);
@@ -109,6 +145,7 @@ export function registerRoutes(app: Express): Server {
       
       for (const loc of activeLocations) {
         const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, loc.vehicleId) });
+        // MySQL uses 0/1 for boolean sometimes, verify driver relation
         const slip = await db.query.routeSlips.findFirst({
            where: eq(routeSlips.vehicleId, loc.vehicleId),
            orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -126,18 +163,18 @@ export function registerRoutes(app: Express): Server {
       }
       res.json(enrichedFleet);
     } catch (error) {
-      console.error("Error obteniendo flota:", error);
+      console.error("Error fetching fleet:", error);
       res.status(500).json([]);
     }
   });
 
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
-    if (req.user?.role !== 'driver') return res.status(403).send("Solo conductores");
+    if (req.user?.role !== 'driver') return res.status(403).send("Drivers only");
 
     try {
       const { lat, lng, status, speed } = req.body;
       const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
-      if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
+      if (!driver) return res.status(404).send("Driver profile not found");
 
       const slips = await db.query.routeSlips.findMany({
         where: eq(routeSlips.driverId, driver.id),
@@ -168,13 +205,13 @@ export function registerRoutes(app: Express): Server {
       res.sendStatus(200);
     } catch (e) {
       console.error(e);
-      res.status(500).send("Error guardando ubicación");
+      res.status(500).send("Error saving location");
     }
   });
 
-  // --- HOJAS DE RUTA (FILTRADO POR ROL) ---
+  // --- ROUTE SLIPS (Filtered by Role) ---
   app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
-     if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
+     if (req.user?.role !== 'admin') return res.status(403).send("Unauthorized");
      try {
        const newId = randomUUID();
        let url = null;
@@ -184,38 +221,49 @@ export function registerRoutes(app: Express): Server {
        
        await db.insert(routeSlips).values(data);
 
+       await logAction(req.user, "CREATE", "Route Slip", `Created for date ${data.date}`, newId);
+
        try {
          const driverProfile = await storage.getDriver(data.driverId);
          if (driverProfile && driverProfile.userId) {
-            await storage.createNotification({ userId: driverProfile.userId, type: 'payment_due', title: 'Hoja de Ruta Creada', message: `Nueva hoja de ruta del ${data.date}.`, link: '/payments' });
+            await storage.createNotification({ userId: driverProfile.userId, type: 'payment_due', title: 'Route Slip Created', message: `New route slip for ${data.date}.`, link: '/payments' });
          }
        } catch (notifError) { console.error(notifError); }
 
        res.status(201).json(data);
-     } catch (e) { console.error(e); res.status(500).send("Error al guardar en DB."); }
+     } catch (e) { console.error(e); res.status(500).send("Error saving to DB."); }
   });
 
-  app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => { try { const data: any = { ...req.body }; if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
+  app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => { 
+    try { 
+      const data: any = { ...req.body }; 
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; 
+      
+      // Remove any undefined/null fields that might break update
+      if (data.isDuplicate === undefined) delete data.isDuplicate;
+
+      await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); 
+      
+      await logAction(req.user, "MODIFY", "Route Slip", `Modified ID: ...${req.params.id.slice(-6)}`, req.params.id);
+      
+      res.json({ message: "Updated" }); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
   
-  // 🟢 CORRECCIÓN: FILTRADO DE HOJAS DE RUTA
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
-        // SI ES ADMIN: Ve todo
         if (req.user?.role === 'admin') {
             const all = await db.query.routeSlips.findMany({ 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
             return res.json(all);
-        } 
-        
-        // SI ES CONDUCTOR: Solo ve las suyas
-        else {
+        } else {
             const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user!.id) });
-            if (!driver) return res.json([]); // Si no tiene perfil de conductor, no ve nada
-
+            if (!driver) return res.json([]);
+            
             const mySlips = await db.query.routeSlips.findMany({ 
-                where: eq(routeSlips.driverId, driver.id), // FILTRO IMPORTANTE
+                where: eq(routeSlips.driverId, driver.id), 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
@@ -224,14 +272,17 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { console.error(e); res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES Y VEHÍCULOS ---
-  app.get("/api/drivers", verifyAuth, async (req, res) => { const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); res.json(all); });
+  // --- DRIVERS ---
+  app.get("/api/drivers", verifyAuth, async (req, res) => { 
+      const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); 
+      res.json(all); 
+  });
   
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
     try { 
       const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body; 
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); 
-      if (exist) return res.status(400).json({ message: "Email existe" }); 
+      if (exist) return res.status(400).json({ message: "Email already exists" }); 
       
       const uid = randomUUID(); 
       const pass = await bcrypt.hash("123456", 10); 
@@ -240,41 +291,86 @@ export function registerRoutes(app: Express): Server {
       const did = randomUUID(); 
       const dData = { id: did, userId: uid, email, name, rut, phone, commune, address: address || null, licenseNumber, licenseClass, licenseDate, createdAt: new Date(), status: 'active' }; 
       await db.insert(drivers).values(dData); 
+      
+      await logAction(req.user, "CREATE", "Driver", `Created driver: ${name}`, did);
+
       res.status(201).json(dData); 
     } catch (e) { console.error(e); res.status(500).send("Error"); } 
   });
 
-  app.put("/api/drivers/:id", verifyAuth, async (req, res) => { try { await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
-  app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { try { const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); if (!d) return res.status(404).send("Not found"); await db.delete(drivers).where(eq(drivers.id, req.params.id)); if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
+  app.put("/api/drivers/:id", verifyAuth, async (req, res) => { 
+    try { 
+      await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); 
+      await logAction(req.user, "MODIFY", "Driver", `Updated driver data`, req.params.id);
+      res.json({ message: "Updated" }); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
+
+  app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { 
+    try { 
+      const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); 
+      if (!d) return res.status(404).send("Not found"); 
+      
+      await db.delete(drivers).where(eq(drivers.id, req.params.id)); 
+      if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); 
+      
+      await logAction(req.user, "DELETE", "Driver", `Deleted driver: ${d.name}`, req.params.id);
+      
+      res.json({ message: "Deleted" }); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
   
-  app.get("/api/vehicles", verifyAuth, async (req, res) => { const all = await db.query.vehicles.findMany(); res.json(all); });
-  app.post("/api/vehicles", verifyAuth, async (req, res) => { try { const vid = randomUUID(); const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; await db.insert(vehicles).values(vData); res.status(201).json(vData); } catch (e) { res.status(500).send("Error"); } });
-  app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
-  app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
+  // --- VEHICLES ---
+  app.get("/api/vehicles", verifyAuth, async (req, res) => { 
+      const all = await db.query.vehicles.findMany(); 
+      res.json(all); 
+  });
+
+  app.post("/api/vehicles", verifyAuth, async (req, res) => { 
+    try { 
+      const vid = randomUUID(); 
+      const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; 
+      await db.insert(vehicles).values(vData); 
+      
+      await logAction(req.user, "CREATE", "Vehicle", `Created vehicle: ${req.body.plate}`, vid);
+      res.status(201).json(vData); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
+
+  app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { 
+    try { 
+      await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); 
+      await logAction(req.user, "MODIFY", "Vehicle", `Updated vehicle ID: ...${req.params.id.slice(-6)}`, req.params.id);
+      res.json({ message: "Updated" }); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
+
+  app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => { 
+    try { 
+      await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); 
+      await logAction(req.user, "DELETE", "Vehicle", `Vehicle deleted`, req.params.id);
+      res.json({ message: "Deleted" }); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
   
-  // --- PAGOS (FILTRADO POR ROL) ---
-  // 🟢 CORRECCIÓN: FILTRADO DE PAGOS
+  // --- PAYMENTS (Filtered by Role) ---
   app.get("/api/payments", verifyAuth, async (req, res) => { 
       if (!req.user) return res.sendStatus(401); 
       try { 
-          // SI ES ADMIN: Ve todo
           if (req.user.role === 'admin') {
               const all = await db.query.payments.findMany({ 
-                with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
-                orderBy: (p, { desc }) => [desc(p.date)] 
+                  with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
+                  orderBy: (p, { desc }) => [desc(p.date)] 
               }); 
               return res.json(all); 
-          } 
-          
-          // SI ES CONDUCTOR: Solo ve los suyos
-          else {
+          } else {
               const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
               if (!driver) return res.json([]);
-
+              
               const myPayments = await db.query.payments.findMany({ 
-                where: eq(payments.driverId, driver.id), // FILTRO IMPORTANTE
-                with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
-                orderBy: (p, { desc }) => [desc(p.date)] 
+                  where: eq(payments.driverId, driver.id), 
+                  with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
+                  orderBy: (p, { desc }) => [desc(p.date)] 
               }); 
               return res.json(myPayments);
           }
@@ -303,7 +399,10 @@ export function registerRoutes(app: Express): Server {
           await db.insert(payments).values(pData); 
           if (req.body.routeSlipId) { 
               await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); 
-          } 
+          }
+          
+          await logAction(req.user, "CREATE", "Payment", `Payment registered: $${pData.amount}`, pid);
+
           res.status(201).json(pData); 
       } catch (e) { console.error(e); res.status(500).send("Error"); } 
   });
@@ -318,14 +417,23 @@ export function registerRoutes(app: Express): Server {
         if (data.amount) data.amount = parseInt(data.amount);
 
         await db.update(payments).set(data).where(eq(payments.id, pId));
-        res.json({ message: "Pago actualizado" });
+        
+        await logAction(req.user, "MODIFY", "Payment", `Payment updated ID: ...${pId.slice(-6)}`, pId);
+
+        res.json({ message: "Payment updated" });
     } catch (e) {
-        console.error("Error actualizando pago:", e);
-        res.status(500).json({ message: "Error al actualizar pago" }); 
+        console.error("Error updating payment:", e);
+        res.status(500).json({ message: "Error updating payment" }); 
     }
   });
 
-  app.delete("/api/payments/:id", verifyAuth, async (req, res) => { try { await db.delete(payments).where(eq(payments.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
+  app.delete("/api/payments/:id", verifyAuth, async (req, res) => { 
+    try { 
+      await db.delete(payments).where(eq(payments.id, req.params.id)); 
+      await logAction(req.user, "DELETE", "Payment", `Payment deleted`, req.params.id);
+      res.json({ message: "Deleted" }); 
+    } catch (e) { res.status(500).send("Error"); } 
+  });
 
   const httpServer = createServer(app);
   return httpServer;
