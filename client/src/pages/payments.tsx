@@ -10,8 +10,7 @@ import {
   ExternalLink,
   Upload,
   AlertCircle,
-  CheckCircle2,
-  X
+  CheckCircle2
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -75,7 +74,7 @@ export default function PaymentsPage() {
 
   // 2. OBTENER HOJAS DE RUTA
   const { data: routeSlips = [] } = useQuery({
-    queryKey: ["route-slips"],
+    queryKey: ["route-slips"], 
     queryFn: async () => {
       const res = await fetch("/api/route-slips");
       if (!res.ok) return [];
@@ -83,7 +82,7 @@ export default function PaymentsPage() {
     }
   });
 
-  // --- LÓGICA DE TARJETAS (KPIs) ---
+  // --- KPIs ---
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
   const totalPaymentsCount = payments.length;
   
@@ -100,7 +99,7 @@ export default function PaymentsPage() {
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
-      amount: "1800", // 🟢 POR DEFECTO 1800
+      amount: "1800", 
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     }
@@ -110,7 +109,7 @@ export default function PaymentsPage() {
     setEditingPayment(null);
     setFile(null);
     reset({
-      amount: "1800", 
+      amount: "1800", // Valor fijo inicial
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     });
@@ -132,7 +131,7 @@ export default function PaymentsPage() {
     try {
       const formData = new FormData();
       formData.append("routeSlipId", data.routeSlipId);
-      formData.append("amount", data.amount);
+      formData.append("amount", "1800"); // 🟢 FORZAMOS EL VALOR EN EL ENVÍO TAMBIÉN
       formData.append("date", data.date);
       formData.append("type", "transfer");
       
@@ -277,7 +276,7 @@ export default function PaymentsPage() {
         </Table>
       </div>
 
-      {/* 🟢 MODAL RESTAURADO (ESTILO BLANCO Y CAJA GRANDE) */}
+      {/* 🟢 MODAL FORMULARIO (CORREGIDO: Monto Fijo y ReadOnly) */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[500px] bg-white text-black">
           <DialogHeader>
@@ -307,12 +306,13 @@ export default function PaymentsPage() {
 
             <div className="grid grid-cols-2 gap-4">
                <div className="space-y-2">
-                 <Label>Monto</Label>
-                 {/* Por defecto 1800 */}
+                 <Label>Monto a Pagar</Label>
+                 {/* 🟢 CAMBIO AQUÍ: readOnly y estilo gris para indicar que es fijo */}
                  <Input 
                    type="number" 
                    {...register("amount")} 
-                   className="bg-white border-gray-200" 
+                   className="bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed" 
+                   readOnly // Impide la edición
                  />
                </div>
                <div className="space-y-2">
@@ -325,7 +325,7 @@ export default function PaymentsPage() {
                </div>
             </div>
 
-            {/* CAJA DE SUBIDA GRANDE (Restaurada) */}
+            {/* CAJA DE SUBIDA GRANDE (Estilo antiguo) */}
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors mt-2" onClick={() => document.getElementById('file-upload')?.click()}>
                 <Upload className="h-8 w-8 text-gray-400 mb-2" />
                 <p className="text-sm font-medium text-gray-700">
