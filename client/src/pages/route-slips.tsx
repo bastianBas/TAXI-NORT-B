@@ -67,7 +67,12 @@ export default function RouteSlipsPage() {
             Bitácora de servicios y estado de pagos.
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+        
+        {/* 🟢 CAMBIO AQUÍ: Botón con estilo igualado a "Vehículos" (Negro en Claro / Azul Oscuro en Oscuro) */}
+        <Button 
+          onClick={() => setIsCreateOpen(true)} 
+          className="gap-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-blue-950 dark:hover:bg-blue-900 border-0"
+        >
           <Plus className="h-4 w-4" /> Nuevo Control Diario
         </Button>
       </div>
@@ -174,12 +179,9 @@ export default function RouteSlipsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZAR PDF (Adaptado al Tema Oscuro/Claro) */}
+      {/* MODAL VISUALIZAR PDF */}
       {viewSlip && (
         <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
-          {/* 🟢 CAMBIO: Usamos 'bg-background' y 'border-border' para que coincida con el tema (Negro/Blanco).
-              La X ahora usa 'text-muted-foreground' para que se vea bien en ambos modos.
-          */}
           <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-background border-border [&>button]:text-muted-foreground [&>button]:hover:text-foreground">
             
             {/* 1. ENCABEZADO */}
@@ -197,7 +199,6 @@ export default function RouteSlipsPage() {
 
             {/* 2. CUERPO (Visor PDF) */}
             <div className="flex-1 w-full h-full relative bg-zinc-100/5 dark:bg-zinc-900/50 flex justify-center items-center">
-              {/* El PDFViewer siempre mostrará el papel blanco, eso es correcto para impresión */}
               <PDFViewer width="100%" height="100%" className="border-none" showToolbar={false}>
                 <RouteSlipPdf 
                   data={{
@@ -213,7 +214,7 @@ export default function RouteSlipsPage() {
               </PDFViewer>
             </div>
 
-            {/* 3. PIE DE PÁGINA (Botones integrados al tema) */}
+            {/* 3. PIE DE PÁGINA */}
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-card/50">
                 <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
                   <QrCode className="h-4 w-4" /> Mostrar QR Móvil
