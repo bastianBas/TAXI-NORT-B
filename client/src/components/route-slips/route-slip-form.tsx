@@ -31,15 +31,20 @@ type FormData = z.infer<typeof insertRouteSlipSchema>;
 
 interface RouteSlipFormProps {
   onSuccess: () => void;
+  initialData?: any; // 🟢 NUEVO: Datos para editar
 }
 
-export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
+export function RouteSlipForm({ onSuccess, initialData }: RouteSlipFormProps) {
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertRouteSlipSchema),
     defaultValues: {
-      date: new Date().toISOString().split('T')[0], // Fecha de hoy
-      startTime: "08:00",
-      endTime: "18:00"
+      // Si hay datos iniciales (edición), los usamos. Si no, usamos defaults (creación).
+      date: initialData?.date || new Date().toISOString().split('T')[0],
+      vehicleId: initialData?.vehicleId || "",
+      driverId: initialData?.driverId || "",
+      startTime: initialData?.startTime || "08:00",
+      endTime: initialData?.endTime || "18:00",
+      notes: initialData?.notes || ""
     }
   });
 
@@ -49,7 +54,6 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
-  // Cargar datos para los selectores
   useEffect(() => {
     fetch("/api/vehicles").then(res => res.json()).then(setVehicles).catch(console.error);
     fetch("/api/drivers").then(res => res.json()).then(setDrivers).catch(console.error);
@@ -64,27 +68,34 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
         if (value) formData.append(key, value);
       });
       
-      // Adjuntar archivo si existe
       if (file) {
         formData.append("signature", file);
-      } else {
-        // En producción real, podrías requerir la firma obligatoria
-        // toast({ title: "Falta firma", description: "Debes subir una imagen de validación", variant: "destructive" });
-        // return; 
       }
 
-      const res = await fetch("/api/route-slips", {
-        method: "POST",
-        body: formData, // Enviamos como FormData para soportar la imagen
+      // 🟢 LÓGICA INTELIGENTE: Si hay ID, es una actualización (PUT), si no, es creación (POST)
+      let url = "/api/route-slips";
+      let method = "POST";
+
+      if (initialData && initialData.id) {
+        url = `/api/route-slips/${initialData.id}`;
+        method = "PUT";
+      }
+
+      const res = await fetch(url, {
+        method: method,
+        body: formData,
       });
 
       if (!res.ok) throw new Error("Error al guardar");
 
-      toast({ title: "Control Diario Creado", description: "El registro se guardó correctamente." });
-      onSuccess(); // Cierra el modal y recarga la tabla
+      toast({ 
+        title: initialData ? "Control Actualizado" : "Control Creado", 
+        description: "Los datos se guardaron correctamente." 
+      });
+      onSuccess(); 
     } catch (error) {
       console.error(error);
-      toast({ title: "Error", description: "No se pudo crear el control diario.", variant: "destructive" });
+      toast({ title: "Error", description: "No se pudo guardar el registro.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -93,7 +104,6 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
       
-      {/* Fecha */}
       <div className="grid gap-2">
         <Label>Fecha</Label>
         <Input type="date" {...register("date")} />
@@ -101,10 +111,12 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Vehículo */}
         <div className="grid gap-2">
           <Label>Vehículo</Label>
-          <Select onValueChange={(val) => setValue("vehicleId", val)}>
+          <Select 
+            onValueChange={(val) => setValue("vehicleId", val)} 
+            defaultValue={initialData?.vehicleId} // Pre-seleccionar en edición
+          >
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar auto" />
             </SelectTrigger>
@@ -119,10 +131,12 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
           {errors.vehicleId && <p className="text-red-500 text-xs">{errors.vehicleId.message}</p>}
         </div>
 
-        {/* Conductor */}
         <div className="grid gap-2">
           <Label>Conductor</Label>
-          <Select onValueChange={(val) => setValue("driverId", val)}>
+          <Select 
+            onValueChange={(val) => setValue("driverId", val)}
+            defaultValue={initialData?.driverId} // Pre-seleccionar en edición
+          >
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar conductor" />
             </SelectTrigger>
@@ -138,8 +152,7 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
         </div>
       </div>
 
-      {/* Horarios */}
-      <div className="border p-3 rounded-md bg-gray-50 grid gap-3">
+      <div className="border p-3 rounded-md bg-gray-50 dark:bg-zinc-900 grid gap-3">
         <h3 className="text-sm font-semibold flex items-center gap-2">
            Horarios de Servicio
         </h3>
@@ -155,12 +168,11 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
         </div>
       </div>
 
-      {/* Subida de Archivo (Firma) */}
-      <div className="border border-dashed border-gray-300 p-4 rounded-md text-center">
+      <div className="border border-dashed border-gray-300 dark:border-zinc-700 p-4 rounded-md text-center">
         <Label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-2">
            <Upload className="h-8 w-8 text-gray-400" />
-           <span className="text-sm font-medium text-gray-600">
-             {file ? file.name : "Subir Firma / Timbre Digital"}
+           <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+             {file ? file.name : (initialData?.signatureUrl ? "Cambiar Firma Actual" : "Subir Firma / Timbre Digital")}
            </span>
            <span className="text-xs text-gray-400">Click para seleccionar imagen (JPG, PNG)</span>
         </Label>
@@ -187,9 +199,9 @@ export function RouteSlipForm({ onSuccess }: RouteSlipFormProps) {
         <Button variant="outline" type="button" onClick={onSuccess} disabled={isSubmitting}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700">
+        <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white">
           {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Guardar Control
+          {initialData ? "Actualizar Control" : "Guardar Control"}
         </Button>
       </div>
     </form>
