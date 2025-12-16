@@ -152,8 +152,7 @@ export default function RouteSlipsPage() {
                         <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </Button>
                       
-                      {/* 🟢 CAMBIO AQUÍ: Eliminé 'text-muted-foreground' */}
-                      {/* Ahora el lápiz heredará el color del botón (Blanco en modo oscuro / Negro en claro), igual que en Pagos */}
+                      {/* 🟢 CAMBIO AQUÍ: Se eliminó 'text-muted-foreground' */}
                       <Button variant="ghost" size="icon">
                         <Edit className="h-4 w-4" /> 
                       </Button>
