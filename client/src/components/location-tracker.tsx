@@ -1,108 +1,130 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
-import { apiRequestJson } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Signal, SignalHigh, SignalLow, SignalZero } from "lucide-react";
 
 export function LocationTracker() {
   const { user } = useAuth();
   const { toast } = useToast();
-  // Estados: idle (inactivo), searching (buscando señal), active (enviando), error
-  const [status, setStatus] = useState<"idle" | "searching" | "active" | "error">("idle");
-  const watchId = useRef<number | null>(null);
-  const wakeLock = useRef<any>(null);
-
-  // Solo activar si el usuario es un conductor
-  if (!user || user.role !== "driver") return null;
+  const isOfflineSentRef = useRef(false);
+  const wakeLockRef = useRef<any>(null); // Tipo any para evitar error de TS si no reconoce WakeLockSentinel
 
   useEffect(() => {
-    // --- 1. FUNCIÓN PARA MANTENER PANTALLA ENCENDIDA (WAKE LOCK) ---
-    // Esto evita que el celular "duerma" la app y corte el GPS
+    // Solo activar para conductores
+    if (!user || user.role !== 'driver') return;
+
+    if (!('geolocation' in navigator)) {
+      console.error("Tu dispositivo no soporta GPS");
+      return;
+    }
+
+    // 🟢 1. WAKE LOCK: Mantiene la pantalla encendida
     const requestWakeLock = async () => {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock.current = await (navigator as any).wakeLock.request('screen');
-          console.log("⚡ Pantalla mantenida activa para GPS");
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log('⚡ Pantalla mantenida activa para GPS');
+        } catch (err) {
+          console.warn('Wake Lock no disponible:', err);
         }
-      } catch (err) {
-        console.error("No se pudo activar Wake Lock:", err);
       }
     };
 
-    // Pedir bloqueo al iniciar y al volver a la app
     requestWakeLock();
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') requestWakeLock();
-    });
-
-    // --- 2. INICIAR RASTREO GPS ---
-    const startTracking = () => {
-      setStatus("searching");
-
-      if (!("geolocation" in navigator)) {
-        setStatus("error");
-        toast({ title: "Error GPS", description: "Tu navegador no soporta GPS.", variant: "destructive" });
-        return;
+    
+    // Re-activar bloqueo si el usuario vuelve a la app
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user.role === 'driver') {
+        requestWakeLock();
       }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-      watchId.current = navigator.geolocation.watchPosition(
-        async (position) => {
-          // ÉXITO: Tenemos ubicación
-          setStatus("active");
-          const { latitude, longitude, speed, heading } = position.coords;
+    // 🟢 2. ENVÍO DE SEÑAL DE DESCONEXIÓN (OFFLINE)
+    const sendOfflineSignal = () => {
+      if (isOfflineSentRef.current) return;
+      
+      const data = JSON.stringify({ status: 'offline' });
+      
+      // sendBeacon es mejor para cuando se cierra la página
+      if (navigator.sendBeacon) {
+        const blob = new Blob([data], { type: 'application/json' });
+        navigator.sendBeacon("/api/vehicle-locations", blob);
+        isOfflineSentRef.current = true;
+      } else {
+        // Fallback
+        fetch("/api/vehicle-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: data,
+          keepalive: true
+        }).then(() => {
+          isOfflineSentRef.current = true;
+        }).catch(e => console.error(e));
+      }
+    };
 
-          try {
-            // Enviar al servidor
-            await apiRequestJson("/api/vehicle-locations", "POST", {
-              lat: latitude,
-              lng: longitude,
-              speed: speed ? (speed * 3.6) : 0, // Convertir m/s a km/h
-              heading: heading || 0,
-              status: 'active'
-            });
-          } catch (e) {
-            console.error("Error enviando ubicación:", e);
-            // No cambiamos a error visualmente para no asustar al chofer por un fallo de red puntual
-          }
-        },
-        (error) => {
-          // ERROR: Perdimos señal o permisos
-          console.error("Error GPS:", error);
-          setStatus("error");
-          // Reintentar automáticamente en 5 segundos
-          setTimeout(startTracking, 5000);
-        },
-        {
-          // OPCIONES CRÍTICAS PARA QUE NO SE CORTE
-          enableHighAccuracy: true, // Usar satélite real
-          timeout: 20000,           // Esperar hasta 20s antes de dar error
-          maximumAge: 0             // No usar caché vieja, siempre ubicación real
+    // 🟢 3. RASTREO GPS
+    const sendLocation = async (position: GeolocationPosition) => {
+      try {
+        // Resetear bandera offline si estamos enviando datos
+        isOfflineSentRef.current = false;
+        
+        const { latitude, longitude, speed } = position.coords;
+
+        await fetch("/api/vehicle-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat: latitude,
+            lng: longitude,
+            speed: speed ? (speed * 3.6) : 0 // m/s a km/h
+          }),
+        });
+
+      } catch (error) {
+        console.error("Error enviando ubicación:", error);
+      }
+    };
+
+    const watchId = navigator.geolocation.watchPosition(
+      sendLocation,
+      (error) => {
+        console.error("Error de GPS:", error);
+        // Si se deniega permiso o no hay señal, asumimos offline
+        if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
+          sendOfflineSignal();
+          toast({
+            variant: "destructive",
+            title: "GPS Perdido",
+            description: "Tu vehículo no es visible en el mapa.",
+          });
         }
-      );
-    };
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
 
-    startTracking();
+    // Evento si cierran la pestaña
+    window.addEventListener('beforeunload', sendOfflineSignal);
 
-    // Limpieza al salir
+    // Limpieza
     return () => {
-      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
-      if (wakeLock.current) wakeLock.current.release();
+      navigator.geolocation.clearWatch(watchId);
+      window.removeEventListener('beforeunload', sendOfflineSignal);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+      
+      // Intentar enviar desconexión al desmontar
+      sendOfflineSignal();
     };
-  }, []);
+  }, [user, toast]);
 
-  // --- INDICADOR VISUAL PARA EL CHOFER (Esquina inferior izquierda) ---
-  return (
-    <div className="fixed bottom-4 left-4 z-[9999] pointer-events-none">
-      <div className={`
-        flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium shadow-lg backdrop-blur-md border
-        ${status === 'active' ? 'bg-black/80 text-green-400 border-green-500/30' : ''}
-        ${status === 'searching' ? 'bg-black/80 text-yellow-400 border-yellow-500/30' : ''}
-        ${status === 'error' ? 'bg-red-900/90 text-white border-red-500' : ''}
-      `}>
-        {status === 'searching' && <><SignalLow className="h-3 w-3 animate-pulse" /> <span>Buscando satélites...</span></>}
-        {status === 'active' && <><SignalHigh className="h-3 w-3" /> <span>GPS Activo • App Abierta</span></>}
-        {status === 'error' && <><SignalZero className="h-3 w-3" /> <span>Sin señal GPS</span></>}
-      </div>
-    </div>
-  );
+  return null;
 }

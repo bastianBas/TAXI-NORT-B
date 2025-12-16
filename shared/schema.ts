@@ -1,10 +1,9 @@
-import { mysqlTable, varchar, text, timestamp, int, boolean } from "drizzle-orm/mysql-core";
+import { mysqlTable, varchar, text, timestamp, int, boolean, double } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { relations } from "drizzle-orm"; // IMPORTANTE: Necesario para las relaciones
+import { relations } from "drizzle-orm";
 
-// --- TABLAS ---
-
+// --- USUARIOS ---
 export const users = mysqlTable("users", {
   id: varchar("id", { length: 36 }).primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -14,6 +13,7 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// --- CONDUCTORES ---
 export const drivers = mysqlTable("drivers", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }), 
@@ -30,6 +30,7 @@ export const drivers = mysqlTable("drivers", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- VEHÍCULOS ---
 export const vehicles = mysqlTable("vehicles", {
   id: varchar("id", { length: 36 }).primaryKey(),
   plate: varchar("plate", { length: 20 }).notNull().unique(),
@@ -45,6 +46,7 @@ export const vehicles = mysqlTable("vehicles", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- HOJAS DE RUTA ---
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
@@ -56,9 +58,14 @@ export const routeSlips = mysqlTable("route_slips", {
   paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
+  // Campos extra para compatibilidad
+  authorizedBy: varchar("authorized_by", { length: 36 }), 
+  authorizedAt: timestamp("authorized_at"),
+  qrCodeData: text("qr_code_data"),
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- PAGOS ---
 export const payments = mysqlTable("payments", {
   id: varchar("id", { length: 36 }).primaryKey(),
   routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(),
@@ -72,6 +79,7 @@ export const payments = mysqlTable("payments", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// --- AUDITORIA ---
 export const auditLogs = mysqlTable("audit_logs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
@@ -83,47 +91,68 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
-// --- RELACIONES (NUEVO: Esto faltaba) ---
+// --- NOTIFICACIONES (Requerida por storage.ts) ---
+export const notifications = mysqlTable("notifications", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull(),
+  type: varchar("type", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  link: varchar("link", { length: 255 }),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// --- GPS HISTORY (Requerida por storage.ts) ---
+export const gpsHistory = mysqlTable("gps_history", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
+  lat: double("lat").notNull(),
+  lng: double("lng").notNull(),
+  speed: double("speed").default(0),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// --- RELACIONES ---
 
 export const driversRelations = relations(drivers, ({ one, many }) => ({
-  user: one(users, {
-    fields: [drivers.userId],
-    references: [users.id],
-  }),
+  user: one(users, { fields: [drivers.userId], references: [users.id] }),
   routeSlips: many(routeSlips),
 }));
 
 export const vehiclesRelations = relations(vehicles, ({ many }) => ({
   routeSlips: many(routeSlips),
+  gpsHistory: many(gpsHistory),
 }));
 
 export const routeSlipsRelations = relations(routeSlips, ({ one, many }) => ({
-  driver: one(drivers, {
-    fields: [routeSlips.driverId],
-    references: [drivers.id],
-  }),
-  vehicle: one(vehicles, {
-    fields: [routeSlips.vehicleId],
-    references: [vehicles.id],
-  }),
+  driver: one(drivers, { fields: [routeSlips.driverId], references: [drivers.id] }),
+  vehicle: one(vehicles, { fields: [routeSlips.vehicleId], references: [vehicles.id] }),
   payments: many(payments),
 }));
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
-  routeSlip: one(routeSlips, {
-    fields: [payments.routeSlipId],
-    references: [routeSlips.id],
-  }),
+  routeSlip: one(routeSlips, { fields: [payments.routeSlipId], references: [routeSlips.id] }),
 }));
 
-// --- SCHEMAS DE INSERCIÓN ---
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+}));
+
+export const gpsHistoryRelations = relations(gpsHistory, ({ one }) => ({
+  vehicle: one(vehicles, { fields: [gpsHistory.vehicleId], references: [vehicles.id] }),
+}));
+
+// --- SCHEMAS ---
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
-export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true });
+export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true, authorizedBy: true, authorizedAt: true, qrCodeData: true });
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true, read: true });
+export const insertGpsHistorySchema = createInsertSchema(gpsHistory).omit({ id: true, timestamp: true });
 
 // --- TYPES ---
 export type User = typeof users.$inferSelect;
@@ -138,13 +167,22 @@ export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type GpsHistory = typeof gpsHistory.$inferSelect;
+export type InsertGpsHistory = z.infer<typeof insertGpsHistorySchema>;
 
+// Tipo de Ubicación (CORREGIDO SIN INDEX SIGNATURE)
 export type VehicleLocation = {
   vehicleId: string;
   plate: string;
   lat: number;
   lng: number;
+  speed?: number; 
   status: string;
   timestamp: number;
-  speed: number;
+  // Campos opcionales para UI
+  driverName?: string;
+  model?: string;
+  isPaid?: boolean;
 };
