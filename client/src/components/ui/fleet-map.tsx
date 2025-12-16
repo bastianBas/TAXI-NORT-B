@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// 🟢 ÍCONO DE PIN CON AUTO (Diseño exacto del documento)
+// 🟢 ÍCONO DE PIN CON AUTO (Diseño solicitado)
 const carIconSvg = (color: string) => `
 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24">
   <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
@@ -21,7 +21,7 @@ const createCarIcon = (color: string) => L.divIcon({
   html: carIconSvg(color),
   className: 'custom-car-pin',
   iconSize: [40, 40],
-  iconAnchor: [20, 40],
+  iconAnchor: [20, 40], // Punta del pin
   popupAnchor: [0, -40]
 });
 
@@ -39,7 +39,7 @@ function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCe
       const lat = Number(first.lat);
       const lng = Number(first.lng);
       
-      // Solo centrar automáticamente la PRIMERA vez para no molestar la navegación
+      // Solo centrar automáticamente la PRIMERA vez
       if (!hasInitializedRef.current && !isNaN(lat) && !isNaN(lng)) {
         map.setView([lat, lng], 15);
         hasInitializedRef.current = true;
@@ -69,8 +69,8 @@ export default function FleetMap() {
   };
 
   useEffect(() => {
-    fetchFleet(); // 🟢 Llamada inmediata (Según análisis del documento)
-    const interval = setInterval(fetchFleet, 1000); // 🟢 1 Segundo para fluidez (Según análisis)
+    fetchFleet(); // Llamada inmediata al montar
+    const interval = setInterval(fetchFleet, 1000); // 1 Segundo de intervalo
     return () => clearInterval(interval);
   }, []);
 
@@ -109,19 +109,11 @@ export default function FleetMap() {
                 <div className="min-w-[200px] p-2 font-sans text-sm">
                   <div className="grid grid-cols-[80px_1fr] gap-x-2 gap-y-1 items-start">
                     <span className="font-bold text-gray-600">Conductor:</span>
-                    <span className="font-medium text-black break-words leading-tight">
-                      {v.driverName}
-                    </span>
+                    <span className="font-medium text-black break-words leading-tight">{v.driverName}</span>
                     <span className="font-bold text-gray-600">Vehículo:</span>
                     <span className="font-medium text-black">{v.plate}</span>
                     <span className="font-bold text-gray-600">Estado:</span>
-                    <span>
-                      {v.isPaid ? (
-                        <span className="text-green-700 font-bold bg-green-100 px-1.5 py-0.5 rounded text-xs">PAGADO</span>
-                      ) : (
-                        <span className="text-red-700 font-bold bg-red-100 px-1.5 py-0.5 rounded text-xs">NO PAGADA</span>
-                      )}
-                    </span>
+                    <span>{v.isPaid ? <span className="text-green-700 bg-green-100 px-1 rounded text-xs">PAGADO</span> : <span className="text-red-700 bg-red-100 px-1 rounded text-xs">NO PAGADO</span>}</span>
                     <span className="font-bold text-gray-600">Velocidad:</span>
                     <span className="font-bold text-blue-600">{speedKmH} km/h</span>
                   </div>
