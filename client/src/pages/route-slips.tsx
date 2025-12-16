@@ -68,7 +68,7 @@ export default function RouteSlipsPage() {
           </p>
         </div>
         
-        {/* Botón Nuevo Control (Mantenemos el estilo de Vehículos) */}
+        {/* Botón Nuevo Control (Estilo IDÉNTICO a Vehículos: Azul oscuro en Dark Mode) */}
         <Button 
           onClick={() => setIsCreateOpen(true)} 
           className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
@@ -152,9 +152,12 @@ export default function RouteSlipsPage() {
                         <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </Button>
                       
-                      {/* 🟢 CAMBIO AQUÍ: Se eliminó 'text-muted-foreground' */}
+                      {/* 🟢 CAMBIO AQUÍ: Color forzado
+                          - text-zinc-900: Negro en modo claro
+                          - dark:text-zinc-100: Blanco brillante en modo oscuro (Igual que Pagos)
+                      */}
                       <Button variant="ghost" size="icon">
-                        <Edit className="h-4 w-4" /> 
+                        <Edit className="h-4 w-4 text-zinc-900 dark:text-zinc-100" /> 
                       </Button>
                     </div>
                   </TableCell>
