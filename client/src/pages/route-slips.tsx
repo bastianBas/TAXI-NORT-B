@@ -68,11 +68,8 @@ export default function RouteSlipsPage() {
           </p>
         </div>
         
-        {/* 🟢 CAMBIO AQUÍ: Botón con estilo igualado a "Vehículos" (Negro en Claro / Azul Oscuro en Oscuro) */}
-        <Button 
-          onClick={() => setIsCreateOpen(true)} 
-          className="gap-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-blue-950 dark:hover:bg-blue-900 border-0"
-        >
+        {/* 🟢 CAMBIO AQUÍ: Eliminé los colores forzados. Ahora usa el tema por defecto, igual que Vehículos */}
+        <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" /> Nuevo Control Diario
         </Button>
       </div>
