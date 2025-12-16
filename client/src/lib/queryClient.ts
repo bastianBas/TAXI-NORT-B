@@ -1,120 +1,49 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-function getToken() {
-  return localStorage.getItem("auth_token");
-}
-
-function getAuthHeaders(): Record<string, string> {
-  const token = getToken();
-  return token ? { "Authorization": `Bearer ${token}` } : {};
-}
-
-export async function apiRequest({
-  queryKey,
-}: {
-  queryKey: readonly unknown[];
-}) {
-  const [path] = queryKey as [string];
-  
-  const res = await fetch(path, {
-    headers: getAuthHeaders()
-  });
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem("auth_token");
-      if (window.location.pathname !== "/login") {
-         window.location.href = "/login";
-      }
-      throw new Error("No autenticado");
-    }
-    throw new Error(`Error ${res.status}: ${res.statusText}`);
-  }
-
-  return res.json();
-}
-
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      queryFn: apiRequest as QueryFunction,
-      refetchOnWindowFocus: false,
-      retry: false, 
-    },
-    mutations: {
-      retry: false,
-    },
-  },
-});
-
-export async function apiRequestJson(
+// Función helper para hacer peticiones fetch más limpias
+export async function apiRequest(
+  method: string,
   path: string,
-  method: string = "GET",
-  body?: any
-) {
+  body?: unknown | undefined,
+): Promise<any> {
   const res = await fetch(path, {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders()
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
   if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem("auth_token");
-      if (window.location.pathname !== "/login") {
-         window.location.href = "/login";
-      }
-      throw new Error("No autenticado");
-    }
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || `Error ${res.status}`);
+    const text = await res.text();
+    throw new Error(text || `Error en la petición: ${res.statusText}`);
   }
 
-  if (res.status === 204) return null;
-  
-  return res.json().catch(() => null);
-}
-
-// --- NUEVA FUNCIÓN AGREGADA ---
-export async function apiRequestFormData(
-  url: string,
-  method: string,
-  formData: FormData
-): Promise<any> {
-  const token = getToken();
-  const headers: HeadersInit = {};
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  // NOTA: No establecemos 'Content-Type' manualmente, 
-  // el navegador lo hace automáticamente para FormData (incluyendo el boundary)
-
-  const res = await fetch(url, {
-    method,
-    headers, 
-    body: formData,
-  });
-
-  if (res.status === 401) {
-    localStorage.removeItem("auth_token");
-    if (window.location.pathname !== "/login") {
-       window.location.href = "/login";
-    }
-    throw new Error("Sesión expirada. Por favor, inicia sesión nuevamente.");
-  }
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Error ${res.status}: ${res.statusText}`);
-  }
-
-  if (res.status === 204) {
+  // Si la respuesta no tiene contenido (ej: 204), retornamos null
+  const contentType = res.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
     return null;
   }
 
   return res.json();
 }
+
+// Configuración del cliente de React Query
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false, // No recargar al cambiar de ventana
+      retry: false, // No reintentar infinitamente si falla
+      staleTime: 5000, // Tiempo de caché
+      queryFn: async ({ queryKey }) => {
+        // Fetcher por defecto para useQuery
+        const res = await fetch(queryKey[0] as string);
+        if (!res.ok) throw new Error("Network response was not ok");
+        return res.json();
+      }
+    },
+    mutations: {
+      retry: false,
+    }
+  },
+});
