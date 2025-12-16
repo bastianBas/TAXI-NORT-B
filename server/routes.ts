@@ -31,7 +31,7 @@ export function registerRoutes(app: Express): Server {
   
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
-  // --- REGISTRO PÚBLICO (APP MÓVIL) ---
+  // --- REGISTRO PÚBLICO ---
   app.post("/api/register", async (req: any, res, next) => {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
@@ -82,9 +82,6 @@ export function registerRoutes(app: Express): Server {
 
     } catch (e) {
       console.error("Error registro:", e);
-      if (e instanceof Error && e.message.includes("Duplicate entry")) {
-         return res.status(400).send("Error: El RUT o Email ya existe.");
-      }
       res.status(500).send("Error interno.");
     }
   });
@@ -175,7 +172,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- HOJAS DE RUTA ---
+  // --- HOJAS DE RUTA (FILTRADO POR ROL) ---
   app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
      if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
      try {
@@ -200,78 +197,87 @@ export function registerRoutes(app: Express): Server {
 
   app.put("/api/route-slips/:id", verifyAuth, upload.any(), async (req, res) => { try { const data: any = { ...req.body }; if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
   
+  // 🟢 CORRECCIÓN: FILTRADO DE HOJAS DE RUTA
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
-        const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.createdAt)] });
-        res.json(all);
+        // SI ES ADMIN: Ve todo
+        if (req.user?.role === 'admin') {
+            const all = await db.query.routeSlips.findMany({ 
+                with: { driver: true, vehicle: true }, 
+                orderBy: (t, { desc }) => [desc(t.createdAt)] 
+            });
+            return res.json(all);
+        } 
+        
+        // SI ES CONDUCTOR: Solo ve las suyas
+        else {
+            const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user!.id) });
+            if (!driver) return res.json([]); // Si no tiene perfil de conductor, no ve nada
+
+            const mySlips = await db.query.routeSlips.findMany({ 
+                where: eq(routeSlips.driverId, driver.id), // FILTRO IMPORTANTE
+                with: { driver: true, vehicle: true }, 
+                orderBy: (t, { desc }) => [desc(t.createdAt)] 
+            });
+            return res.json(mySlips);
+        }
     } catch (e) { console.error(e); res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES (RESTAURADO) ---
+  // --- CONDUCTORES Y VEHÍCULOS ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); res.json(all); });
   
-  // 🟢 LÓGICA DE CREACIÓN DE CONDUCTOR RESTAURADA
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
     try { 
       const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body; 
-      
-      // 1. Validar si existe el usuario
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); 
-      if (exist) return res.status(400).json({ message: "El email ya está registrado" }); 
+      if (exist) return res.status(400).json({ message: "Email existe" }); 
       
-      // 2. Crear usuario base (password 123456 por defecto para conductores creados por admin)
       const uid = randomUUID(); 
       const pass = await bcrypt.hash("123456", 10); 
       await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() }); 
       
-      // 3. Crear perfil de conductor
       const did = randomUUID(); 
       const dData = { id: did, userId: uid, email, name, rut, phone, commune, address: address || null, licenseNumber, licenseClass, licenseDate, createdAt: new Date(), status: 'active' }; 
       await db.insert(drivers).values(dData); 
-      
       res.status(201).json(dData); 
-    } catch (e) { 
-      console.error(e); 
-      res.status(500).send("Error al crear conductor"); 
-    } 
+    } catch (e) { console.error(e); res.status(500).send("Error"); } 
   });
 
   app.put("/api/drivers/:id", verifyAuth, async (req, res) => { try { await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { try { const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); if (!d) return res.status(404).send("Not found"); await db.delete(drivers).where(eq(drivers.id, req.params.id)); if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
   
-  // --- VEHÍCULOS (RESTAURADO) ---
   app.get("/api/vehicles", verifyAuth, async (req, res) => { const all = await db.query.vehicles.findMany(); res.json(all); });
-  
-  // 🟢 LÓGICA DE CREACIÓN DE VEHÍCULO RESTAURADA
-  app.post("/api/vehicles", verifyAuth, async (req, res) => { 
-    try { 
-      const vid = randomUUID(); 
-      const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; 
-      await db.insert(vehicles).values(vData); 
-      res.status(201).json(vData); 
-    } catch (e) { 
-      console.error(e);
-      res.status(500).send("Error al crear vehículo"); 
-    } 
-  });
-
+  app.post("/api/vehicles", verifyAuth, async (req, res) => { try { const vid = randomUUID(); const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; await db.insert(vehicles).values(vData); res.status(201).json(vData); } catch (e) { res.status(500).send("Error"); } });
   app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.update(vehicles).set(req.body).where(eq(vehicles.id, req.params.id)); res.json({ message: "Updated" }); } catch (e) { res.status(500).send("Error"); } });
   app.delete("/api/vehicles/:id", verifyAuth, async (req, res) => { try { await db.delete(vehicles).where(eq(vehicles.id, req.params.id)); res.json({ message: "Deleted" }); } catch (e) { res.status(500).send("Error"); } });
   
-  // --- PAGOS (CON ARREGLO DE TABLA Y EDICIÓN) ---
+  // --- PAGOS (FILTRADO POR ROL) ---
+  // 🟢 CORRECCIÓN: FILTRADO DE PAGOS
   app.get("/api/payments", verifyAuth, async (req, res) => { 
       if (!req.user) return res.sendStatus(401); 
       try { 
-          // Incluimos driver y vehicle anidados dentro de routeSlip
-          const all = await db.query.payments.findMany({ 
-            with: { 
-              routeSlip: {
-                with: { driver: true, vehicle: true }
-              } 
-            }, 
-            orderBy: (p, { desc }) => [desc(p.date)] 
-          }); 
-          res.json(all); 
+          // SI ES ADMIN: Ve todo
+          if (req.user.role === 'admin') {
+              const all = await db.query.payments.findMany({ 
+                with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
+                orderBy: (p, { desc }) => [desc(p.date)] 
+              }); 
+              return res.json(all); 
+          } 
+          
+          // SI ES CONDUCTOR: Solo ve los suyos
+          else {
+              const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
+              if (!driver) return res.json([]);
+
+              const myPayments = await db.query.payments.findMany({ 
+                where: eq(payments.driverId, driver.id), // FILTRO IMPORTANTE
+                with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
+                orderBy: (p, { desc }) => [desc(p.date)] 
+              }); 
+              return res.json(myPayments);
+          }
       } catch (e) { res.status(500).json([]); } 
   });
 
@@ -306,7 +312,6 @@ export function registerRoutes(app: Express): Server {
     try {
         const pId = req.params.id;
         const data: any = { ...req.body };
-        // Si hay archivo nuevo, actualizar
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
             data.proofOfPayment = `uploads/${req.files[0].filename}`;
         }
