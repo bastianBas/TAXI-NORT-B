@@ -68,11 +68,7 @@ export default function RouteSlipsPage() {
           </p>
         </div>
         
-        {/* 🟢 CAMBIO DEFINITIVO:
-            - Modo Claro: bg-zinc-950 (Negro intenso)
-            - Modo Oscuro: dark:bg-[#0f172a] (Azul oscuro/Slate profundo) + Borde sutil
-            Esto iguala exactamente al botón de la página "Vehículos".
-        */}
+        {/* Botón Nuevo Control (Mantenemos el estilo de Vehículos) */}
         <Button 
           onClick={() => setIsCreateOpen(true)} 
           className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
@@ -155,8 +151,11 @@ export default function RouteSlipsPage() {
                       <Button variant="ghost" size="icon" onClick={() => setViewSlip(slip)}>
                         <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </Button>
+                      
+                      {/* 🟢 CAMBIO AQUÍ: Eliminé 'text-muted-foreground' */}
+                      {/* Ahora el lápiz heredará el color del botón (Blanco en modo oscuro / Negro en claro), igual que en Pagos */}
                       <Button variant="ghost" size="icon">
-                        <Edit className="h-4 w-4 text-muted-foreground" />
+                        <Edit className="h-4 w-4" /> 
                       </Button>
                     </div>
                   </TableCell>
