@@ -73,21 +73,21 @@ export default function RouteSlipsPage() {
       </div>
 
       {/* BUSCADOR */}
-      <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm max-w-md">
-        <Search className="h-4 w-4 text-gray-500" />
+      <div className="flex items-center gap-2 bg-background p-2 rounded-lg border shadow-sm max-w-md">
+        <Search className="h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Buscar por conductor o patente..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="border-0 focus-visible:ring-0"
+          className="border-0 focus-visible:ring-0 bg-transparent"
         />
       </div>
 
       {/* TABLA */}
-      <div className="rounded-md border bg-white shadow-sm overflow-hidden">
+      <div className="rounded-md border bg-card shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gray-50/50">
+            <TableRow className="bg-muted/50">
               <TableHead>Fecha</TableHead>
               <TableHead>Conductor</TableHead>
               <TableHead>Vehículo</TableHead>
@@ -108,46 +108,46 @@ export default function RouteSlipsPage() {
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
-                    <FileText className="h-8 w-8 text-gray-300" />
+                    <FileText className="h-8 w-8 text-muted-foreground/50" />
                     <p>No se encontraron controles diarios.</p>
                   </div>
                 </TableCell>
               </TableRow>
             ) : (
               filteredSlips.map((slip: any) => (
-                <TableRow key={slip.id} className="hover:bg-gray-50">
+                <TableRow key={slip.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium">{slip.date}</TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="font-medium text-gray-900">{slip.driver?.name || "Desconocido"}</span>
-                      <span className="text-xs text-gray-500">{slip.driver?.rut || "-"}</span>
+                      <span className="font-medium text-foreground">{slip.driver?.name || "Desconocido"}</span>
+                      <span className="text-xs text-muted-foreground">{slip.driver?.rut || "-"}</span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="font-mono bg-gray-50">{slip.vehicle?.plate || "S/P"}</Badge>
+                    <Badge variant="outline" className="font-mono bg-muted/50">{slip.vehicle?.plate || "S/P"}</Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-gray-600">{slip.startTime} - {slip.endTime}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{slip.startTime} - {slip.endTime}</TableCell>
                   <TableCell>
                     {slip.paymentStatus === 'paid' ? (
-                      <Badge className="bg-green-100 text-green-800 border-green-200">Pagado</Badge>
+                      <Badge className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 border-green-200 dark:border-green-800">Pagado</Badge>
                     ) : (
-                      <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">Pendiente</Badge>
+                      <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/30">Pendiente</Badge>
                     )}
                   </TableCell>
                   <TableCell>
                     {slip.signatureUrl ? (
-                      <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">Firmado</span>
+                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">Firmado</span>
                     ) : (
-                      <span className="text-xs text-gray-400 italic">Pendiente</span>
+                      <span className="text-xs text-muted-foreground italic">Pendiente</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="icon" onClick={() => setViewSlip(slip)}>
-                        <Eye className="h-4 w-4 text-blue-600" />
+                        <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </Button>
                       <Button variant="ghost" size="icon">
-                        <Edit className="h-4 w-4 text-gray-400" />
+                        <Edit className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </div>
                   </TableCell>
@@ -174,28 +174,31 @@ export default function RouteSlipsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZAR PDF (Con la X corregida en color) */}
+      {/* MODAL VISUALIZAR PDF (Adaptado al Tema Oscuro/Claro) */}
       {viewSlip && (
         <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
-          {/* 🟢 AQUÍ ESTÁ EL CAMBIO: Agregamos clases para forzar el color del botón de cierre */}
-          <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-zinc-900 border-zinc-800 [&>button]:text-zinc-400 [&>button]:hover:text-white">
+          {/* 🟢 CAMBIO: Usamos 'bg-background' y 'border-border' para que coincida con el tema (Negro/Blanco).
+              La X ahora usa 'text-muted-foreground' para que se vea bien en ambos modos.
+          */}
+          <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-background border-border [&>button]:text-muted-foreground [&>button]:hover:text-foreground">
             
             {/* 1. ENCABEZADO */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950 text-white">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/50 text-foreground">
               <div className="flex flex-col">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-blue-400" />
+                  <FileText className="h-5 w-5 text-primary" />
                   Hoja de Ruta #{viewSlip.id.substring(0, 8)}...
                 </h2>
-                <p className="text-xs text-zinc-400">
-                  Generando documento localmente...
+                <p className="text-xs text-muted-foreground">
+                  Vista previa del documento generado.
                 </p>
               </div>
             </div>
 
             {/* 2. CUERPO (Visor PDF) */}
-            <div className="flex-1 bg-zinc-100 w-full h-full relative">
-              <PDFViewer width="100%" height="100%" className="border-none">
+            <div className="flex-1 w-full h-full relative bg-zinc-100/5 dark:bg-zinc-900/50 flex justify-center items-center">
+              {/* El PDFViewer siempre mostrará el papel blanco, eso es correcto para impresión */}
+              <PDFViewer width="100%" height="100%" className="border-none" showToolbar={false}>
                 <RouteSlipPdf 
                   data={{
                     id: viewSlip.id,
@@ -210,9 +213,9 @@ export default function RouteSlipsPage() {
               </PDFViewer>
             </div>
 
-            {/* 3. PIE DE PÁGINA */}
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-800 bg-zinc-950">
-                <Button variant="secondary" size="sm" className="gap-2 hidden sm:flex">
+            {/* 3. PIE DE PÁGINA (Botones integrados al tema) */}
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-card/50">
+                <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
                   <QrCode className="h-4 w-4" /> Mostrar QR Móvil
                 </Button>
                 
@@ -234,9 +237,9 @@ export default function RouteSlipsPage() {
                 >
                   {/* @ts-ignore */}
                   {({ loading }) => (
-                    <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-700 text-white border-0">
+                    <Button size="sm" className="gap-2">
                       <Download className="h-4 w-4" />
-                      {loading ? "Cargando..." : "Descargar PDF"}
+                      {loading ? "Generando..." : "Descargar PDF"}
                     </Button>
                   )}
                 </PDFDownloadLink>
