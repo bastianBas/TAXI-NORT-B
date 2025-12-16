@@ -10,7 +10,8 @@ import {
   ExternalLink,
   Upload,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  X
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -72,9 +73,9 @@ export default function PaymentsPage() {
     },
   });
 
-  // 2. OBTENER HOJAS DE RUTA (Para calcular pendientes y llenar el select)
+  // 2. OBTENER HOJAS DE RUTA
   const { data: routeSlips = [] } = useQuery({
-    queryKey: ["route-slips"], // Traemos todas
+    queryKey: ["route-slips"],
     queryFn: async () => {
       const res = await fetch("/api/route-slips");
       if (!res.ok) return [];
@@ -82,11 +83,10 @@ export default function PaymentsPage() {
     }
   });
 
-  // --- LÓGICA DE TARJETAS (KPIs - RESTAURADAS COMO EN LA IMAGEN 3) ---
+  // --- LÓGICA DE TARJETAS (KPIs) ---
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
   const totalPaymentsCount = payments.length;
   
-  // Filtro de búsqueda
   const filteredPayments = payments.filter((p: any) => {
     const searchLower = searchTerm.toLowerCase();
     const driverName = p.routeSlip?.driver?.name?.toLowerCase() || "";
@@ -100,7 +100,7 @@ export default function PaymentsPage() {
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
-      amount: "1800", // 🟢 RESTAURADO: Valor automático de $1800
+      amount: "1800", // 🟢 POR DEFECTO 1800
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     }
@@ -110,7 +110,7 @@ export default function PaymentsPage() {
     setEditingPayment(null);
     setFile(null);
     reset({
-      amount: "1800", // Siempre 1800 al crear
+      amount: "1800", 
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     });
@@ -155,16 +155,14 @@ export default function PaymentsPage() {
       toast({ title: "Éxito", description: editingPayment ? "Pago actualizado" : "Pago registrado correctamente" });
       setIsModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["payments"] });
-      queryClient.invalidateQueries({ queryKey: ["route-slips"] }); // Actualizar contador de pendientes
+      queryClient.invalidateQueries({ queryKey: ["route-slips"] }); 
     } catch (e) {
       toast({ title: "Error", description: "No se pudo guardar el pago", variant: "destructive" });
     }
   };
 
-  // 🟢 CORRECCIÓN VISUALIZADOR: Esta es la única parte "nueva" necesaria para que no falle la imagen
   const getFileUrl = (path: string) => {
     if (!path) return "";
-    // Limpia rutas duplicadas tipo "uploads/uploads/imagen.jpg"
     const cleanPath = path.replace(/^(\/?uploads\/)+/, ''); 
     return `/uploads/${cleanPath}`;
   };
@@ -178,7 +176,6 @@ export default function PaymentsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Pagos</h1>
           <p className="text-muted-foreground">Registro de pagos diarios de Hojas de Ruta</p>
         </div>
-        {/* Botón estilo oscuro correcto */}
         <Button 
           onClick={handleOpenCreate} 
           className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
@@ -187,8 +184,16 @@ export default function PaymentsPage() {
         </Button>
       </div>
 
-      {/* 🟢 TARJETAS RESTAURADAS (3 KPIs como en la imagen) */}
       <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
+          <div className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <h3 className="tracking-tight text-sm font-medium">Recaudación Total</h3>
+            <DollarSign className="h-4 w-4 text-green-600" />
+          </div>
+          <div className="text-2xl font-bold">${totalAmount.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">En registros filtrados</p>
+        </div>
+
         <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
             <h3 className="tracking-tight text-sm font-medium">Total Pagos</h3>
@@ -205,15 +210,6 @@ export default function PaymentsPage() {
           </div>
           <div className="text-2xl font-bold">{pendingSlipsCount}</div>
           <p className="text-xs text-muted-foreground">Por cobrar</p>
-        </div>
-
-        <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
-          <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <h3 className="tracking-tight text-sm font-medium">Recaudación Total</h3>
-            <DollarSign className="h-4 w-4 text-green-600" />
-          </div>
-          <div className="text-2xl font-bold">${totalAmount.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">En registros filtrados</p>
         </div>
       </div>
 
@@ -281,9 +277,9 @@ export default function PaymentsPage() {
         </Table>
       </div>
 
-      {/* 🟢 MODAL FORMULARIO RESTAURADO (Estilo oscuro original) */}
+      {/* 🟢 MODAL RESTAURADO (ESTILO BLANCO Y CAJA GRANDE) */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-zinc-950 text-white border-zinc-800">
+        <DialogContent className="sm:max-w-[500px] bg-white text-black">
           <DialogHeader>
             <DialogTitle>{editingPayment ? "Editar Pago" : "Nuevo Pago"}</DialogTitle>
           </DialogHeader>
@@ -296,14 +292,13 @@ export default function PaymentsPage() {
                 defaultValue={watch("routeSlipId")}
                 disabled={!!editingPayment}
               >
-                <SelectTrigger className="bg-zinc-900 border-zinc-800 text-white">
+                <SelectTrigger className="bg-white border-gray-200">
                   <SelectValue placeholder="Seleccionar hoja pendiente" />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
-                  {/* Mostramos solo las pendientes, o la actual si estamos editando */}
+                <SelectContent className="bg-white border-gray-200">
                   {(editingPayment ? routeSlips : routeSlips.filter((s:any) => s.paymentStatus !== 'paid')).map((s:any) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.date} - {s.driver?.name} ({s.vehicle?.plate})
+                      {s.date} - {s.driver?.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -312,60 +307,53 @@ export default function PaymentsPage() {
 
             <div className="grid grid-cols-2 gap-4">
                <div className="space-y-2">
-                 <Label>Monto a Pagar</Label>
+                 <Label>Monto</Label>
+                 {/* Por defecto 1800 */}
                  <Input 
                    type="number" 
                    {...register("amount")} 
-                   // 🟢 Estilo oscuro restaurado
-                   className="bg-zinc-900 border-zinc-800 text-white" 
+                   className="bg-white border-gray-200" 
                  />
                </div>
                <div className="space-y-2">
-                 <Label>Fecha</Label>
+                 <Label>Fecha Pago</Label>
                  <Input 
                    type="date" 
                    {...register("date")} 
-                   // 🟢 Estilo oscuro restaurado
-                   className="bg-zinc-900 border-zinc-800 text-white" 
+                   className="bg-white border-gray-200" 
                  />
                </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Comprobante</Label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-400 truncate">
-                  {file ? file.name : (editingPayment?.proofOfPayment ? "Archivo actual cargado" : "Seleccionar archivo...")}
-                </div>
-                <Label 
-                   htmlFor="file-upload" 
-                   className="cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2"
-                >
-                  <Upload className="h-4 w-4" /> Nuevo
-                </Label>
+            {/* CAJA DE SUBIDA GRANDE (Restaurada) */}
+            <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors mt-2" onClick={() => document.getElementById('file-upload')?.click()}>
+                <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                <p className="text-sm font-medium text-gray-700">
+                  {file ? file.name : (editingPayment?.proofOfPayment ? "Archivo cargado (Click para cambiar)" : "Subir Comprobante")}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Soporta: JPG, PNG, PDF</p>
                 <Input 
                    id="file-upload" 
                    type="file" 
-                   accept="image/*,application/pdf" // Acepta ambos
+                   accept="image/*,application/pdf" 
                    className="hidden" 
                    onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} 
                 />
-              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white hover:bg-zinc-900">
+              <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
                 Cancelar
               </Button>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
-                Guardar
+                {editingPayment ? "Guardar Cambios" : "Registrar Pago"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZADOR (Con la corrección para que no falle la imagen) */}
+      {/* MODAL VISUALIZADOR */}
       <Dialog open={!!viewFile} onOpenChange={(open) => !open && setViewFile(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
