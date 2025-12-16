@@ -35,7 +35,11 @@ import { useToast } from "@/hooks/use-toast";
 export default function RouteSlipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [viewSlip, setViewSlip] = useState<any>(null); 
+  const [viewSlip, setViewSlip] = useState<any>(null);
+  
+  // 🟢 NUEVO ESTADO: Para controlar la ventana del QR
+  const [showQr, setShowQr] = useState(false);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -68,7 +72,7 @@ export default function RouteSlipsPage() {
           </p>
         </div>
         
-        {/* Botón Nuevo Control (Estilo IDÉNTICO a Vehículos: Azul oscuro en Dark Mode) */}
+        {/* Botón Nuevo Control (Estilo IDÉNTICO a Vehículos) */}
         <Button 
           onClick={() => setIsCreateOpen(true)} 
           className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
@@ -152,10 +156,7 @@ export default function RouteSlipsPage() {
                         <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </Button>
                       
-                      {/* 🟢 CAMBIO AQUÍ: Color forzado
-                          - text-zinc-900: Negro en modo claro
-                          - dark:text-zinc-100: Blanco brillante en modo oscuro (Igual que Pagos)
-                      */}
+                      {/* Lápiz Blanco Brillante en Modo Oscuro */}
                       <Button variant="ghost" size="icon">
                         <Edit className="h-4 w-4 text-zinc-900 dark:text-zinc-100" /> 
                       </Button>
@@ -181,6 +182,31 @@ export default function RouteSlipsPage() {
               toast({ title: "Éxito", description: "Hoja de ruta creada correctamente" });
             }} 
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* 🟢 NUEVO MODAL PARA EL QR (Independiente del PDF) */}
+      <Dialog open={showQr} onOpenChange={setShowQr}>
+        <DialogContent className="sm:max-w-md bg-white text-black dark:bg-zinc-950 dark:text-white border-zinc-200 dark:border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-center">Código QR de Verificación</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center p-6 space-y-4">
+            {/* Generamos el QR usando una API pública confiable */}
+            {viewSlip?.id && (
+                <div className="p-2 bg-white rounded-lg">
+                    <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${viewSlip.id}`} 
+                        alt="QR Code" 
+                        className="w-48 h-48"
+                    />
+                </div>
+            )}
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+              Escanea este código para validar la hoja de ruta <br/> 
+              <span className="font-mono font-bold">#{viewSlip?.id?.slice(0,8)}</span>
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -221,7 +247,13 @@ export default function RouteSlipsPage() {
 
             {/* 3. PIE DE PÁGINA */}
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-card/50">
-                <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
+                {/* 🟢 AHORA SÍ: El botón QR activa el estado 'showQr' */}
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-2 hidden sm:flex"
+                    onClick={() => setShowQr(true)}
+                >
                   <QrCode className="h-4 w-4" /> Mostrar QR Móvil
                 </Button>
                 
