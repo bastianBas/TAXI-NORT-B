@@ -29,18 +29,17 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { RouteSlipForm } from "@/components/route-slips/route-slip-form";
-// Asegúrate de que la ruta de importación coincida con donde guardaste el diseño del PDF
 import { RouteSlipPdf } from "@/components/route-slips/pdf-design"; 
 import { useToast } from "@/hooks/use-toast";
 
 export default function RouteSlipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [viewSlip, setViewSlip] = useState<any>(null); // Estado para el modal de visualización
+  const [viewSlip, setViewSlip] = useState<any>(null); 
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // 1. OBTENER DATOS (Query Robusta)
+  // 1. OBTENER DATOS
   const { data: routeSlips = [], isLoading } = useQuery({
     queryKey: ["route-slips"],
     queryFn: async () => {
@@ -50,7 +49,7 @@ export default function RouteSlipsPage() {
     },
   });
 
-  // Filtro de búsqueda
+  // Filtro
   const filteredSlips = routeSlips.filter((slip: any) => {
     const searchLower = searchTerm.toLowerCase();
     const driverName = slip.driver?.name?.toLowerCase() || "";
@@ -60,7 +59,7 @@ export default function RouteSlipsPage() {
 
   return (
     <div className="space-y-6">
-      {/* ENCABEZADO */}
+      {/* ENCABEZADO PAGINA */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
@@ -73,7 +72,7 @@ export default function RouteSlipsPage() {
         </Button>
       </div>
 
-      {/* BARRA DE BÚSQUEDA */}
+      {/* BUSCADOR */}
       <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm max-w-md">
         <Search className="h-4 w-4 text-gray-500" />
         <Input
@@ -84,7 +83,7 @@ export default function RouteSlipsPage() {
         />
       </div>
 
-      {/* TABLA DE REGISTROS */}
+      {/* TABLA */}
       <div className="rounded-md border bg-white shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
@@ -117,9 +116,7 @@ export default function RouteSlipsPage() {
             ) : (
               filteredSlips.map((slip: any) => (
                 <TableRow key={slip.id} className="hover:bg-gray-50">
-                  <TableCell className="font-medium">
-                    {slip.date}
-                  </TableCell>
+                  <TableCell className="font-medium">{slip.date}</TableCell>
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium text-gray-900">{slip.driver?.name || "Desconocido"}</span>
@@ -127,22 +124,14 @@ export default function RouteSlipsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="font-mono bg-gray-50">
-                      {slip.vehicle?.plate || "S/P"}
-                    </Badge>
+                    <Badge variant="outline" className="font-mono bg-gray-50">{slip.vehicle?.plate || "S/P"}</Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-gray-600">
-                    {slip.startTime} - {slip.endTime}
-                  </TableCell>
+                  <TableCell className="text-sm text-gray-600">{slip.startTime} - {slip.endTime}</TableCell>
                   <TableCell>
                     {slip.paymentStatus === 'paid' ? (
-                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">
-                        Pagado
-                      </Badge>
+                      <Badge className="bg-green-100 text-green-800 border-green-200">Pagado</Badge>
                     ) : (
-                      <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
-                        Pendiente
-                      </Badge>
+                      <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">Pendiente</Badge>
                     )}
                   </TableCell>
                   <TableCell>
@@ -169,7 +158,7 @@ export default function RouteSlipsPage() {
         </Table>
       </div>
 
-      {/* MODAL DE CREACIÓN */}
+      {/* MODAL CREAR */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -185,12 +174,12 @@ export default function RouteSlipsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE VISUALIZACIÓN PDF (Sin la X duplicada) */}
+      {/* MODAL VISUALIZAR PDF (Corregido) */}
       {viewSlip && (
         <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
           <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-zinc-900 border-zinc-800">
             
-            {/* ENCABEZADO DEL VISOR */}
+            {/* 1. ENCABEZADO (Solo Título y X automática) */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950 text-white">
               <div className="flex flex-col">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -201,9 +190,28 @@ export default function RouteSlipsPage() {
                   Generando documento localmente...
                 </p>
               </div>
+              {/* Aquí ya no hay botones, solo queda la X automática a la derecha */}
+            </div>
 
-              {/* Botones de acción (Sin la X manual) */}
-              <div className="flex items-center gap-2">
+            {/* 2. CUERPO (Visor PDF) */}
+            <div className="flex-1 bg-zinc-100 w-full h-full relative">
+              <PDFViewer width="100%" height="100%" className="border-none">
+                <RouteSlipPdf 
+                  data={{
+                    id: viewSlip.id,
+                    date: viewSlip.date,
+                    driverName: viewSlip.driver?.name || "Desconocido",
+                    vehiclePlate: viewSlip.vehicle?.plate || "S/P",
+                    startTime: viewSlip.startTime,
+                    endTime: viewSlip.endTime,
+                    paymentStatus: viewSlip.paymentStatus
+                  }} 
+                />
+              </PDFViewer>
+            </div>
+
+            {/* 3. PIE DE PÁGINA (Botones abajo, separados de la X) */}
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-800 bg-zinc-950">
                 <Button variant="secondary" size="sm" className="gap-2 hidden sm:flex">
                   <QrCode className="h-4 w-4" /> Mostrar QR Móvil
                 </Button>
@@ -232,25 +240,8 @@ export default function RouteSlipsPage() {
                     </Button>
                   )}
                 </PDFDownloadLink>
-              </div>
             </div>
 
-            {/* VISOR PDF */}
-            <div className="flex-1 bg-zinc-100 w-full h-full relative">
-              <PDFViewer width="100%" height="100%" className="border-none">
-                <RouteSlipPdf 
-                  data={{
-                    id: viewSlip.id,
-                    date: viewSlip.date,
-                    driverName: viewSlip.driver?.name || "Desconocido",
-                    vehiclePlate: viewSlip.vehicle?.plate || "S/P",
-                    startTime: viewSlip.startTime,
-                    endTime: viewSlip.endTime,
-                    paymentStatus: viewSlip.paymentStatus
-                  }} 
-                />
-              </PDFViewer>
-            </div>
           </DialogContent>
         </Dialog>
       )}
