@@ -1,106 +1,108 @@
-import { Switch, Route, Redirect } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { Switch, Route } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
-import { AppSidebar } from "@/components/app-sidebar"; 
-import { LocationTracker } from "@/components/location-tracker"; // 🟢 IMPORTANTE
-import Login from "@/pages/login";
-import Register from "@/pages/register";
-import Dashboard from "@/pages/dashboard";
-import Drivers from "@/pages/drivers";
-import Vehicles from "@/pages/vehicles";
-import RouteSlips from "@/pages/route-slips";
-import Payments from "@/pages/payments";
-import Audit from "@/pages/audit";
 import NotFound from "@/pages/not-found";
 
-function AppRouter() {
-  const { user, isLoading } = useAuth();
+// 🟢 IMPORTANTE: Importamos el AuthProvider que creamos
+import { AuthProvider } from "@/hooks/use-auth";
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+// Importamos la protección de rutas
+import { ProtectedRoute } from "./lib/protected-route";
 
-  if (!user) {
-    return (
-      <Switch>
-        <Route path="/login" component={Login} />
-        <Route path="/register" component={Register} />
-        <Route path="/">
-          <Redirect to="/login" />
-        </Route>
-        <Route component={Login} />
-      </Switch>
-    );
-  }
+// Páginas
+import Login from "@/pages/login";
+import Dashboard from "@/pages/dashboard";
+import DriversPage from "@/pages/drivers";
+import VehiclesPage from "@/pages/vehicles";
+import RouteSlipsPage from "@/pages/route-slips";
+import PaymentsPage from "@/pages/payments";
+import AuditPage from "@/pages/audit";
+import { AppSidebar } from "@/components/app-sidebar";
 
+// Layout para las páginas protegidas (Con Sidebar)
+function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen w-full bg-background flex flex-col">
-      
-      {/* 🟢 RASTREADOR GPS ACTIVADO */}
-      <LocationTracker />
-
-      {/* Header Fijo Arriba */}
+    <div className="flex h-screen w-full bg-slate-50 dark:bg-zinc-950">
       <AppSidebar />
-
-      {/* Contenido Principal */}
-      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6">
-        <div className="animate-in fade-in duration-500">
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/login">
-              <Redirect to="/" />
-            </Route>
-            <Route path="/drivers">
-              <ProtectedRoute allowedRoles={["admin", "operator"]}>
-                <Drivers />
-              </ProtectedRoute>
-            </Route>
-            <Route path="/vehicles">
-              <ProtectedRoute allowedRoles={["admin", "operator"]}>
-                <Vehicles />
-              </ProtectedRoute>
-            </Route>
-            <Route path="/route-slips">
-              <ProtectedRoute allowedRoles={["admin", "operator", "driver", "finance"]}>
-                <RouteSlips />
-              </ProtectedRoute>
-            </Route>
-            
-            <Route path="/payments">
-              <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
-                <Payments />
-              </ProtectedRoute>
-            </Route>
-
-            <Route path="/audit">
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <Audit />
-              </ProtectedRoute>
-            </Route>
-            <Route component={NotFound} />
-          </Switch>
-        </div>
+      <main className="flex-1 overflow-y-auto p-8">
+        {children}
       </main>
     </div>
   );
 }
 
-export default function App() {
+function Router() {
+  return (
+    <Switch>
+      {/* Ruta pública: Login */}
+      <Route path="/auth" component={Login} />
+      
+      {/* Rutas Protegidas: Requieren Login */}
+      <Route path="/">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Dashboard />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/drivers">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <DriversPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/vehicles">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <VehiclesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/route-slips">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <RouteSlipsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/payments">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <PaymentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/audit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AuditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Ruta 404 */}
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <AppRouter />
-        </AuthProvider>
+      {/* 🟢 AQUÍ ESTÁ LA CLAVE: Envolvemos todo con AuthProvider */}
+      <AuthProvider>
+        <Router />
         <Toaster />
-      </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
+
+export default App;
