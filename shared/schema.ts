@@ -16,7 +16,7 @@ export const users = mysqlTable("users", {
 // --- CONDUCTORES ---
 export const drivers = mysqlTable("drivers", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  userId: varchar("user_id", { length: 36 }), 
+  userId: varchar("user_id", { length: 36 }),
   email: varchar("email", { length: 255 }),
   name: varchar("name", { length: 255 }).notNull(),
   rut: varchar("rut", { length: 20 }).notNull().unique(),
@@ -46,7 +46,7 @@ export const vehicles = mysqlTable("vehicles", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// --- HOJAS DE RUTA ---
+// --- HOJAS DE RUTA (CORREGIDO: Coincide con tu DB real) ---
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
@@ -58,10 +58,7 @@ export const routeSlips = mysqlTable("route_slips", {
   paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
-  // Campos extra para compatibilidad
-  authorizedBy: varchar("authorized_by", { length: 36 }), 
-  authorizedAt: timestamp("authorized_at"),
-  qrCodeData: text("qr_code_data"),
+  // 🟢 SE ELIMINARON: authorizedBy, authorizedAt, qrCodeData
   createdAt: timestamp("created_at").defaultNow()
 });
 
@@ -91,7 +88,7 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
-// --- NOTIFICACIONES (Requerida por storage.ts) ---
+// --- NOTIFICACIONES ---
 export const notifications = mysqlTable("notifications", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
@@ -103,7 +100,7 @@ export const notifications = mysqlTable("notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// --- GPS HISTORY (Requerida por storage.ts) ---
+// --- GPS HISTORY ---
 export const gpsHistory = mysqlTable("gps_history", {
   id: varchar("id", { length: 36 }).primaryKey(),
   vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
@@ -114,7 +111,6 @@ export const gpsHistory = mysqlTable("gps_history", {
 });
 
 // --- RELACIONES ---
-
 export const driversRelations = relations(drivers, ({ one, many }) => ({
   user: one(users, { fields: [drivers.userId], references: [users.id] }),
   routeSlips: many(routeSlips),
@@ -144,11 +140,11 @@ export const gpsHistoryRelations = relations(gpsHistory, ({ one }) => ({
 }));
 
 // --- SCHEMAS ---
-
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
-export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true, authorizedBy: true, authorizedAt: true, qrCodeData: true });
+// 🟢 SE ACTUALIZÓ: Se eliminaron los campos omitidos que ya no existen
+export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true });
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true, read: true });
@@ -172,16 +168,14 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type GpsHistory = typeof gpsHistory.$inferSelect;
 export type InsertGpsHistory = z.infer<typeof insertGpsHistorySchema>;
 
-// Tipo de Ubicación (CORREGIDO SIN INDEX SIGNATURE)
 export type VehicleLocation = {
   vehicleId: string;
   plate: string;
   lat: number;
   lng: number;
-  speed?: number; 
+  speed?: number;
   status: string;
   timestamp: number;
-  // Campos opcionales para UI
   driverName?: string;
   model?: string;
   isPaid?: boolean;
