@@ -4,10 +4,8 @@ import { es } from "date-fns/locale";
 import { 
   ShieldCheck, 
   Search, 
-  Filter,
   User,
-  Calendar,
-  Activity
+  AlertTriangle
 } from "lucide-react";
 import { useState } from "react";
 
@@ -21,29 +19,32 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function AuditPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 1. OBTENER DATOS REALES DEL BACKEND
-  const { data: logs = [], isLoading } = useQuery({
+  // 1. OBTENER DATOS
+  const { data: logs = [], isLoading, isError } = useQuery({
     queryKey: ["audit-logs"],
     queryFn: async () => {
       const res = await fetch("/api/audit-logs");
       if (!res.ok) throw new Error("Error al cargar auditoría");
       return res.json();
     },
-    refetchInterval: 5000, // Se actualiza solo cada 5 segundos
+    // Actualizar cada 5 segundos para ver actividad en tiempo real
+    refetchInterval: 5000, 
   });
 
   // Filtro de búsqueda
   const filteredLogs = logs.filter((log: any) => {
     const searchLower = searchTerm.toLowerCase();
+    
+    // Validamos que los campos existan antes de usar toLowerCase()
     const action = log.action?.toLowerCase() || "";
     const entity = log.entity?.toLowerCase() || "";
     const details = log.details?.toLowerCase() || "";
-    const userName = log.user?.name?.toLowerCase() || "";
+    // 🟢 CAMBIO: Ahora usamos 'userName' directo de la tabla MySQL
+    const userName = log.userName?.toLowerCase() || "";
     
     return action.includes(searchLower) || 
            entity.includes(searchLower) || 
@@ -53,14 +54,33 @@ export default function AuditPage() {
 
   // Colores para las acciones
   const getActionColor = (action: string) => {
-    switch (action.toUpperCase()) {
-      case 'CREAR': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
-      case 'MODIFICAR': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
-      case 'ELIMINAR': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      case 'REGISTRO': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
+    const act = action?.toUpperCase() || "";
+    if (act.includes('CREAR') || act.includes('CREATE')) return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+    if (act.includes('MODIFICAR') || act.includes('MODIFY') || act.includes('UPDATE')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+    if (act.includes('ELIMINAR') || act.includes('DELETE')) return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+    if (act.includes('REGISTRO') || act.includes('REGISTER')) return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
+    return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
+  };
+
+  // 🟢 HELPER SEGURO PARA FECHAS
+  const formatDate = (dateString: string | Date) => {
+    try {
+      if (!dateString) return "-";
+      return format(new Date(dateString), "dd/MM/yyyy HH:mm", { locale: es });
+    } catch (error) {
+      return "Fecha inválida";
     }
   };
+
+  if (isError) {
+    return (
+      <div className="p-8 text-center text-red-500">
+        <AlertTriangle className="mx-auto h-12 w-12 mb-2" />
+        <h2 className="text-lg font-semibold">Error al cargar registros</h2>
+        <p>Verifica que el servidor esté funcionando correctamente.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -106,14 +126,15 @@ export default function AuditPage() {
             ) : filteredLogs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                  No hay movimientos registrados.
+                  No hay movimientos registrados aún.
                 </TableCell>
               </TableRow>
             ) : (
               filteredLogs.map((log: any) => (
                 <TableRow key={log.id} className="hover:bg-muted/50">
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: es })}
+                    {/* 🟢 CAMBIO: Usamos log.timestamp en vez de log.createdAt */}
+                    {formatDate(log.timestamp)}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -121,7 +142,8 @@ export default function AuditPage() {
                         <User className="h-3 w-3 text-slate-500" />
                       </div>
                       <span className="font-medium text-sm">
-                        {log.user?.name || "Sistema / Desconocido"}
+                        {/* 🟢 CAMBIO: Usamos log.userName directo */}
+                        {log.userName || "Sistema / Desconocido"}
                       </span>
                     </div>
                   </TableCell>
