@@ -7,7 +7,8 @@ import {
   Eye,
   Edit,
   FileText,
-  ExternalLink
+  ExternalLink,
+  X
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -27,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PaymentForm } from "@/components/payments/payment-form"; // Asegúrate de haber creado el archivo anterior
+import { PaymentForm } from "@/components/payments/payment-form"; 
 import { useToast } from "@/hooks/use-toast";
 
 export default function PaymentsPage() {
@@ -57,16 +59,16 @@ export default function PaymentsPage() {
 
   const totalAmount = filteredPayments.reduce((sum: number, p: any) => sum + (parseInt(p.amount) || 0), 0);
 
-  // 🟢 FUNCIÓN CORREGIDA PARA OBTENER LA URL DEL ARCHIVO
+  // 🟢 CORRECCIÓN DE RUTA DE ARCHIVO
+  // Esta función asegura que la ruta siempre sea "/uploads/archivo.ext"
+  // y elimina duplicados como "/uploads/uploads/..."
   const getFileUrl = (path: string) => {
     if (!path) return "";
-    // Si la ruta ya empieza con http o /, la dejamos tal cual.
-    // Si no, le agregamos el / inicial.
-    // Como tu base de datos guarda "uploads/archivo.jpg", necesitamos que sea "/uploads/archivo.jpg"
-    return path.startsWith("/") ? path : `/${path}`;
+    // Obtenemos solo el nombre del archivo final
+    const filename = path.split('\\').pop()?.split('/').pop();
+    return `/uploads/${filename}`;
   };
 
-  // Función para saber si es PDF
   const isPdf = (path: string) => {
     return path?.toLowerCase().endsWith(".pdf");
   };
@@ -142,7 +144,7 @@ export default function PaymentsPage() {
                   <TableCell className="font-mono text-xs">{p.routeSlip?.vehicle?.plate}</TableCell>
                   <TableCell className="font-bold">${parseInt(p.amount).toLocaleString()}</TableCell>
                   <TableCell>
-                    <Badge className="bg-green-600 hover:bg-green-700">Pagado</Badge>
+                    <Badge className="bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">Pagado</Badge>
                   </TableCell>
                   <TableCell>
                     {p.proofOfPayment ? (
@@ -191,40 +193,48 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZAR ARCHIVO (Corregido) */}
+      {/* 🟢 MODAL VISUALIZADOR DE ARCHIVO (Corregido para 404) */}
       <Dialog open={!!viewFile} onOpenChange={(open) => !open && setViewFile(null)}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 overflow-hidden bg-zinc-950 border-zinc-800">
-          <DialogHeader className="p-4 bg-zinc-900 border-b border-zinc-800 text-white flex flex-row items-center justify-between">
-            <DialogTitle>Visualizador de Comprobante</DialogTitle>
-            <div className="flex gap-2">
-               {viewFile && (
-                 <a 
-                   href={getFileUrl(viewFile)} 
-                   target="_blank" 
-                   rel="noopener noreferrer"
-                   className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-2"
-                 >
-                   <ExternalLink className="h-3 w-3" /> Abrir en nueva pestaña
-                 </a>
-               )}
-            </div>
-          </DialogHeader>
+        <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 overflow-hidden bg-zinc-950 border-zinc-800 [&>button]:text-zinc-400 [&>button]:hover:text-white">
           
-          <div className="flex-1 bg-zinc-900/50 flex items-center justify-center relative w-full h-full overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900 text-white">
+            <DialogTitle className="text-sm font-medium flex items-center gap-2">
+               <FileText className="h-4 w-4" /> Visualizador de Comprobante
+            </DialogTitle>
             {viewFile && (
+                <a 
+                  href={getFileUrl(viewFile)} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-2"
+                >
+                  <ExternalLink className="h-3 w-3" /> Abrir Original
+                </a>
+            )}
+          </div>
+          
+          <div className="flex-1 bg-zinc-900/50 flex items-center justify-center relative w-full h-full overflow-hidden p-4">
+            {viewFile ? (
               isPdf(viewFile) ? (
                 <iframe 
                   src={getFileUrl(viewFile)} 
-                  className="w-full h-full border-none"
+                  className="w-full h-full border-none rounded bg-white"
                   title="Comprobante PDF"
                 />
               ) : (
                 <img 
                   src={getFileUrl(viewFile)} 
                   alt="Comprobante" 
-                  className="max-w-full max-h-full object-contain"
+                  className="max-w-full max-h-full object-contain rounded shadow-lg"
+                  onError={(e) => {
+                    // Si falla la carga, mostramos un mensaje amigable
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    toast({ title: "Error", description: "No se pudo cargar la imagen", variant: "destructive" });
+                  }}
                 />
               )
+            ) : (
+                <p className="text-zinc-500">No hay archivo seleccionado</p>
             )}
           </div>
         </DialogContent>

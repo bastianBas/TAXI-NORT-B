@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Upload, Loader2, Check } from "lucide-react";
+import { Upload, Loader2, Check, FileText } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,11 +45,10 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Cargar hojas de ruta pendientes (o todas si es edición)
     fetch("/api/route-slips")
       .then(res => res.json())
       .then(data => {
-        // Si estamos editando, mostramos todas. Si es nuevo, solo las pendientes.
+        // Si es edición, mostramos todas. Si es nuevo, solo las pendientes.
         const filtered = initialData 
           ? data 
           : data.filter((slip: any) => slip.paymentStatus !== 'paid');
@@ -65,11 +64,8 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
       formData.append("routeSlipId", data.routeSlipId);
       formData.append("amount", data.amount);
       formData.append("date", data.date);
-      
-      // Datos fijos requeridos por el backend
       formData.append("type", "transfer"); 
       
-      // Buscar conductor/vehiculo de la hoja seleccionada
       const selectedSlip = routeSlips.find(s => s.id === data.routeSlipId);
       if (selectedSlip) {
         formData.append("driverId", selectedSlip.driverId);
@@ -89,15 +85,15 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
       });
 
       if (!res.ok) {
-        const errorText = await res.text(); // Leer error del servidor si existe
-        throw new Error(errorText || "Error al guardar");
+        const errText = await res.text();
+        throw new Error(errText || "Error al guardar");
       }
 
       toast({ title: "Éxito", description: "Pago registrado correctamente" });
       onSuccess();
     } catch (error) {
       console.error(error);
-      toast({ title: "Error", description: "No se pudo guardar el pago", variant: "destructive" });
+      toast({ title: "Error", description: "No se pudo procesar el pago", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -111,7 +107,7 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
         <Select 
           onValueChange={(val) => setValue("routeSlipId", val)} 
           defaultValue={initialData?.routeSlipId}
-          disabled={!!initialData} // No cambiar la hoja si se está editando el pago
+          disabled={!!initialData} 
         >
           <SelectTrigger>
             <SelectValue placeholder="Seleccionar hoja pendiente" />
@@ -119,7 +115,7 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
           <SelectContent>
             {routeSlips.map((slip) => (
               <SelectItem key={slip.id} value={slip.id}>
-                {slip.date} - {slip.driver?.name} ({slip.vehicle?.plate})
+                {slip.date} - {slip.driver?.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -141,16 +137,20 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
 
       <div className="border border-dashed border-gray-300 dark:border-zinc-700 p-4 rounded-md text-center">
         <Label htmlFor="proof-upload" className="cursor-pointer flex flex-col items-center gap-2">
-           <Upload className="h-8 w-8 text-gray-400" />
+           {file ? (
+             <FileText className="h-8 w-8 text-blue-500" />
+           ) : (
+             <Upload className="h-8 w-8 text-gray-400" />
+           )}
            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-             {file ? file.name : (initialData?.proofOfPayment ? "Cambiar Comprobante Actual" : "Subir Comprobante")}
+             {file ? file.name : (initialData?.proofOfPayment ? "Reemplazar Comprobante Actual" : "Subir Comprobante")}
            </span>
-           <span className="text-xs text-gray-400">Imagen o PDF</span>
+           <span className="text-xs text-gray-400">Soporta: JPG, PNG, PDF</span>
         </Label>
         <Input 
           id="proof-upload" 
           type="file" 
-          accept="image/*,application/pdf" 
+          accept="image/*,application/pdf" // 🟢 ACEPTA AMBOS FORMATOS
           className="hidden" 
           onChange={(e) => {
             if (e.target.files && e.target.files[0]) {
@@ -158,7 +158,7 @@ export function PaymentForm({ onSuccess, initialData }: PaymentFormProps) {
             }
           }}
         />
-        {file && <div className="mt-2 text-green-600 text-xs flex items-center justify-center gap-1"><Check className="h-3 w-3"/> Archivo listo</div>}
+        {file && <div className="mt-2 text-green-600 text-xs flex items-center justify-center gap-1"><Check className="h-3 w-3"/> Archivo listo para subir</div>}
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
