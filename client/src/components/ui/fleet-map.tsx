@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// 🟢 ÍCONO PERSONALIZADO: PIN CON AUTO (Solicitado en doc)
+// 🟢 ÍCONO DE PIN CON AUTO (Diseño exacto del documento)
 const carIconSvg = (color: string) => `
 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24">
   <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
@@ -21,7 +21,7 @@ const createCarIcon = (color: string) => L.divIcon({
   html: carIconSvg(color),
   className: 'custom-car-pin',
   iconSize: [40, 40],
-  iconAnchor: [20, 40], // Punta del pin abajo
+  iconAnchor: [20, 40],
   popupAnchor: [0, -40]
 });
 
@@ -29,7 +29,6 @@ const iconPaid = createCarIcon('#10B981');   // Verde
 const iconUnpaid = createCarIcon('#EF4444'); // Rojo
 const COPIAPO_CENTER: [number, number] = [-27.3668, -70.3319];
 
-// Componente para manejar la vista sin bloquear al usuario
 function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCenter: [number, number] }) {
   const map = useMap();
   const hasInitializedRef = useRef(false);
@@ -40,13 +39,13 @@ function ViewHandler({ locations, defaultCenter }: { locations: any[], defaultCe
       const lat = Number(first.lat);
       const lng = Number(first.lng);
       
-      // Solo centrar automáticamente la PRIMERA vez
+      // Solo centrar automáticamente la PRIMERA vez para no molestar la navegación
       if (!hasInitializedRef.current && !isNaN(lat) && !isNaN(lng)) {
-        map.setView([lat, lng], 13);
+        map.setView([lat, lng], 15);
         hasInitializedRef.current = true;
       }
     } else if (!hasInitializedRef.current) {
-      map.setView(defaultCenter, 13);
+      map.setView(defaultCenter, 12);
       hasInitializedRef.current = true;
     }
   }, [map, locations, defaultCenter]);
@@ -70,8 +69,8 @@ export default function FleetMap() {
   };
 
   useEffect(() => {
-    fetchFleet();
-    const interval = setInterval(fetchFleet, 2000); // Actualizar cada 2s
+    fetchFleet(); // 🟢 Llamada inmediata (Según análisis del documento)
+    const interval = setInterval(fetchFleet, 1000); // 🟢 1 Segundo para fluidez (Según análisis)
     return () => clearInterval(interval);
   }, []);
 
@@ -85,7 +84,7 @@ export default function FleetMap() {
 
   return (
     <div className="h-full w-full rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0">
-      <MapContainer center={initialCenter} zoom={13} style={{ height: "500px", width: "100%" }}>
+      <MapContainer center={initialCenter} zoom={12} style={{ height: "500px", width: "100%" }}>
         <ViewHandler locations={vehicles} defaultCenter={COPIAPO_CENTER} />
         
         <TileLayer
@@ -96,7 +95,7 @@ export default function FleetMap() {
         {vehicles.map((v) => {
           const lat = Number(v.lat);
           const lng = Number(v.lng);
-          const speedKmH = Math.round((v.speed || 0)); // Ya viene convertido del cliente generalmente
+          const speedKmH = Math.round((v.speed || 0));
 
           if (isNaN(lat) || isNaN(lng)) return null;
 
@@ -109,25 +108,20 @@ export default function FleetMap() {
               <Popup>
                 <div className="min-w-[200px] p-2 font-sans text-sm">
                   <div className="grid grid-cols-[80px_1fr] gap-x-2 gap-y-1 items-start">
-                    
                     <span className="font-bold text-gray-600">Conductor:</span>
-                    {/* 🟢 CORRECCIÓN VISUAL: break-words para nombres largos */}
                     <span className="font-medium text-black break-words leading-tight">
                       {v.driverName}
                     </span>
-
                     <span className="font-bold text-gray-600">Vehículo:</span>
                     <span className="font-medium text-black">{v.plate}</span>
-
                     <span className="font-bold text-gray-600">Estado:</span>
                     <span>
                       {v.isPaid ? (
                         <span className="text-green-700 font-bold bg-green-100 px-1.5 py-0.5 rounded text-xs">PAGADO</span>
                       ) : (
-                        <span className="text-red-700 font-bold bg-red-100 px-1.5 py-0.5 rounded text-xs">NO PAGADO</span>
+                        <span className="text-red-700 font-bold bg-red-100 px-1.5 py-0.5 rounded text-xs">NO PAGADA</span>
                       )}
                     </span>
-
                     <span className="font-bold text-gray-600">Velocidad:</span>
                     <span className="font-bold text-blue-600">{speedKmH} km/h</span>
                   </div>
@@ -138,7 +132,6 @@ export default function FleetMap() {
         })}
       </MapContainer>
       
-      {/* Indicador en Vivo */}
       <div className="absolute top-4 right-4 bg-white/90 px-3 py-1 rounded-full text-xs font-semibold shadow-md z-[1000] flex items-center gap-2">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
