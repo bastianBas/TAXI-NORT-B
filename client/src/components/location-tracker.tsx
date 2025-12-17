@@ -5,7 +5,7 @@ import L from "leaflet";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge"; 
 
-// FIX: Arreglo para que Leaflet encuentre las imágenes de los marcadores por defecto
+// Arreglo para que Leaflet encuentre los marcadores por defecto si hicieran falta
 import icon from "leaflet/dist/images/marker-icon.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
 let DefaultIcon = L.icon({
@@ -17,24 +17,24 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 
-// --- DEFINICIÓN DE ICONOS USANDO TUS IMÁGENES ---
-// Asegúrate de haber guardado 'car-red.png' y 'car-green.png' en la carpeta 'client/public/'
-
+// --- DEFINICIÓN DE ICONOS ---
 // 🔴 Icono ROJO (Pendiente)
 const redTaxiIcon = new L.Icon({
-  iconUrl: "/car-red.png", // Ruta a tu imagen en la carpeta public
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png", // Sombra genérica
-  iconSize: [40, 50], // Tamaño ajustado para que se vea bien (puedes cambiarlo)
-  iconAnchor: [20, 50], // Punto de anclaje (la punta del pin abajo al centro)
-  popupAnchor: [0, -45], // Donde se abre el popup (arriba del icono)
+  // 🟢 CORRECCIÓN: La ruta empieza con '/'
+  iconUrl: "/car-red.png", 
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+  iconSize: [40, 50], // Ajusta este tamaño si se ven muy grandes o chicos
+  iconAnchor: [20, 50], // La punta del pin
+  popupAnchor: [0, -45], // Donde se abre el popup
   shadowSize: [50, 50]
 });
 
 // 🟢 Icono VERDE (Pagado)
 const greenTaxiIcon = new L.Icon({
-  iconUrl: "/car-green.png", // Ruta a tu imagen en la carpeta public
+  // 🟢 CORRECCIÓN: La ruta empieza con '/'
+  iconUrl: "/car-green.png",
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-  iconSize: [40, 50], // Tamaño ajustado
+  iconSize: [40, 50],
   iconAnchor: [20, 50],
   popupAnchor: [0, -45],
   shadowSize: [50, 50]
@@ -42,7 +42,8 @@ const greenTaxiIcon = new L.Icon({
 
 
 export function LocationTracker() {
-  const [center] = useState<[number, number]>([-27.366, -70.332]); // Copiapó
+  // Centro inicial del mapa (Copiapó)
+  const [center] = useState<[number, number]>([-27.366, -70.332]); 
 
   const { data: locations = [] } = useQuery({
     queryKey: ["vehicle-locations"],
@@ -51,7 +52,7 @@ export function LocationTracker() {
       if (!res.ok) return [];
       return res.json();
     },
-    refetchInterval: 2000, // Actualización rápida (2s)
+    refetchInterval: 2000, // Actualización cada 2 segundos
   });
 
   return (
@@ -63,8 +64,7 @@ export function LocationTracker() {
         />
         
         {locations.map((loc: any) => {
-          // 🟢 LÓGICA DE SELECCIÓN DE IMAGEN
-          // Si está pagado, usa el icono verde; si no, el rojo.
+          // Seleccionamos el icono según si está pagado o no
           const iconToUse = loc.isPaid ? greenTaxiIcon : redTaxiIcon;
 
           return (
