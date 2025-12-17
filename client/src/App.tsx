@@ -5,8 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar"; 
+// 🟢 1. IMPORTAMOS EL PROVIDER QUE FALTABA
+import { SidebarProvider } from "@/components/ui/sidebar";
 
-// 🟢 1. IMPORTANTE: Importamos solo el MOTOR GPS invisible
 import { DriverGpsTracker } from "@/components/driver-gps-tracker";
 
 import Login from "@/pages/login";
@@ -44,56 +45,57 @@ function AppRouter() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background flex flex-col">
-      
-      {/* 🟢 2. AQUÍ ESTÁ EL TRUCO: */}
-      {/* Solo ponemos el motor invisible. El mapa visual (LocationTracker) */}
-      {/* ya está dentro de Dashboard.tsx, así no duplicamos cosas. */}
-      <DriverGpsTracker />
+    // 🟢 2. ENVOLVEMOS EL LAYOUT EN EL PROVIDER (SOLUCIÓN PANTALLA BLANCA)
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        
+        {/* Motor GPS Invisible */}
+        <DriverGpsTracker />
 
-      {/* Header Fijo Arriba */}
-      <AppSidebar />
+        {/* Sidebar Lateral */}
+        <AppSidebar />
 
-      {/* Contenido Principal */}
-      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6">
-        <div className="animate-in fade-in duration-500">
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/login">
-              <Redirect to="/" />
-            </Route>
-            <Route path="/drivers">
-              <ProtectedRoute allowedRoles={["admin", "operator"]}>
-                <Drivers />
-              </ProtectedRoute>
-            </Route>
-            <Route path="/vehicles">
-              <ProtectedRoute allowedRoles={["admin", "operator"]}>
-                <Vehicles />
-              </ProtectedRoute>
-            </Route>
-            <Route path="/route-slips">
-              <ProtectedRoute allowedRoles={["admin", "operator", "driver", "finance"]}>
-                <RouteSlips />
-              </ProtectedRoute>
-            </Route>
-            
-            <Route path="/payments">
-              <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
-                <Payments />
-              </ProtectedRoute>
-            </Route>
+        {/* Contenido Principal */}
+        <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6 overflow-y-auto">
+          <div className="animate-in fade-in duration-500">
+            <Switch>
+              <Route path="/" component={Dashboard} />
+              <Route path="/login">
+                <Redirect to="/" />
+              </Route>
+              <Route path="/drivers">
+                <ProtectedRoute allowedRoles={["admin", "operator"]}>
+                  <Drivers />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/vehicles">
+                <ProtectedRoute allowedRoles={["admin", "operator"]}>
+                  <Vehicles />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/route-slips">
+                <ProtectedRoute allowedRoles={["admin", "operator", "driver", "finance"]}>
+                  <RouteSlips />
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/payments">
+                <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
+                  <Payments />
+                </ProtectedRoute>
+              </Route>
 
-            <Route path="/audit">
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <Audit />
-              </ProtectedRoute>
-            </Route>
-            <Route component={NotFound} />
-          </Switch>
-        </div>
-      </main>
-    </div>
+              <Route path="/audit">
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <Audit />
+                </ProtectedRoute>
+              </Route>
+              <Route component={NotFound} />
+            </Switch>
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }
 
