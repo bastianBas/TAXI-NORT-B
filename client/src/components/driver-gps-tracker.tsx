@@ -1,41 +1,29 @@
 import { useEffect, useRef } from "react";
-import { useAuth } from "@/lib/auth"; 
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
 export function DriverGpsTracker() {
   const { user } = useAuth();
   const { toast } = useToast();
   
-  // REFERENCIAS (Memoria RAM)
+  // REFERENCIAS
   const latestLocation = useRef<{ lat: number; lng: number; speed: number } | null>(null);
   const lastSentTime = useRef<number>(0);
   const isOfflineSentRef = useRef(false);
+  const hasSentFirstLocation = useRef(false); // 🚀 NUEVO: Para enviar el primero al instante
   const wakeLockRef = useRef<any>(null);
 
   useEffect(() => {
-    // 1. VALIDACIONES
     if (!user || user.role !== 'driver') return;
+
     if (!('geolocation' in navigator)) {
-      console.error("Tu dispositivo no soporta GPS");
+      console.error("GPS no soportado");
       return;
     }
 
-    console.log("🚀 Motor GPS Iniciado (Modo Optimizado)");
+    console.log("🚀 Motor GPS: Listo para arranque inmediato");
 
-    // 2. INICIO INSTANTÁNEO
-    const savedLoc = localStorage.getItem("taxinort_last_pos");
-    if (savedLoc) {
-      try {
-        const { lat, lng } = JSON.parse(savedLoc);
-        fetch("/api/vehicle-locations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lat, lng, speed: 0, status: 'active' }),
-        }).catch(e => console.error("Error envío flash:", e));
-      } catch (e) { console.error("Error memoria local:", e); }
-    }
-
-    // 3. WAKE LOCK (Pantalla Encendida)
+    // 1. WAKE LOCK (Pantalla Encendida)
     const requestWakeLock = async () => {
       if ('wakeLock' in navigator) {
         try {
@@ -48,55 +36,78 @@ export function DriverGpsTracker() {
       if (document.visibilityState === 'visible') requestWakeLock();
     });
 
-    // 4. CAPTURA DE GPS (Solo guarda en RAM)
-    const geoId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude, speed } = position.coords;
-        latestLocation.current = {
-          lat: latitude,
-          lng: longitude,
-          speed: speed ? (speed * 3.6) : 0 
-        };
-        localStorage.setItem("taxinort_last_pos", JSON.stringify({ lat: latitude, lng: longitude }));
-        isOfflineSentRef.current = false;
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-           toast({ variant: "destructive", title: "GPS Denegado", description: "Activa el GPS." });
-        }
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-    );
+    // 2. FUNCIÓN DE ENVÍO DIRECTO
+    const sendData = async (status: 'active' | 'offline' = 'active') => {
+      if (!latestLocation.current && status === 'active') return;
 
-    // 5. ENVÍO CONTROLADO (Cada 10 segundos máximo)
-    const intervalId = setInterval(async () => {
-      const now = Date.now();
-      if (!latestLocation.current) return;
-      if (now - lastSentTime.current < 10000) return; 
+      const body = {
+        lat: latestLocation.current?.lat || 0,
+        lng: latestLocation.current?.lng || 0,
+        speed: latestLocation.current?.speed || 0,
+        status: status
+      };
 
       try {
         await fetch("/api/vehicle-locations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            lat: latestLocation.current.lat,
-            lng: latestLocation.current.lng,
-            speed: latestLocation.current.speed,
-            status: 'active'
-          }),
+          body: JSON.stringify(body),
         });
-        lastSentTime.current = now;
+        lastSentTime.current = Date.now();
+        // console.log(`📡 Enviado: ${status}`);
       } catch (err) {
-        console.error("⚠️ Servidor ocupado, reintentando...", err);
+        console.error("Error envío:", err);
       }
-    }, 5000); 
+    };
 
-    // 6. SEÑAL OFF
+    // 3. CAPTURA DE GPS
+    const geoId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, speed } = position.coords;
+        
+        latestLocation.current = {
+          lat: latitude,
+          lng: longitude,
+          speed: speed ? (speed * 3.6) : 0 
+        };
+
+        // 🚀 LÓGICA DE "ALTIRO":
+        // Si es la primera vez que recibimos señal, enviamos INMEDIATAMENTE.
+        // No esperamos al intervalo de 10s.
+        if (!hasSentFirstLocation.current) {
+          console.log("📍 Primera ubicación detectada: Enviando ALTIRO.");
+          sendData('active');
+          hasSentFirstLocation.current = true;
+        }
+
+        isOfflineSentRef.current = false;
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+           toast({ variant: "destructive", title: "GPS", description: "Es necesario activar el GPS." });
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+    );
+
+    // 4. INTERVALO DE MANTENIMIENTO (Cada 10s)
+    // Mantiene la conexión viva y actualiza la posición suavemente
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      // Solo enviamos si pasaron 10 segundos desde el último envío
+      if (now - lastSentTime.current >= 10000) {
+        sendData('active');
+      }
+    }, 2000); // Revisamos cada 2s, pero el 'if' respeta los 10s
+
+    // 5. SALIDA INMEDIATA (Al cerrar pestaña)
     const sendOfflineSignal = () => {
       if (isOfflineSentRef.current) return;
+      
       const data = JSON.stringify({ status: 'offline', lat: 0, lng: 0, speed: 0 });
+      const blob = new Blob([data], { type: 'application/json' });
+      
       if (navigator.sendBeacon) {
-        const blob = new Blob([data], { type: 'application/json' });
         navigator.sendBeacon("/api/vehicle-locations", blob);
       } else {
         fetch("/api/vehicle-locations", {

@@ -35,10 +35,10 @@ export function LocationTracker() {
       if (!res.ok) return [];
       return res.json();
     },
-    refetchInterval: 5000, 
+    // 🚀 ULTRA RÁPIDO: Actualiza cada 2 segundos para ver cambios "en vivo"
+    refetchInterval: 2000, 
   });
 
-  // Altura de 600px definida aquí
   return (
     <div className="h-[600px] w-full rounded-lg overflow-hidden border shadow-sm relative z-0">
       <MapContainer center={center} zoom={14} style={{ height: "100%", width: "100%" }}>
