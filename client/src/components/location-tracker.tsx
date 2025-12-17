@@ -1,100 +1,127 @@
-import { useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
-import { useQuery } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge"; // Importamos Badge desde la carpeta UI
-
-// --- CORRECCIÓN DE ICONOS DE LEAFLET EN REACT ---
-import icon from "leaflet/dist/images/marker-icon.png";
-import iconShadow from "leaflet/dist/images/marker-shadow.png";
-
-let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-L.Marker.prototype.options.icon = DefaultIcon;
-
-// Icono personalizado para taxis (Rojo)
-const taxiIcon = new L.Icon({
-  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+import { useEffect, useRef } from "react";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 
 export function LocationTracker() {
-  // Centro inicial del mapa (Copiapó)
-  // Puedes cambiar estas coordenadas si quieres que inicie en otro lado
-  const [center] = useState<[number, number]>([-27.366, -70.332]); 
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const isOfflineSentRef = useRef(false);
+  const wakeLockRef = useRef<any>(null);
 
-  // CONSULTA AL SERVIDOR (Solo lectura)
-  // Busca las posiciones guardadas en la base de datos
-  const { data: locations = [] } = useQuery({
-    queryKey: ["vehicle-locations"],
-    queryFn: async () => {
-      const res = await fetch("/api/vehicle-locations");
-      if (!res.ok) return [];
-      return res.json();
-    },
-    // Refrescar automáticamente cada 5 segundos para ver movimiento
-    refetchInterval: 5000, 
-  });
+  useEffect(() => {
+    // Solo activar si el usuario es conductor
+    if (!user || user.role !== 'driver') return;
 
-  return (
-    <div className="h-[600px] w-full rounded-lg overflow-hidden border shadow-sm relative z-0">
-      <MapContainer 
-        center={center} 
-        zoom={14} 
-        style={{ height: "100%", width: "100%" }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+    if (!('geolocation' in navigator)) {
+      console.error("Tu dispositivo no soporta GPS");
+      return;
+    }
+
+    // 🚀 1. INICIO INSTANTÁNEO (TRUCO DE MEMORIA)
+    // Apenas carga el componente (al iniciar sesión), buscamos si hay una ubicación guardada
+    // y la enviamos de inmediato al servidor.
+    const savedLoc = localStorage.getItem("taxinort_last_pos");
+    if (savedLoc) {
+      try {
+        const { lat, lng } = JSON.parse(savedLoc);
+        console.log("📍 Enviando última ubicación conocida (Memoria Flash)");
         
-        {locations.map((loc: any) => (
-          <Marker 
-            key={loc.vehicleId} 
-            position={[loc.lat, loc.lng]} 
-            icon={taxiIcon}
-          >
-            <Popup>
-              <div className="space-y-2 min-w-[200px]">
-                <h3 className="font-bold text-lg">{loc.driverName || "Conductor"}</h3>
-                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
-                  <span className="text-muted-foreground">Vehículo:</span>
-                  <span className="font-medium">{loc.model || "Taxi"}</span>
-                  
-                  <span className="text-muted-foreground">Patente:</span>
-                  <span className="font-mono bg-zinc-100 px-1 rounded">{loc.plate}</span>
-                  
-                  <span className="text-muted-foreground">Estado:</span>
-                  <span>
-                    {loc.isPaid ? (
-                      <Badge className="bg-green-500 hover:bg-green-600">Pagado</Badge>
-                    ) : (
-                      <Badge variant="destructive">No Pagado</Badge>
-                    )}
-                  </span>
-                  
-                  <span className="text-muted-foreground">Velocidad:</span>
-                  <span className="font-medium text-blue-600">
-                    {Math.round(loc.speed || 0)} km/h
-                  </span>
-                </div>
-                <div className="text-xs text-muted-foreground pt-2 border-t mt-2">
-                  Última señal: {new Date(loc.timestamp).toLocaleTimeString()}
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
-    </div>
-  );
+        // Enviamos sin esperar respuesta para no bloquear nada
+        fetch("/api/vehicle-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat,
+            lng,
+            speed: 0, // Asumimos velocidad 0 al inicio
+            status: 'active'
+          }),
+        }).catch(e => console.error("Error enviando caché:", e));
+      } catch (e) {
+        console.error("Error leyendo memoria local:", e);
+      }
+    }
+
+    // 2. WAKE LOCK (Mantener pantalla encendida)
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log("⚡ Pantalla activa para GPS");
+        } catch (err) { console.warn(err); }
+      }
+    };
+    requestWakeLock();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    });
+
+    // 3. FUNCIÓN DE ENVÍO NORMAL (GPS REAL)
+    const sendLocation = async (position: GeolocationPosition) => {
+      try {
+        isOfflineSentRef.current = false;
+        const { latitude, longitude, speed } = position.coords;
+
+        // 💾 GUARDAR EN MEMORIA PARA LA PRÓXIMA VEZ
+        localStorage.setItem("taxinort_last_pos", JSON.stringify({ lat: latitude, lng: longitude }));
+
+        await fetch("/api/vehicle-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat: latitude,
+            lng: longitude,
+            speed: speed ? (speed * 3.6) : 0
+          }),
+        });
+      } catch (error) { console.error("Error envío GPS:", error); }
+    };
+
+    // 4. SEÑAL OFFLINE (Al salir)
+    const sendOfflineSignal = () => {
+      if (isOfflineSentRef.current) return;
+      const data = JSON.stringify({ status: 'offline' });
+      
+      if (navigator.sendBeacon) {
+        const blob = new Blob([data], { type: 'application/json' });
+        navigator.sendBeacon("/api/vehicle-locations", blob);
+        isOfflineSentRef.current = true;
+      } else {
+        fetch("/api/vehicle-locations", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: data, keepalive: true
+        }).then(() => isOfflineSentRef.current = true).catch(console.error);
+      }
+    };
+
+    // 5. INTENTO RÁPIDO DE GPS (Por si no había memoria)
+    navigator.geolocation.getCurrentPosition(
+      sendLocation,
+      (e) => console.log("Esperando satélites..."),
+      { maximumAge: Infinity, timeout: 2000, enableHighAccuracy: false }
+    );
+
+    // 6. RASTREO CONSTANTE DE ALTA PRECISIÓN
+    const watchId = navigator.geolocation.watchPosition(
+      sendLocation,
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED || error.code === error.POSITION_UNAVAILABLE) {
+          sendOfflineSignal();
+          toast({ variant: "destructive", title: "GPS Perdido", description: "Vehículo oculto." });
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+
+    window.addEventListener('beforeunload', sendOfflineSignal);
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      window.removeEventListener('beforeunload', sendOfflineSignal);
+      if (wakeLockRef.current) wakeLockRef.current.release().catch(() => {});
+      sendOfflineSignal();
+    };
+  }, [user, toast]);
+
+  return null;
 }
