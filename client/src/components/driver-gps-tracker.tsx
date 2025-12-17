@@ -10,7 +10,7 @@ export function DriverGpsTracker() {
   const latestLocation = useRef<{ lat: number; lng: number; speed: number } | null>(null);
   const lastSentTime = useRef<number>(0);
   const isOfflineSentRef = useRef(false);
-  const hasSentFirstLocation = useRef(false); // 🚀 NUEVO: Para enviar el primero al instante
+  const hasSentFirstLocation = useRef(false); 
   const wakeLockRef = useRef<any>(null);
 
   useEffect(() => {
@@ -21,9 +21,9 @@ export function DriverGpsTracker() {
       return;
     }
 
-    console.log("🚀 Motor GPS: Listo para arranque inmediato");
+    console.log(`🚀 Motor GPS Iniciado para: ${user.name}`);
 
-    // 1. WAKE LOCK (Pantalla Encendida)
+    // 1. WAKE LOCK
     const requestWakeLock = async () => {
       if ('wakeLock' in navigator) {
         try {
@@ -38,13 +38,17 @@ export function DriverGpsTracker() {
 
     // 2. FUNCIÓN DE ENVÍO DIRECTO
     const sendData = async (status: 'active' | 'offline' = 'active') => {
+      // Si estamos activos pero no tenemos ubicación, no enviamos nada
       if (!latestLocation.current && status === 'active') return;
 
       const body = {
         lat: latestLocation.current?.lat || 0,
         lng: latestLocation.current?.lng || 0,
         speed: latestLocation.current?.speed || 0,
-        status: status
+        status: status,
+        // 🟢 SOLUCIÓN: Enviamos la identidad explícita para no confundir con "Leo Miguel"
+        driverId: user.id, 
+        driverName: user.name 
       };
 
       try {
@@ -54,7 +58,6 @@ export function DriverGpsTracker() {
           body: JSON.stringify(body),
         });
         lastSentTime.current = Date.now();
-        // console.log(`📡 Enviado: ${status}`);
       } catch (err) {
         console.error("Error envío:", err);
       }
@@ -71,9 +74,7 @@ export function DriverGpsTracker() {
           speed: speed ? (speed * 3.6) : 0 
         };
 
-        // 🚀 LÓGICA DE "ALTIRO":
-        // Si es la primera vez que recibimos señal, enviamos INMEDIATAMENTE.
-        // No esperamos al intervalo de 10s.
+        // Enviar ALTIRO si es la primera vez
         if (!hasSentFirstLocation.current) {
           console.log("📍 Primera ubicación detectada: Enviando ALTIRO.");
           sendData('active');
@@ -90,21 +91,27 @@ export function DriverGpsTracker() {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
 
-    // 4. INTERVALO DE MANTENIMIENTO (Cada 10s)
-    // Mantiene la conexión viva y actualiza la posición suavemente
+    // 4. INTERVALO (Cada 10s)
     const intervalId = setInterval(() => {
       const now = Date.now();
-      // Solo enviamos si pasaron 10 segundos desde el último envío
       if (now - lastSentTime.current >= 10000) {
         sendData('active');
       }
-    }, 2000); // Revisamos cada 2s, pero el 'if' respeta los 10s
+    }, 2000); 
 
-    // 5. SALIDA INMEDIATA (Al cerrar pestaña)
+    // 5. SALIDA
     const sendOfflineSignal = () => {
       if (isOfflineSentRef.current) return;
       
-      const data = JSON.stringify({ status: 'offline', lat: 0, lng: 0, speed: 0 });
+      // Enviamos también la identidad en la señal de salida
+      const data = JSON.stringify({ 
+        status: 'offline', 
+        lat: 0, 
+        lng: 0, 
+        speed: 0,
+        driverId: user.id 
+      });
+
       const blob = new Blob([data], { type: 'application/json' });
       
       if (navigator.sendBeacon) {
