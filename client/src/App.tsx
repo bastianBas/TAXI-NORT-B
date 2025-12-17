@@ -4,9 +4,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
-import { AppSidebar } from "@/components/app-sidebar"; 
-// 🟢 1. IMPORTAMOS EL PROVIDER QUE FALTABA
-import { SidebarProvider } from "@/components/ui/sidebar";
+
+// 🟢 CAMBIO: Usamos el nuevo menú superior
+import { MainNav } from "@/components/main-nav";
 
 import { DriverGpsTracker } from "@/components/driver-gps-tracker";
 
@@ -44,58 +44,56 @@ function AppRouter() {
     );
   }
 
+  // ESTRUCTURA CON MENÚ SUPERIOR (Mejor para móviles)
   return (
-    // 🟢 2. ENVOLVEMOS EL LAYOUT EN EL PROVIDER (SOLUCIÓN PANTALLA BLANCA)
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
-        
-        {/* Motor GPS Invisible */}
-        <DriverGpsTracker />
+    <div className="min-h-screen w-full bg-background flex flex-col">
+      
+      {/* 1. MOTOR GPS INVISIBLE (No tocar, ya funciona bien) */}
+      <DriverGpsTracker />
 
-        {/* Sidebar Lateral */}
-        <AppSidebar />
+      {/* 2. BARRA DE NAVEGACIÓN SUPERIOR */}
+      <MainNav />
 
-        {/* Contenido Principal */}
-        <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6 overflow-y-auto">
-          <div className="animate-in fade-in duration-500">
-            <Switch>
-              <Route path="/" component={Dashboard} />
-              <Route path="/login">
-                <Redirect to="/" />
-              </Route>
-              <Route path="/drivers">
-                <ProtectedRoute allowedRoles={["admin", "operator"]}>
-                  <Drivers />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/vehicles">
-                <ProtectedRoute allowedRoles={["admin", "operator"]}>
-                  <Vehicles />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/route-slips">
-                <ProtectedRoute allowedRoles={["admin", "operator", "driver", "finance"]}>
-                  <RouteSlips />
-                </ProtectedRoute>
-              </Route>
-              
-              <Route path="/payments">
-                <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
-                  <Payments />
-                </ProtectedRoute>
-              </Route>
+      {/* 3. CONTENIDO PRINCIPAL */}
+      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-4 md:p-6">
+        <div className="animate-in fade-in duration-500">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/login">
+              <Redirect to="/" />
+            </Route>
+            <Route path="/drivers">
+              <ProtectedRoute allowedRoles={["admin", "operator"]}>
+                <Drivers />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/vehicles">
+              <ProtectedRoute allowedRoles={["admin", "operator"]}>
+                <Vehicles />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/route-slips">
+              <ProtectedRoute allowedRoles={["admin", "operator", "driver", "finance"]}>
+                <RouteSlips />
+              </ProtectedRoute>
+            </Route>
+            
+            <Route path="/payments">
+              <ProtectedRoute allowedRoles={["admin", "finance", "driver"]}>
+                <Payments />
+              </ProtectedRoute>
+            </Route>
 
-              <Route path="/audit">
-                <ProtectedRoute allowedRoles={["admin"]}>
-                  <Audit />
-                </ProtectedRoute>
-              </Route>
-              <Route component={NotFound} />
-            </Switch>
-          </div>
-        </main>
-      </div>
-    </SidebarProvider>
+            <Route path="/audit">
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <Audit />
+              </ProtectedRoute>
+            </Route>
+            <Route component={NotFound} />
+          </Switch>
+        </div>
+      </main>
+    </div>
   );
 }
 
