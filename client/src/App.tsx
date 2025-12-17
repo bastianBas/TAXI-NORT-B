@@ -5,7 +5,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar"; 
-import { LocationTracker } from "@/components/location-tracker"; // 🟢 IMPORTANTE
+import { LocationTracker } from "@/components/location-tracker"; 
+
+// 🟢 1. IMPORTAMOS EL NUEVO COMPONENTE DE GPS (MOTOR)
+import { DriverGpsTracker } from "@/components/driver-gps-tracker";
+
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -43,7 +47,14 @@ function AppRouter() {
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
       
-      {/* 🟢 RASTREADOR GPS ACTIVADO */}
+      {/* 🟢 2. AGREGAMOS EL MOTOR GPS AQUÍ */}
+      {/* Este componente es invisible. Se encarga de enviar la ubicación */}
+      {/* al servidor cada 10s sin saturarlo (Arregla el error Service Unavailable) */}
+      <DriverGpsTracker />
+
+      {/* RASTREADOR VISUAL (EL MAPA) */}
+      {/* Nota: Asegúrate de que LocationTracker ahora solo MUESTRE el mapa */}
+      {/* y no intente enviar datos también, para no duplicar el trabajo. */}
       <LocationTracker />
 
       {/* Header Fijo Arriba */}
