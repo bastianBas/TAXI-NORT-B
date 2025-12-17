@@ -5,45 +5,35 @@ import L from "leaflet";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge"; 
 
-// Arreglo para que Leaflet encuentre los marcadores por defecto si hicieran falta
-import icon from "leaflet/dist/images/marker-icon.png";
-import iconShadow from "leaflet/dist/images/marker-shadow.png";
-let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-L.Marker.prototype.options.icon = DefaultIcon;
+// --- GENERADOR DE ICONO DE AUTO (SVG) ---
+// Esto dibuja el auto y el pin usando código, así nunca sale error de imagen rota.
+const getCarIcon = (isPaid: boolean) => {
+  const color = isPaid ? "#16a34a" : "#dc2626"; // Verde (Paid) o Rojo (Pendiente)
 
+  // Diseño SVG: Un Pin con un círculo blanco y un auto adentro
+  const svgHtml = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 80" width="40" height="60">
+      <ellipse cx="25" cy="78" rx="15" ry="4" fill="black" opacity="0.3"/>
+      
+      <path d="M25 2C12.8 2 3 11.8 3 24c0 15 22 46 22 46s22-31 22-46c0-12.2-9.8-22-22-22z" fill="${color}" stroke="white" stroke-width="2"/>
+      
+      <circle cx="25" cy="24" r="14" fill="white"/>
+      
+      <path d="M15 28.5c-1 0-1.5-.5-1.5-1.5v-1c0-.5-.5-1-1-1h-1c-.5 0-1 .5-1 1v4c0 .5.5 1 1 1h1c.5 0 1-.5 1-1v-1c0-.2.2-.5.5-.5h22c.2 0 .5.2.5.5v1c0 .5.5 1 1 1h1c.5 0 1-.5 1-1v-4c0-.5-.5-1-1-1h-1c-.5 0-1 .5-1 1v1c0 1-.5 1.5-1.5 1.5H15zm-2.5-9c-1.5 0-3 1-3.5 3l-1.5 4.5c-.3.8.3 1.5 1.2 1.5h32.6c.9 0 1.5-.7 1.2-1.5l-1.5-4.5c-.5-2-2-3-3.5-3h-25z M16.5 29a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm17 0a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" fill="${color}" transform="translate(0, -3)"/>
+    </svg>
+  `;
 
-// --- DEFINICIÓN DE ICONOS ---
-// 🔴 Icono ROJO (Pendiente)
-const redTaxiIcon = new L.Icon({
-  // 🟢 CORRECCIÓN: La ruta empieza con '/'
-  iconUrl: "/car-red.png", 
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-  iconSize: [40, 50], // Ajusta este tamaño si se ven muy grandes o chicos
-  iconAnchor: [20, 50], // La punta del pin
-  popupAnchor: [0, -45], // Donde se abre el popup
-  shadowSize: [50, 50]
-});
-
-// 🟢 Icono VERDE (Pagado)
-const greenTaxiIcon = new L.Icon({
-  // 🟢 CORRECCIÓN: La ruta empieza con '/'
-  iconUrl: "/car-green.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-  iconSize: [40, 50],
-  iconAnchor: [20, 50],
-  popupAnchor: [0, -45],
-  shadowSize: [50, 50]
-});
-
+  return L.divIcon({
+    className: "custom-car-icon", // Clase vacía para evitar estilos default cuadrados
+    html: svgHtml,
+    iconSize: [40, 60],    // Tamaño del icono
+    iconAnchor: [20, 60],  // La punta del pin (abajo al centro)
+    popupAnchor: [0, -55]  // Donde sale el popup (arriba)
+  });
+};
 
 export function LocationTracker() {
-  // Centro inicial del mapa (Copiapó)
-  const [center] = useState<[number, number]>([-27.366, -70.332]); 
+  const [center] = useState<[number, number]>([-27.366, -70.332]); // Copiapó
 
   const { data: locations = [] } = useQuery({
     queryKey: ["vehicle-locations"],
@@ -52,7 +42,7 @@ export function LocationTracker() {
       if (!res.ok) return [];
       return res.json();
     },
-    refetchInterval: 2000, // Actualización cada 2 segundos
+    refetchInterval: 2000, // Actualización rápida (2s)
   });
 
   return (
@@ -63,51 +53,47 @@ export function LocationTracker() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        {locations.map((loc: any) => {
-          // Seleccionamos el icono según si está pagado o no
-          const iconToUse = loc.isPaid ? greenTaxiIcon : redTaxiIcon;
-
-          return (
-            <Marker 
-              key={loc.vehicleId} 
-              position={[loc.lat, loc.lng]} 
-              icon={iconToUse}
-            >
-              <Popup>
-                <div className="space-y-2 min-w-[200px]">
-                  <h3 className="font-bold text-lg">{loc.driverName || "Conductor"}</h3>
+        {locations.map((loc: any) => (
+          <Marker 
+            key={loc.vehicleId} 
+            position={[loc.lat, loc.lng]} 
+            // 🟢 USAMOS EL GENERADOR DE ICONO DE AUTO
+            icon={getCarIcon(loc.isPaid)}
+          >
+            <Popup>
+              <div className="space-y-2 min-w-[200px]">
+                <h3 className="font-bold text-lg">{loc.driverName || "Conductor"}</h3>
+                
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
+                  <span className="text-muted-foreground">Vehículo:</span>
+                  <span className="font-medium">{loc.model || "Taxi"}</span>
                   
-                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-sm">
-                    <span className="text-muted-foreground">Vehículo:</span>
-                    <span className="font-medium">{loc.model || "Taxi"}</span>
-                    
-                    <span className="text-muted-foreground">Patente:</span>
-                    <span className="font-mono bg-zinc-100 px-1 rounded dark:bg-zinc-800">{loc.plate}</span>
-                    
-                    {/* Etiqueta de Estado */}
-                    <span className="text-muted-foreground">Estado Hoja:</span>
-                    <span>
-                      {loc.isPaid ? (
-                        <Badge className="bg-green-500 hover:bg-green-600">Pagado</Badge>
-                      ) : (
-                        <Badge variant="destructive">Pendiente</Badge>
-                      )}
-                    </span>
-                    
-                    <span className="text-muted-foreground">Velocidad:</span>
-                    <span className="font-medium text-blue-600 dark:text-blue-400">
-                      {Math.round(loc.speed || 0)} km/h
-                    </span>
-                  </div>
+                  <span className="text-muted-foreground">Patente:</span>
+                  <span className="font-mono bg-zinc-100 px-1 rounded dark:bg-zinc-800">{loc.plate}</span>
                   
-                  <div className="text-xs text-muted-foreground pt-2 border-t mt-2">
-                    Última señal: {new Date(loc.timestamp).toLocaleTimeString()}
-                  </div>
+                  {/* Etiqueta de Estado */}
+                  <span className="text-muted-foreground">Estado Hoja:</span>
+                  <span>
+                    {loc.isPaid ? (
+                      <Badge className="bg-green-500 hover:bg-green-600">Pagado</Badge>
+                    ) : (
+                      <Badge variant="destructive">Pendiente</Badge>
+                    )}
+                  </span>
+                  
+                  <span className="text-muted-foreground">Velocidad:</span>
+                  <span className="font-medium text-blue-600 dark:text-blue-400">
+                    {Math.round(loc.speed || 0)} km/h
+                  </span>
                 </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+                
+                <div className="text-xs text-muted-foreground pt-2 border-t mt-2">
+                  Última señal: {new Date(loc.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
       </MapContainer>
     </div>
   );
