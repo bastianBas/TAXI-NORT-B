@@ -5,7 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, ProtectedRoute, useAuth } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar"; 
-import { LocationTracker } from "@/components/location-tracker"; // 🟢 IMPORTANTE
+
+// 🟢 1. IMPORTANTE: Importamos solo el MOTOR GPS invisible
+import { DriverGpsTracker } from "@/components/driver-gps-tracker";
+
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -43,8 +46,10 @@ function AppRouter() {
   return (
     <div className="min-h-screen w-full bg-background flex flex-col">
       
-      {/* 🟢 RASTREADOR GPS ACTIVADO */}
-      <LocationTracker />
+      {/* 🟢 2. AQUÍ ESTÁ EL TRUCO: */}
+      {/* Solo ponemos el motor invisible. El mapa visual (LocationTracker) */}
+      {/* ya está dentro de Dashboard.tsx, así no duplicamos cosas. */}
+      <DriverGpsTracker />
 
       {/* Header Fijo Arriba */}
       <AppSidebar />
