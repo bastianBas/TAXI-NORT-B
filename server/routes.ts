@@ -2,8 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
-import { drivers, routeSlips, vehicles, payments, users, notifications, auditLogs, gpsHistory } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { drivers, routeSlips, vehicles, payments, users, notifications, auditLogs } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import path from "path";
@@ -12,7 +12,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import storage from "./storage";
 
-// Configuración de almacenamiento
+// Configuración Multer
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.resolve(process.cwd(), "uploads");
@@ -21,17 +21,16 @@ const storageMulter = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Forzamos extensión en minúsculas para evitar problemas de compatibilidad
+    // Forzamos extensión en minúsculas
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
 
-// 🟢 FILTRO DE SEGURIDAD: SOLO IMÁGENES
+// 🟢 FILTRO: SOLO IMÁGENES (Seguridad)
 const upload = multer({ 
     storage: storageMulter,
     fileFilter: (req, file, cb) => {
-        // Aceptamos solo tipos de imagen (jpeg, png, webp, etc.)
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
         } else {
@@ -43,24 +42,18 @@ const upload = multer({
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // 🟢 RUTA API ESPECIAL ANTI-CACHÉ
-  // Esta ruta sirve la imagen y le grita al navegador "¡NO LA GUARDES EN CACHÉ!"
-  app.get("/api/uploads/:filename", (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(process.cwd(), 'uploads', filename);
-
-    if (fs.existsSync(filePath)) {
-       // Cabeceras críticas para solucionar el problema de "funciona una vez y luego no"
-       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-       res.setHeader('Pragma', 'no-cache');
-       res.setHeader('Expires', '0');
-       res.sendFile(filePath);
-    } else {
-       res.status(404).send("Imagen no encontrada");
+  // 🟢 SOLUCIÓN DEFINITIVA: SERVIR ARCHIVOS ESTÁTICOS CON CABECERAS ANTI-CACHÉ
+  // Esto permite ver imágenes nuevas, viejas y en subcarpetas automáticamente.
+  app.use('/api/uploads', express.static(path.join(process.cwd(), 'uploads'), {
+    setHeaders: (res) => {
+      // Obliga al navegador a NO guardar la imagen en memoria, solucionando el "funciona una vez y luego no"
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     }
-  });
+  }));
 
-  // 🟢 HELPER: REGISTER AUDIT LOG
+  // 🟢 HELPER: AUDIT LOG
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
     if (!user) return;
     try {
@@ -380,7 +373,7 @@ export function registerRoutes(app: Express): Server {
       try { 
           const pid = randomUUID(); 
           let proof = null; 
-          // Guardamos la ruta. Nota: Esto guarda "uploads/archivo.jpg"
+          // Guardamos la ruta. Ojo: La ruta se guarda relativa "uploads/nombre.jpg"
           if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; 
           
           const pData = { 
