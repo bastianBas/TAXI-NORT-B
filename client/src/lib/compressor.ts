@@ -1,6 +1,4 @@
-// src/lib/compressor.ts
-
-export const compressImage = (file: File, quality = 0.7, maxWidth = 1200): Promise<File> => {
+export const compressImage = (file: File, quality = 0.5, maxWidth = 800): Promise<File> => {
     return new Promise((resolve, reject) => {
         const image = new Image();
         image.src = URL.createObjectURL(file);
@@ -10,7 +8,7 @@ export const compressImage = (file: File, quality = 0.7, maxWidth = 1200): Promi
             let width = image.width;
             let height = image.height;
 
-            // Redimensionar si es muy grande manteniendo la proporción
+            // Reducimos a 800px de ancho máximo (suficiente para celulares y más ligero)
             if (width > maxWidth) {
                 height = Math.round((height * maxWidth) / width);
                 width = maxWidth;
@@ -21,26 +19,26 @@ export const compressImage = (file: File, quality = 0.7, maxWidth = 1200): Promi
             
             const ctx = canvas.getContext('2d');
             if (!ctx) {
-                reject(new Error("No se pudo obtener el contexto del canvas"));
+                reject(new Error("Error al procesar imagen"));
                 return;
             }
 
+            // Dibujamos la imagen redimensionada
             ctx.drawImage(image, 0, 0, width, height);
 
             canvas.toBlob((blob) => {
                 if (!blob) {
-                    reject(new Error("Error al comprimir la imagen"));
+                    reject(new Error("Error al comprimir"));
                     return;
                 }
-                // Convertir el blob de vuelta a un archivo
+                // Convertimos el blob a un archivo JPG ligero
                 const compressedFile = new File([blob], file.name, {
-                    type: 'image/jpeg', // Forzamos a JPEG para mejor compresión
+                    type: 'image/jpeg',
                     lastModified: Date.now(),
                 });
                 resolve(compressedFile);
-            }, 'image/jpeg', quality); // Calidad 0.7 (70%) reduce MUCHO el peso
+            }, 'image/jpeg', quality); // Calidad 0.5 (50%)
         };
-
         image.onerror = (err) => reject(err);
     });
 };

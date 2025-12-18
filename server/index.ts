@@ -12,16 +12,14 @@ const app = express();
 app.set("trust proxy", true);
 app.use(cors());
 
-// 🟢 PASO 3 REALIZADO: AUMENTAMOS EL LÍMITE DE TAMAÑO
-// Cambiamos el límite por defecto (100kb) a 50mb para permitir subida de imágenes en Base64
+// Mantenemos el límite de 50mb que configuramos antes
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
 app.use(cookieParser());
 
-// 🟢 CORRECCIÓN CRÍTICA PARA ARCHIVOS ESTÁTICOS
+// Configuración de carpeta uploads
 const uploadsDir = path.resolve(process.cwd(), "uploads");
-
 if (!fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -33,7 +31,6 @@ if (!fs.existsSync(uploadsDir)) {
 
 console.log(`📂 [INFO] Sirviendo archivos estáticos desde: ${uploadsDir}`);
 app.use("/uploads", express.static(uploadsDir));
-
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -69,11 +66,17 @@ app.use((req, res, next) => {
 
     const port = parseInt(process.env.PORT || '8080', 10);
     
-    server.listen(port, '0.0.0.0', () => {
+    // 🟢 AQUÍ ESTÁ EL CAMBIO IMPORTANTE:
+    // Guardamos la instancia del servidor en una variable 'runningServer'
+    const runningServer = server.listen(port, '0.0.0.0', () => {
       console.log(`🚀 Servidor LISTO y escuchando en puerto ${port}`);
       console.log(`   - Entorno: ${app.get("env")}`);
       console.log(`   - Directorio base: ${process.cwd()}`);
     });
+
+    // 🟢 AUMENTAMOS EL TIMEOUT A 10 MINUTOS
+    // Esto evita que el servidor cierre la conexión si el celular es lento subiendo la foto
+    runningServer.setTimeout(10 * 60 * 1000); 
 
   } catch (err) {
     console.error("❌ Error FATAL al iniciar el servidor:", err);
