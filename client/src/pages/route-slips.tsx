@@ -17,8 +17,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import QRCode from "react-qr-code"; // Para el código QR
-import { useReactToPrint } from "react-to-print"; // Para imprimir/descargar
+import QRCode from "react-qr-code"; 
+import { useReactToPrint } from "react-to-print"; 
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +48,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
-// Validación
+// Validación del formulario
 const routeSlipSchema = z.object({
   driverId: z.string().min(1, "Selecciona un conductor"),
   vehicleId: z.string().min(1, "Selecciona un vehículo"),
@@ -58,11 +58,11 @@ const routeSlipSchema = z.object({
 
 type FormData = z.infer<typeof routeSlipSchema>;
 
-// Helper para mostrar horarios bonitos como en tu foto
+// Helper para mostrar los horarios según el turno seleccionado
 const getShiftLabel = (shift: string) => {
   switch(shift) {
     case 'mañana': return '08:00 - 18:00';
-    case 'tarde': return '18:00 - 04:00';
+    case 'tarde': return '14:00 - 00:00'; // Ajustado según lo común, puedes editarlo
     case 'noche': return '20:00 - 06:00';
     default: return '09:00 - 19:00'; // Default
   }
@@ -70,9 +70,12 @@ const getShiftLabel = (shift: string) => {
 
 export default function RouteSlipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   
-  // Estado para visualización (QR y Detalles)
+  // Estado para Crear/Editar
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Estado para Visualizar (Ojo)
   const [viewSlip, setViewSlip] = useState<any>(null);
   
   // Referencia para impresión
@@ -82,7 +85,7 @@ export default function RouteSlipsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // --- QUERIES ---
+  // --- CARGA DE DATOS ---
   const { data: slips = [], isLoading } = useQuery({
     queryKey: ["route-slips"],
     queryFn: async () => {
@@ -110,7 +113,7 @@ export default function RouteSlipsPage() {
     }
   });
 
-  // Filtros
+  // Filtros de búsqueda
   const filteredSlips = slips.filter((slip: any) => {
     const search = searchTerm.toLowerCase();
     return (
@@ -120,7 +123,7 @@ export default function RouteSlipsPage() {
     );
   });
 
-  // Formulario
+  // Configuración del Formulario
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(routeSlipSchema),
     defaultValues: {
@@ -129,44 +132,74 @@ export default function RouteSlipsPage() {
     }
   });
 
-  // --- MUTACIÓN (Crear) ---
-  const createMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      // Enviamos JSON para ser compatible con el servidor nuevo
-      const payload = {
-        ...data,
-        status: 'active',
-        signatureUrl: null 
-      };
+  // --- LÓGICA DE APERTURA DE MODALES ---
 
-      const res = await fetch("/api/route-slips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+  // Abrir para CREAR
+  const handleOpenCreate = () => {
+    setEditingId(null); // No estamos editando
+    reset({
+      date: new Date().toISOString().split('T')[0],
+      shift: "mañana",
+      driverId: "",
+      vehicleId: ""
+    });
+    setIsFormOpen(true);
+  };
+
+  // Abrir para EDITAR (Botón Lápiz)
+  const handleOpenEdit = (slip: any) => {
+    setEditingId(slip.id); // Guardamos el ID que estamos editando
+    // Rellenamos el formulario con los datos existentes
+    reset({
+      date: slip.date,
+      shift: slip.shift,
+      driverId: slip.driverId,
+      vehicleId: slip.vehicleId
+    });
+    setIsFormOpen(true);
+  };
+
+  // --- MUTACIONES (GUARDAR / EDITAR) ---
+  const mutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      const payload = { ...data, status: 'active' }; // status por defecto
+
+      let url = "/api/route-slips";
+      let method = "POST";
+
+      // Si hay un ID editando, cambiamos a PUT (Actualizar)
+      if (editingId) {
+        url = `/api/route-slips/${editingId}`;
+        method = "PUT";
+      }
+
+      const res = await fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json" }, // Enviamos JSON siempre
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error("Error al crear hoja de ruta");
+      if (!res.ok) throw new Error("Error al guardar");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["route-slips"] });
-      toast({ title: "Éxito", description: "Hoja de ruta creada correctamente" });
-      setIsCreateOpen(false);
-      reset();
+      toast({ title: "Éxito", description: editingId ? "Registro actualizado" : "Registro creado" });
+      setIsFormOpen(false);
     },
     onError: () => {
-      toast({ title: "Error", description: "No se pudo crear la hoja de ruta", variant: "destructive" });
+      toast({ title: "Error", description: "No se pudo guardar la operación", variant: "destructive" });
     }
   });
 
   const onSubmit = (data: FormData) => {
-    createMutation.mutate(data);
+    mutation.mutate(data);
   };
 
-  // --- FUNCIÓN DE IMPRESIÓN ---
+  // --- IMPRESIÓN ---
   const handlePrint = useReactToPrint({
-    contentRef: printRef, // 🟢 CAMBIO: Usamos 'contentRef' y pasamos la referencia directa
-    documentTitle: `Hoja_Ruta_${viewSlip?.date}`,
+    contentRef: printRef, // Usamos la sintaxis nueva para evitar errores de TS
+    documentTitle: viewSlip ? `Hoja_Ruta_${viewSlip.date}` : "Hoja_Ruta",
   });
 
   return (
@@ -178,7 +211,7 @@ export default function RouteSlipsPage() {
           <p className="text-muted-foreground">Bitácora de servicios y estado de pagos.</p>
         </div>
         {user?.role === 'admin' && (
-          <Button onClick={() => setIsCreateOpen(true)} className="gap-2 bg-zinc-950 text-white hover:bg-zinc-900">
+          <Button onClick={handleOpenCreate} className="gap-2 bg-zinc-950 text-white hover:bg-zinc-900">
             <Plus className="h-4 w-4" /> Nuevo Control Diario
           </Button>
         )}
@@ -195,7 +228,7 @@ export default function RouteSlipsPage() {
         />
       </div>
 
-      {/* TABLA RESTAURADA */}
+      {/* TABLA DE DATOS */}
       <div className="rounded-md border bg-card shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
@@ -231,6 +264,7 @@ export default function RouteSlipsPage() {
                         {slip.vehicle?.plate}
                     </Badge>
                   </TableCell>
+                  {/* Visualización del horario según el turno */}
                   <TableCell className="text-muted-foreground text-sm">
                     {getShiftLabel(slip.shift)}
                   </TableCell>
@@ -245,16 +279,18 @@ export default function RouteSlipsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                     <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                     <span className={`text-sm font-medium px-2 py-1 rounded ${slip.signatureUrl ? "text-blue-600 bg-blue-50" : "text-zinc-400"}`}>
                         {slip.signatureUrl ? "Firmado" : "Pendiente"}
                      </span>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600" onClick={() => setViewSlip(slip)}>
+                        {/* Botón VER */}
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => setViewSlip(slip)}>
                             <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500">
+                        {/* Botón EDITAR (Activado) */}
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEdit(slip)}>
                             <Edit className="h-4 w-4" />
                         </Button>
                     </div>
@@ -266,11 +302,11 @@ export default function RouteSlipsPage() {
         </Table>
       </div>
 
-      {/* MODAL DE CREACIÓN */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      {/* MODAL FORMULARIO (CREAR / EDITAR) */}
+      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[425px] bg-white text-black">
           <DialogHeader>
-            <DialogTitle>Nuevo Control Diario</DialogTitle>
+            <DialogTitle>{editingId ? "Editar Control Diario" : "Nuevo Control Diario"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
             
@@ -281,7 +317,11 @@ export default function RouteSlipsPage() {
 
             <div className="space-y-2">
               <Label>Conductor</Label>
-              <Select onValueChange={(val) => setValue("driverId", val)}>
+              <Select 
+                onValueChange={(val) => setValue("driverId", val)} 
+                defaultValue={editingId ? undefined : ""} // Reset logic
+                value={editingId ? undefined : undefined} // Dejamos que react-hook-form controle
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar conductor" />
                 </SelectTrigger>
@@ -322,16 +362,16 @@ export default function RouteSlipsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-              <Button type="submit" className="bg-zinc-950 text-white hover:bg-zinc-900" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Creando..." : "Crear Control"}
+              <Button type="button" variant="ghost" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-zinc-950 text-white hover:bg-zinc-900" disabled={mutation.isPending}>
+                {mutation.isPending ? "Guardando..." : (editingId ? "Guardar Cambios" : "Crear")}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL DE VISUALIZACIÓN / QR / DESCARGA */}
+      {/* MODAL DE VISUALIZACIÓN / QR / DESCARGA */}
       <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
         <DialogContent className="sm:max-w-[600px] bg-white text-black p-0 overflow-hidden">
             <div className="p-6 pb-0 flex justify-between items-start">
@@ -366,28 +406,28 @@ export default function RouteSlipsPage() {
                         <p className="font-medium">{viewSlip?.date}</p>
                     </div>
                     <div>
-                        <p className="text-sm text-muted-foreground">Horario</p>
+                        <p className="text-sm text-muted-foreground">Horario Asignado</p>
                         <p className="font-medium">{getShiftLabel(viewSlip?.shift)}</p>
                     </div>
                     <div>
                         <p className="text-sm text-muted-foreground">Estado Pago</p>
                         <span className={viewSlip?.paymentStatus === 'paid' ? "text-green-600 font-bold" : "text-orange-600 font-bold"}>
-                            {viewSlip?.paymentStatus === 'paid' ? "PAGADO" : "PENDIENTE"}
+                            {viewSlip?.paymentStatus === 'paid' ? "PAGADO" : "PENDIENTE DE PAGO"}
                         </span>
                     </div>
                 </div>
 
                 {/* SECCIÓN QR */}
-                <div className="bg-zinc-50 p-4 rounded-lg flex flex-col items-center justify-center border border-zinc-100">
+                <div className="bg-zinc-50 p-4 rounded-lg flex flex-col items-center justify-center border border-zinc-100 mt-4">
                     <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider">Escanear para validar</p>
                     <div className="bg-white p-2 rounded shadow-sm">
-                        {/* Generamos QR con datos básicos para validación rápida */}
                         <QRCode 
                             value={JSON.stringify({
                                 id: viewSlip?.id,
                                 conductor: viewSlip?.driver?.name,
                                 patente: viewSlip?.vehicle?.plate,
-                                fecha: viewSlip?.date
+                                fecha: viewSlip?.date,
+                                estado: viewSlip?.paymentStatus
                             })}
                             size={128}
                         />
@@ -398,7 +438,7 @@ export default function RouteSlipsPage() {
             <div className="p-4 bg-zinc-50 border-t flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setViewSlip(null)}>Cerrar</Button>
                 <Button className="gap-2 bg-blue-600 text-white hover:bg-blue-700" onClick={handlePrint}>
-                    <Printer className="h-4 w-4" /> Imprimir / Descargar PDF
+                    <Printer className="h-4 w-4" /> Imprimir / Guardar como PDF
                 </Button>
             </div>
         </DialogContent>
