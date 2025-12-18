@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
+// Esquema de validación (Se mantiene igual)
 const insertPaymentSchema = z.object({
   routeSlipId: z.string().min(1, "Debes seleccionar una hoja de ruta"),
   amount: z.string().min(1, "El monto es obligatorio"),
@@ -51,17 +52,31 @@ const insertPaymentSchema = z.object({
 
 type FormData = z.infer<typeof insertPaymentSchema>;
 
+// 🟢 NUEVA FUNCIÓN: Convierte el archivo físico a texto (Base64)
+// Esto es vital para que la imagen se guarde en la Base de Datos y no se borre
+const convertToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export default function PaymentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
+  // URL o Data de la imagen a visualizar
   const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
+  
   const [file, setFile] = useState<File | null>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // 1. OBTENER PAGOS
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
@@ -71,6 +86,7 @@ export default function PaymentsPage() {
     },
   });
 
+  // 2. OBTENER HOJAS DE RUTA
   const { data: routeSlips = [] } = useQuery({
     queryKey: ["route-slips"], 
     queryFn: async () => {
@@ -80,6 +96,7 @@ export default function PaymentsPage() {
     }
   });
 
+  // --- KPIs (Se mantienen igual) ---
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
   const totalPaymentsCount = payments.length;
   
@@ -92,6 +109,7 @@ export default function PaymentsPage() {
 
   const totalAmount = filteredPayments.reduce((sum: number, p: any) => sum + (parseInt(p.amount) || 0), 0);
 
+  // --- FORMULARIO ---
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
@@ -105,7 +123,7 @@ export default function PaymentsPage() {
     setEditingPayment(null);
     setFile(null);
     reset({
-      amount: "1800",
+      amount: "1800", // Valor fijo inicial
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     });
@@ -123,28 +141,40 @@ export default function PaymentsPage() {
     setIsModalOpen(true);
   };
 
+  // 🟢 LOGICA DE ENVIO ACTUALIZADA (JSON BASE64)
   const onSubmit = async (data: FormData) => {
     try {
-      const formData = new FormData();
-      formData.append("routeSlipId", data.routeSlipId);
-      formData.append("amount", "1800"); 
-      formData.append("date", data.date);
-      formData.append("type", "transfer");
+      // Preparamos el objeto JSON (Ya no es FormData)
+      const payload: any = {
+        routeSlipId: data.routeSlipId,
+        amount: "1800", // Forzamos el valor
+        date: data.date,
+        type: "transfer"
+      };
       
       const selectedSlip = routeSlips.find((s: any) => s.id === data.routeSlipId);
       if (selectedSlip) {
-        formData.append("driverId", selectedSlip.driverId);
-        formData.append("vehicleId", selectedSlip.vehicleId);
+        payload.driverId = selectedSlip.driverId;
+        payload.vehicleId = selectedSlip.vehicleId;
       }
 
+      // Si el usuario seleccionó un archivo nuevo, lo convertimos a texto
       if (file) {
-        formData.append("proof", file);
+        const base64String = await convertToBase64(file);
+        payload.proofOfPayment = base64String;
       }
 
       const url = editingPayment ? `/api/payments/${editingPayment.id}` : "/api/payments";
       const method = editingPayment ? "PUT" : "POST";
 
-      const res = await fetch(url, { method, body: formData });
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json', // Importante: Ahora enviamos JSON
+        },
+        body: JSON.stringify(payload) // Convertimos el objeto a texto JSON
+      });
+
       if (!res.ok) throw new Error("Error al guardar");
 
       toast({ title: "Éxito", description: editingPayment ? "Pago actualizado" : "Pago registrado correctamente" });
@@ -152,31 +182,34 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["route-slips"] }); 
     } catch (e) {
-      toast({ title: "Error", description: "No se pudo guardar el pago", variant: "destructive" });
+      toast({ title: "Error", description: "No se pudo guardar el pago. Verifica el tamaño de la imagen.", variant: "destructive" });
     }
   };
 
-  // 🟢 FUNCIÓN DE VISUALIZACIÓN ULTRA SEGURA
-  const handleViewFile = (dbPath: string) => {
-    if (!dbPath) {
+  // 🟢 VISUALIZADOR INTELIGENTE
+  const handleViewFile = (data: string) => {
+    if (!data) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // Extraemos SOLO el nombre del archivo, ignorando cualquier carpeta que esté en la DB
-    // Esto es vital porque el servidor ahora usa path.basename()
-    const segments = dbPath.split(/[/\\]/);
-    const filename = segments.pop(); 
-
-    if (!filename) {
-       toast({ variant: "destructive", title: "Error", description: "Nombre de archivo inválido" });
-       return;
+    // CASO 1: Es una imagen nueva guardada en Base64 (Empieza con data:image...)
+    // Se muestra directamente sin pedir nada al servidor.
+    if (data.startsWith('data:')) {
+        setViewFileUrl(data);
+        return;
     }
-    
-    // Agregamos un número aleatorio al final para asegurar que la imagen se recargue
-    const secureUrl = `/api/uploads/${filename}?r=${Math.random()}`;
-    
-    setViewFileUrl(secureUrl);
+
+    // CASO 2: Es una ruta antigua (uploads/...)
+    // Intentamos construir la URL compatible, aunque si el servidor borró los archivos, esto fallará.
+    // Usamos split para limpiar la ruta
+    const filename = data.split(/[/\\]/).pop();
+    if (filename) {
+        // Le ponemos un timestamp para evitar caché si el archivo aún existe
+        setViewFileUrl(`/api/uploads/${filename}?t=${Date.now()}`);
+    } else {
+        toast({ title: "Error", description: "Formato de archivo desconocido", variant: "destructive" });
+    }
   };
 
   return (
@@ -194,6 +227,7 @@ export default function PaymentsPage() {
         </Button>
       </div>
 
+      {/* TARJETAS KPI */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
           <div className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -233,6 +267,7 @@ export default function PaymentsPage() {
         />
       </div>
 
+      {/* TABLA PRINCIPAL */}
       <div className="rounded-md border bg-card shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
@@ -267,7 +302,6 @@ export default function PaymentsPage() {
                         variant="outline" 
                         size="sm" 
                         className="h-8 text-xs gap-2"
-                        type="button" // 🟢 IMPORTANTE: Evita submit accidental
                         onClick={() => handleViewFile(p.proofOfPayment)}
                       >
                         <ImageIcon className="h-3 w-3" /> Ver Imagen
@@ -364,8 +398,8 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR DE SOLO IMÁGENES */}
-      {/* El onOpenChange limpia el estado al cerrar, vital para que no se quede pegada la imagen vieja */}
+      {/* 🟢 MODAL VISUALIZADOR */}
+      {/* Al usar Base64, el navegador no necesita caché ni hacer peticiones extra */}
       <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
@@ -375,11 +409,10 @@ export default function PaymentsPage() {
             {viewFileUrl && (
                 <a 
                   href={viewFileUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
+                  download="comprobante.png" // Permite descargar la imagen base64
                   className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-2"
                 >
-                  <ExternalLink className="h-3 w-3" /> Abrir Original
+                  <ExternalLink className="h-3 w-3" /> Descargar / Abrir
                 </a>
             )}
           </div>
@@ -387,13 +420,12 @@ export default function PaymentsPage() {
           <div className="flex-1 bg-zinc-900/50 flex justify-center items-center p-4 relative overflow-hidden">
              {viewFileUrl ? (
                  <img 
-                   key={viewFileUrl} // 🟢 Fuerza recarga del componente
                    src={viewFileUrl} 
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
                    onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
-                      toast({ title: "Formato no soportado", description: "Este archivo no es una imagen válida o ha sido movido.", variant: "destructive" });
+                      toast({ title: "No se pudo visualizar", description: "El archivo no está disponible.", variant: "destructive" });
                    }}
                  />
              ) : (
