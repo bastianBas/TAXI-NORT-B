@@ -2,8 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, verifyAuth } from "./auth";
 import { db } from "./db";
-import { drivers, routeSlips, vehicles, payments, users, notifications, auditLogs, gpsHistory } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { drivers, routeSlips, vehicles, payments, users, notifications, auditLogs } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import path from "path";
@@ -12,16 +12,22 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import storage from "./storage";
 
-// Configuración de almacenamiento
+// CONFIGURACIÓN DE ALMACENAMIENTO
+// Nos aseguramos de usar process.cwd() para encontrar la carpeta raíz correctamente
+const uploadDir = path.join(process.cwd(), "uploads");
+
+// Crear carpeta si no existe al iniciar
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log(`[Server] Carpeta 'uploads' creada en: ${uploadDir}`);
+}
+
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadPath = path.resolve(process.cwd(), "uploads");
-    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
-    cb(null, uploadPath);
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Forzar extensión a minúsculas para evitar problemas
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
@@ -42,29 +48,33 @@ const upload = multer({
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // 🟢 RUTA API SIMPLIFICADA (Sin librería 'mime')
-  app.get("/api/uploads/:filename", (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.resolve(process.cwd(), 'uploads', filename);
+  // 🟢 RUTA API PARA VER IMÁGENES (Solución Robusta)
+  app.get("/api/uploads/:filename(*)", (req, res) => {
+    // 1. Limpiamos el nombre: path.basename quita cualquier carpeta previa (ej: "uploads/")
+    // Esto hace que funcione tanto para archivos nuevos como viejos.
+    const cleanFilename = path.basename(req.params.filename);
+    
+    // 2. Construimos la ruta absoluta donde DEBE estar el archivo
+    const filePath = path.join(uploadDir, cleanFilename);
 
-    // console.log(`[Server] Solicitud de archivo: ${filename}`); // Descomenta para depurar
-
+    // 3. Verificamos existencia
     if (fs.existsSync(filePath)) {
-       // Cabeceras para evitar que el navegador guarde la imagen rota en caché
+       // Forzar cabeceras para evitar problemas de caché en el navegador
        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
        res.setHeader('Pragma', 'no-cache');
        res.setHeader('Expires', '0');
        
-       // Express detecta automáticamente el Content-Type correcto
+       // Enviar archivo (Express detecta el tipo automáticamente)
        res.sendFile(filePath, (err) => {
          if (err) {
-           console.error("[Server] Error al enviar archivo:", err);
-           if (!res.headersSent) res.status(500).send("Error al enviar archivo");
+            console.error(`[Server] Error enviando ${cleanFilename}:`, err);
+            if (!res.headersSent) res.status(500).end();
          }
        });
     } else {
-       console.error(`[Server] 404 No encontrado: ${filePath}`);
-       res.status(404).send("Archivo no encontrado");
+       // 🔴 IMPORTANTE: Si ves esto en la consola, el archivo físicamente no está en la carpeta
+       console.error(`[Server] 404 - Archivo NO encontrado en disco: ${filePath}`);
+       res.status(404).send("Imagen no encontrada en el servidor");
     }
   });
 
@@ -146,7 +156,6 @@ export function registerRoutes(app: Express): Server {
   // PROTECTED ZONE
   // =================================================================
 
-  // --- AUDIT LOGS ---
   app.get("/api/audit-logs", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.sendStatus(403);
     try {
@@ -161,7 +170,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- NOTIFICATIONS ---
   app.get("/api/notifications", verifyAuth, async (req, res) => {
     if (!req.user) return res.sendStatus(401);
     const notifs = await storage.getNotifications(req.user.id);
@@ -173,12 +181,10 @@ export function registerRoutes(app: Express): Server {
     res.sendStatus(200);
   });
 
-  // --- GPS ---
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       const activeLocations = await storage.getAllVehicleLocations();
       const enrichedFleet = [];
-      
       for (const loc of activeLocations) {
         const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, loc.vehicleId) });
         const slip = await db.query.routeSlips.findFirst({
@@ -186,14 +192,8 @@ export function registerRoutes(app: Express): Server {
            orderBy: (t, { desc }) => [desc(t.createdAt)],
            with: { driver: true }
         });
-
         if (vehicleInfo && slip && slip.driver) {
-           enrichedFleet.push({
-             ...loc,
-             model: vehicleInfo.model,
-             driverName: slip.driver.name,
-             isPaid: slip.paymentStatus === 'paid'
-           });
+           enrichedFleet.push({ ...loc, model: vehicleInfo.model, driverName: slip.driver.name, isPaid: slip.paymentStatus === 'paid' });
         }
       }
       res.json(enrichedFleet);
@@ -205,7 +205,6 @@ export function registerRoutes(app: Express): Server {
 
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'driver') return res.status(403).send("Drivers only");
-
     try {
       const { lat, lng, status, speed } = req.body;
       const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
@@ -219,14 +218,12 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (slips.length === 0 || !slips[0].vehicle) return res.sendStatus(200); 
-      
       const activeVehicle = slips[0].vehicle;
 
       if (status === 'offline') {
         await storage.removeVehicleLocation(activeVehicle.id);
         return res.sendStatus(200);
       }
-
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
@@ -236,7 +233,6 @@ export function registerRoutes(app: Express): Server {
         speed: parseFloat(speed || "0"),
         timestamp: Date.now()
       } as any);
-
       res.sendStatus(200);
     } catch (e) {
       console.error(e);
@@ -253,17 +249,15 @@ export function registerRoutes(app: Express): Server {
        if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
 
        const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
-       
        await db.insert(routeSlips).values(data);
        await logAction(req.user, "CREATE", "Route Slip", `Created for date ${data.date}`, newId);
-
+       
        try {
          const driverProfile = await storage.getDriver(data.driverId);
          if (driverProfile && driverProfile.userId) {
             await storage.createNotification({ userId: driverProfile.userId, type: 'payment_due', title: 'Route Slip Created', message: `New route slip for ${data.date}.`, link: '/payments' });
          }
        } catch (notifError) { console.error(notifError); }
-
        res.status(201).json(data);
      } catch (e) { console.error(e); res.status(500).send("Error saving to DB."); }
   });
@@ -388,7 +382,7 @@ export function registerRoutes(app: Express): Server {
       try { 
           const pid = randomUUID(); 
           let proof = null; 
-          // Guardamos la ruta.
+          // Guardamos "uploads/nombre.jpg" para mantener compatibilidad
           if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; 
           
           const pData = { 

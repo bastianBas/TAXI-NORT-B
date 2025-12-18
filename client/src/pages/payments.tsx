@@ -156,25 +156,24 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 FUNCIÓN DE VISUALIZACIÓN A PRUEBA DE ERRORES
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN ULTRA SEGURA
   const handleViewFile = (dbPath: string) => {
     if (!dbPath) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // 1. Limpieza Agresiva: Toma SIEMPRE la última parte del path (el nombre del archivo).
-    // Esto corrige automáticamente rutas como "uploads/foto.png", "uploads\foto.png" o "C:\fake\path\foto.png"
+    // Extraemos SOLO el nombre del archivo, ignorando cualquier carpeta que esté en la DB
+    // Esto es vital porque el servidor ahora usa path.basename()
     const segments = dbPath.split(/[/\\]/);
     const filename = segments.pop(); 
 
     if (!filename) {
-       toast({ variant: "destructive", title: "Error", description: "Archivo inválido" });
+       toast({ variant: "destructive", title: "Error", description: "Nombre de archivo inválido" });
        return;
     }
     
-    // 2. URL con Random ID para evitar caché a toda costa
-    // Usamos Math.random() para que la URL sea única en cada clic
+    // Agregamos un número aleatorio al final para asegurar que la imagen se recargue
     const secureUrl = `/api/uploads/${filename}?r=${Math.random()}`;
     
     setViewFileUrl(secureUrl);
@@ -268,6 +267,7 @@ export default function PaymentsPage() {
                         variant="outline" 
                         size="sm" 
                         className="h-8 text-xs gap-2"
+                        type="button" // 🟢 IMPORTANTE: Evita submit accidental
                         onClick={() => handleViewFile(p.proofOfPayment)}
                       >
                         <ImageIcon className="h-3 w-3" /> Ver Imagen
@@ -364,9 +364,9 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR */}
-      {/* Al cerrar el modal, limpiamos la URL para obligar a una recarga limpia la próxima vez */}
-      <Dialog open={!!viewFileUrl} onOpenChange={(open) => { if(!open) setViewFileUrl(null); }}>
+      {/* 🟢 MODAL VISUALIZADOR DE SOLO IMÁGENES */}
+      {/* El onOpenChange limpia el estado al cerrar, vital para que no se quede pegada la imagen vieja */}
+      <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -387,8 +387,7 @@ export default function PaymentsPage() {
           <div className="flex-1 bg-zinc-900/50 flex justify-center items-center p-4 relative overflow-hidden">
              {viewFileUrl ? (
                  <img 
-                   // La propiedad key es vital para reiniciar el componente de imagen si cambia la URL
-                   key={viewFileUrl}
+                   key={viewFileUrl} // 🟢 Fuerza recarga del componente
                    src={viewFileUrl} 
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
