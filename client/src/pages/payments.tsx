@@ -45,10 +45,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
-// IMPORTAMOS EL COMPRESOR (Asegúrate de haber creado el archivo en el Paso 1)
+// IMPORTAMOS EL COMPRESOR NUEVO
 import { compressImage } from "@/lib/compressor";
 
-// Esquema de validación idéntico al original
 const insertPaymentSchema = z.object({
   routeSlipId: z.string().min(1, "Debes seleccionar una hoja de ruta"),
   amount: z.string().min(1, "El monto es obligatorio"),
@@ -57,7 +56,6 @@ const insertPaymentSchema = z.object({
 
 type FormData = z.infer<typeof insertPaymentSchema>;
 
-// FUNCIÓN VITAL: Convierte la imagen a Texto (Base64)
 const convertToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -72,15 +70,13 @@ export default function PaymentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
-  // Estado para el visor
   const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [isCompressing, setIsCompressing] = useState(false); // Nuevo estado para feedback visual
+  const [isCompressing, setIsCompressing] = useState(false); 
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // 1. CARGAR DATOS
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
@@ -99,7 +95,6 @@ export default function PaymentsPage() {
     }
   });
 
-  // 2. CÁLCULOS KPI
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
   const totalPaymentsCount = payments.length;
   
@@ -112,7 +107,6 @@ export default function PaymentsPage() {
 
   const totalAmount = filteredPayments.reduce((sum: number, p: any) => sum + (parseInt(p.amount) || 0), 0);
 
-  // 3. FORMULARIO
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
@@ -144,29 +138,25 @@ export default function PaymentsPage() {
     setIsModalOpen(true);
   };
 
-  // NUEVA FUNCIÓN: Maneja la selección de archivo y lo comprime
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
     try {
         setIsCompressing(true);
-        toast({ title: "Procesando imagen...", description: "Optimizando tamaño para subida rápida." });
-        
-        // Comprimimos la imagen usando la utilidad
+        // Usamos el compresor nuevo (generará un archivo de ~50-100kb)
         const compressed = await compressImage(selectedFile);
         
         setFile(compressed);
-        toast({ title: "Imagen lista", description: "Tamaño reducido correctamente." });
+        toast({ title: "Imagen lista", description: "Optimizada para celular." });
     } catch (error) {
         console.error("Error compresión:", error);
-        toast({ title: "Error", description: "No se pudo procesar la imagen. Intenta con otra.", variant: "destructive" });
+        toast({ title: "Error", description: "No se pudo procesar la imagen.", variant: "destructive" });
     } finally {
         setIsCompressing(false);
     }
   };
 
-  // 4. ENVÍO DE DATOS
   const onSubmit = async (data: FormData) => {
     try {
       const payload: any = {
@@ -203,11 +193,11 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["route-slips"] }); 
     } catch (e) {
-      toast({ title: "Error", description: "No se pudo guardar. Verifica tu conexión.", variant: "destructive" });
+      // Mensaje de error más descriptivo
+      toast({ title: "Error de Conexión", description: "Intenta subir la imagen de nuevo o usa una red WiFi.", variant: "destructive" });
     }
   };
 
-  // 5. VISOR DE IMÁGENES
   const handleViewFile = (data: string) => {
     if (!data) return toast({ title: "Sin archivo", variant: "destructive" });
     
@@ -221,7 +211,7 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* CABECERA Y BOTÓN */}
+      {/* CABECERA */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Pagos</h1>
@@ -381,23 +371,23 @@ export default function PaymentsPage() {
                 </div>
             </div>
 
-            {/* INPUT SUBIDA IMAGEN (ACTUALIZADO) */}
+            {/* INPUT SUBIDA IMAGEN */}
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors mt-2" onClick={() => document.getElementById('file-upload')?.click()}>
                 <Upload className={`h-8 w-8 mb-2 ${isCompressing ? "text-blue-500 animate-bounce" : "text-gray-400"}`} />
                 <p className="text-sm font-medium text-gray-700">
                   {isCompressing 
-                    ? "Comprimiendo..." 
-                    : (file ? `Listo: ${file.name}` : (editingPayment?.proofOfPayment ? "Imagen cargada (Click para cambiar)" : "Subir Imagen Comprobante"))}
+                    ? "Optimizando para celular..." 
+                    : (file ? `Listo (${(file.size/1024).toFixed(0)}KB): ${file.name}` : (editingPayment?.proofOfPayment ? "Imagen cargada (Click para cambiar)" : "Subir Imagen Comprobante"))}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                    {isCompressing ? "Optimizando tamaño..." : "Solo Imágenes (JPG, PNG)"}
+                    {isCompressing ? "Reduciendo tamaño..." : "Solo Imágenes (JPG, PNG)"}
                 </p>
                 <Input 
                    id="file-upload" 
                    type="file" 
                    accept="image/*" 
                    className="hidden" 
-                   onChange={handleFileChange} // Usamos la nueva función
+                   onChange={handleFileChange} 
                 />
             </div>
 
@@ -413,7 +403,7 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZADOR FINAL */}
+      {/* MODAL VISUALIZADOR */}
       <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
