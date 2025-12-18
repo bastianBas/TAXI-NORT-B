@@ -1,18 +1,15 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { 
-  Plus, 
-  Search, 
-  FileText, 
-  Eye, 
-  Edit, 
-  Download, 
-  QrCode 
-} from "lucide-react";
-import { PDFViewer, PDFDownloadLink } from "@react-pdf/renderer";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Search, FileText, CheckCircle2, User, Car, Calendar, Download } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -27,69 +24,123 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { RouteSlipForm } from "@/components/route-slips/route-slip-form";
-import { RouteSlipPdf } from "@/components/route-slips/pdf-design"; 
 import { useToast } from "@/hooks/use-toast";
-// 🟢 IMPORTANTE: Usamos el hook de autenticación centralizado
 import { useAuth } from "@/lib/auth";
+
+// Schema de Validación
+const routeSlipSchema = z.object({
+  driverId: z.string().min(1, "Selecciona un conductor"),
+  vehicleId: z.string().min(1, "Selecciona un vehículo"),
+  date: z.string().min(1, "Selecciona una fecha"),
+  shift: z.string().min(1, "Selecciona un turno"),
+});
+
+type FormData = z.infer<typeof routeSlipSchema>;
 
 export default function RouteSlipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [viewSlip, setViewSlip] = useState<any>(null);
-  const [showQr, setShowQr] = useState(false);
-  const [editingSlip, setEditingSlip] = useState<any>(null);
-
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  // 🟢 1. OBTENER USUARIO LOGUEADO
-  const { user } = useAuth();
 
-  // 🟢 2. OBTENER HOJAS DE RUTA
-  const { data: routeSlips = [], isLoading } = useQuery({
+  // Queries para llenar la tabla y los selectores
+  const { data: slips = [], isLoading } = useQuery({
     queryKey: ["route-slips"],
     queryFn: async () => {
       const res = await fetch("/api/route-slips");
-      if (!res.ok) throw new Error("Error al cargar hojas de ruta");
+      if (!res.ok) return [];
+      return res.json();
+    }
+  });
+
+  const { data: drivers = [] } = useQuery({
+    queryKey: ["drivers"],
+    queryFn: async () => {
+      const res = await fetch("/api/drivers");
+      if (!res.ok) return [];
+      return res.json();
+    }
+  });
+
+  const { data: vehicles = [] } = useQuery({
+    queryKey: ["vehicles"],
+    queryFn: async () => {
+      const res = await fetch("/api/vehicles");
+      if (!res.ok) return [];
+      return res.json();
+    }
+  });
+
+  // Filtros de búsqueda
+  const filteredSlips = slips.filter((slip: any) => 
+    slip.driver?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    slip.vehicle?.plate?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(routeSlipSchema),
+    defaultValues: {
+      date: new Date().toISOString().split('T')[0],
+      shift: "mañana"
+    }
+  });
+
+  // 🟢 MUTACIÓN CORREGIDA: Envía JSON
+  const createMutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      // Creamos el payload limpio
+      const payload = {
+        ...data,
+        status: 'active', 
+        signatureUrl: null // Listo para Base64 si lo implementas luego
+      };
+
+      const res = await fetch("/api/route-slips", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json", // Header JSON Obligatorio
+        },
+        body: JSON.stringify(payload), // Body JSON Obligatorio
+      });
+
+      if (!res.ok) throw new Error("Error al crear hoja de ruta");
       return res.json();
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["route-slips"] });
+      toast({ title: "Éxito", description: "Hoja de ruta creada correctamente" });
+      setIsCreateOpen(false);
+      reset();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo crear la hoja de ruta", variant: "destructive" });
+    }
   });
 
-  // Filtro visual
-  const filteredSlips = routeSlips.filter((slip: any) => {
-    const searchLower = searchTerm.toLowerCase();
-    const driverName = slip.driver?.name?.toLowerCase() || "";
-    const vehiclePlate = slip.vehicle?.plate?.toLowerCase() || "";
-    return driverName.includes(searchLower) || vehiclePlate.includes(searchLower);
-  });
-
-  // Generador de URL para el QR
-  const getQrUrl = (slip: any) => {
-    if (!slip) return "";
-    const text = `TAXI NORT - CONTROL DIARIO\nFecha: ${slip.date}\nFolio: #${slip.id.substring(0, 8)}\nConductor: ${slip.driver?.name || "N/A"}\nVehículo: ${slip.vehicle?.plate || "N/A"}\nEstado: ${slip.paymentStatus === 'paid' ? 'PAGADO ✅' : 'PENDIENTE ⚠️'}`;
-    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(text)}`;
+  const onSubmit = (data: FormData) => {
+    createMutation.mutate(data);
   };
 
   return (
     <div className="space-y-6">
-      {/* ENCABEZADO PAGINA */}
+      {/* CABECERA */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
-          <p className="text-muted-foreground">
-            Bitácora de servicios y estado de pagos.
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Hojas de Ruta</h1>
+          <p className="text-muted-foreground">Asignación diaria de vehículos y conductores.</p>
         </div>
-        
-        {/* 🟢 PROTECCIÓN: El botón "Nuevo" SOLO aparece si NO es conductor */}
-        {user?.role !== 'driver' && (
-          <Button 
-            onClick={() => setIsCreateOpen(true)} 
-            className="gap-2 bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-[#0f172a] dark:hover:bg-[#1e293b] dark:text-white dark:border dark:border-slate-800"
-          >
-            <Plus className="h-4 w-4" /> Nuevo Control Diario
+        {user?.role === 'admin' && (
+          <Button onClick={() => setIsCreateOpen(true)} className="gap-2 bg-zinc-950 text-white hover:bg-zinc-900">
+            <Plus className="h-4 w-4" /> Nueva Hoja
           </Button>
         )}
       </div>
@@ -97,8 +148,8 @@ export default function RouteSlipsPage() {
       {/* BUSCADOR */}
       <div className="flex items-center gap-2 bg-background p-2 rounded-lg border shadow-sm max-w-md">
         <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por conductor o patente..."
+        <Input 
+          placeholder="Buscar por conductor o patente..." 
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="border-0 focus-visible:ring-0 bg-transparent"
@@ -113,66 +164,41 @@ export default function RouteSlipsPage() {
               <TableHead>Fecha</TableHead>
               <TableHead>Conductor</TableHead>
               <TableHead>Vehículo</TableHead>
-              <TableHead>Horario</TableHead>
+              <TableHead>Turno</TableHead>
               <TableHead>Estado Pago</TableHead>
-              <TableHead>Firma</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Cargando registros...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="h-24 text-center">Cargando...</TableCell></TableRow>
             ) : filteredSlips.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                  <div className="flex flex-col items-center gap-2">
-                    <FileText className="h-8 w-8 text-muted-foreground/50" />
-                    <p>No se encontraron controles diarios.</p>
-                  </div>
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No hay registros.</TableCell></TableRow>
             ) : (
               filteredSlips.map((slip: any) => (
                 <TableRow key={slip.id} className="hover:bg-muted/50">
-                  <TableCell className="font-medium">{slip.date}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-foreground">{slip.driver?.name || "Desconocido"}</span>
-                      <span className="text-xs text-muted-foreground">{slip.driver?.rut || "-"}</span>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                        <Calendar className="h-3 w-3 text-muted-foreground"/>
+                        {format(new Date(slip.date), "dd/MM/yyyy", { locale: es })}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="font-mono bg-muted/50">{slip.vehicle?.plate || "S/P"}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{slip.startTime} - {slip.endTime}</TableCell>
-                  <TableCell>
-                    {slip.paymentStatus === 'paid' ? (
-                      <Badge className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 border-green-200 dark:border-green-800">Pagado</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/30">Pendiente</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {slip.signatureUrl ? (
-                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">Firmado</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">Pendiente</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      {/* BOTÓN VER (Visible para TODOS) */}
-                      <Button variant="ghost" size="icon" onClick={() => setViewSlip(slip)} title="Ver detalles y QR">
-                        <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                      </Button>
-                      
-                      {/* 🟢 PROTECCIÓN: Botón EDITAR oculto para conductores */}
-                      {user?.role !== 'driver' && (
-                        <Button variant="ghost" size="icon" onClick={() => setEditingSlip(slip)} title="Editar hoja">
-                          <Edit className="h-4 w-4 text-zinc-900 dark:text-zinc-100" /> 
-                        </Button>
-                      )}
+                    <div className="flex items-center gap-2">
+                        <User className="h-3 w-3 text-muted-foreground"/>
+                        {slip.driver?.name}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                        <Car className="h-3 w-3 text-muted-foreground"/>
+                        <Badge variant="outline" className="font-mono">{slip.vehicle?.plate}</Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell className="capitalize">{slip.shift}</TableCell>
+                  <TableCell>
+                    <Badge variant={slip.paymentStatus === 'paid' ? 'default' : 'destructive'} className={slip.paymentStatus === 'paid' ? 'bg-green-600 hover:bg-green-700' : ''}>
+                      {slip.paymentStatus === 'paid' ? 'Pagado' : 'Pendiente'}
+                    </Badge>
                   </TableCell>
                 </TableRow>
               ))
@@ -181,83 +207,73 @@ export default function RouteSlipsPage() {
         </Table>
       </div>
 
-      {/* --- MODALES --- */}
-
-      {/* MODAL CREAR (Solo administradores verán el botón para abrir esto) */}
+      {/* MODAL CREAR HOJA */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Nuevo Control Diario</DialogTitle></DialogHeader>
-          <RouteSlipForm onSuccess={() => { setIsCreateOpen(false); queryClient.invalidateQueries({ queryKey: ["route-slips"] }); toast({ title: "Éxito", description: "Hoja de ruta creada" }); }} />
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL EDITAR */}
-      <Dialog open={!!editingSlip} onOpenChange={(open) => !open && setEditingSlip(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Editar Control Diario</DialogTitle></DialogHeader>
-          {editingSlip && (
-            <RouteSlipForm initialData={editingSlip} onSuccess={() => { setEditingSlip(null); queryClient.invalidateQueries({ queryKey: ["route-slips"] }); }} />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL QR (Se abre desde el botón "Mostrar QR Móvil" en la vista previa) */}
-      <Dialog open={showQr} onOpenChange={setShowQr}>
-        <DialogContent className="sm:max-w-md bg-white text-black border-zinc-200">
-          <DialogHeader><DialogTitle className="text-center">Validación Móvil</DialogTitle></DialogHeader>
-          <div className="flex flex-col items-center justify-center p-6 space-y-4">
-            {viewSlip?.id && (
-              <div className="p-2 bg-white rounded-lg shadow-sm border">
-                <img src={getQrUrl(viewSlip)} alt="QR Code" className="w-48 h-48" />
-              </div>
-            )}
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium">Escanea para ver el detalle</p>
-              <p className="text-xs text-muted-foreground">No requiere conexión a internet.</p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL VISTA PREVIA (PDF + QR) */}
-      {viewSlip && (
-        <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
-          <DialogContent className="max-w-4xl h-[90vh] p-0 overflow-hidden flex flex-col bg-background border-border">
-            {/* Cabecera del modal */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/50 text-foreground">
-              <div className="flex flex-col">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" /> Hoja #{viewSlip.id.substring(0, 8)}
-                </h2>
-                <p className="text-xs text-muted-foreground">Vista previa.</p>
-              </div>
-            </div>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Nueva Hoja de Ruta</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
             
-            {/* Visor PDF */}
-            <div className="flex-1 w-full h-full relative bg-zinc-100/5 dark:bg-zinc-900/50 flex justify-center items-center">
-              <PDFViewer width="100%" height="100%" className="border-none" showToolbar={false}>
-                <RouteSlipPdf data={{ id: viewSlip.id, date: viewSlip.date, driverName: viewSlip.driver?.name || "", vehiclePlate: viewSlip.vehicle?.plate || "", startTime: viewSlip.startTime, endTime: viewSlip.endTime, paymentStatus: viewSlip.paymentStatus }} />
-              </PDFViewer>
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Input type="date" {...register("date")} />
+              {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
             </div>
 
-            {/* Footer con Botones (QR y Descargar) */}
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-card/50">
-                <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowQr(true)}>
-                  <QrCode className="h-4 w-4" /> Mostrar QR Móvil
-                </Button>
-                
-                <PDFDownloadLink document={<RouteSlipPdf data={{ id: viewSlip.id, date: viewSlip.date, driverName: viewSlip.driver?.name || "", vehiclePlate: viewSlip.vehicle?.plate || "", startTime: viewSlip.startTime, endTime: viewSlip.endTime, paymentStatus: viewSlip.paymentStatus }} />} fileName={`HojaRuta-${viewSlip.date}.pdf`}>
-                  {/* @ts-ignore */}
-                  {({ loading }) => (
-                    <Button size="sm" className="gap-2">
-                      <Download className="h-4 w-4" /> {loading ? "Generando..." : "Descargar PDF"}
-                    </Button>
-                  )}
-                </PDFDownloadLink>
+            <div className="space-y-2">
+              <Label>Conductor</Label>
+              <Select onValueChange={(val) => setValue("driverId", val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar conductor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {drivers.map((d: any) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.driverId && <p className="text-xs text-red-500">{errors.driverId.message}</p>}
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+
+            <div className="space-y-2">
+              <Label>Vehículo</Label>
+              <Select onValueChange={(val) => setValue("vehicleId", val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar vehículo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vehicles.map((v: any) => (
+                    <SelectItem key={v.id} value={v.id}>{v.plate} - {v.model}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.vehicleId && <p className="text-xs text-red-500">{errors.vehicleId.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Turno</Label>
+              <Select onValueChange={(val) => setValue("shift", val)} defaultValue="mañana">
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar turno" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mañana">Mañana</SelectItem>
+                  <SelectItem value="tarde">Tarde</SelectItem>
+                  <SelectItem value="noche">Noche</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-zinc-950 text-white hover:bg-zinc-900" disabled={createMutation.isPending}>
+                {createMutation.isPending ? "Creando..." : "Crear Hoja"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
