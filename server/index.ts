@@ -12,7 +12,8 @@ const app = express();
 app.set("trust proxy", true);
 app.use(cors());
 
-// Mantenemos el límite de 50mb que configuramos antes
+// 🟢 CONFIGURACIÓN CRÍTICA DE TAMAÑO
+// 50mb es suficiente, pero el secreto está en que el cliente envíe poco.
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
@@ -66,17 +67,16 @@ app.use((req, res, next) => {
 
     const port = parseInt(process.env.PORT || '8080', 10);
     
-    // 🟢 AQUÍ ESTÁ EL CAMBIO IMPORTANTE:
-    // Guardamos la instancia del servidor en una variable 'runningServer'
+    // 🟢 GUARDAMOS LA INSTANCIA PARA EL TIMEOUT
     const runningServer = server.listen(port, '0.0.0.0', () => {
       console.log(`🚀 Servidor LISTO y escuchando en puerto ${port}`);
       console.log(`   - Entorno: ${app.get("env")}`);
       console.log(`   - Directorio base: ${process.cwd()}`);
     });
 
-    // 🟢 AUMENTAMOS EL TIMEOUT A 10 MINUTOS
-    // Esto evita que el servidor cierre la conexión si el celular es lento subiendo la foto
-    runningServer.setTimeout(10 * 60 * 1000); 
+    // 🟢 TIMEOUT DE 5 MINUTOS (300000 ms)
+    // Suficiente para redes móviles lentas
+    runningServer.setTimeout(300000); 
 
   } catch (err) {
     console.error("❌ Error FATAL al iniciar el servidor:", err);
