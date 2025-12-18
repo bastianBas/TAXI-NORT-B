@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Plus, 
@@ -6,7 +6,6 @@ import {
   Eye, 
   Edit, 
   X
-  // Eliminé el icono Download aquí
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -118,6 +117,24 @@ export default function RouteSlipsPage() {
       return res.json();
     }
   });
+
+  // 🟢 NUEVA LÓGICA: Auto-abrir hoja de ruta si viene en el enlace (QR)
+  useEffect(() => {
+    // Leemos si hay un ?id=... en la URL
+    const params = new URLSearchParams(window.location.search);
+    const idFromUrl = params.get("id");
+
+    if (idFromUrl && slips.length > 0) {
+      // Buscamos la hoja de ruta correspondiente
+      const foundSlip = slips.find((s: any) => String(s.id) === String(idFromUrl));
+      if (foundSlip) {
+        setViewSlip(foundSlip); // Abrimos el modal automáticamente
+        
+        // Opcional: Limpiamos la URL para que no se abra de nuevo al recargar
+        // window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [slips]); // Se ejecuta cuando cargan los datos
 
   // Filtros de búsqueda
   const filteredSlips = slips.filter((slip: any) => {
@@ -258,6 +275,16 @@ export default function RouteSlipsPage() {
     documentTitle: viewSlip ? `Hoja_Ruta_${viewSlip.date}` : "Hoja_Ruta",
   });
 
+  // --- GENERAR URL DEL QR ---
+  const getQrUrl = (slipId: string) => {
+    // Genera un enlace a la página actual con el ID de la hoja de ruta
+    if (typeof window !== 'undefined') {
+        const baseUrl = window.location.href.split('?')[0]; // URL base sin parámetros
+        return `${baseUrl}?id=${slipId}`;
+    }
+    return '';
+  };
+
   return (
     <div className="space-y-6">
       {/* CABECERA */}
@@ -344,12 +371,12 @@ export default function RouteSlipsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                        {/* Botón VER (Visible para TODOS) */}
+                        {/* Botón VER */}
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => setViewSlip(slip)}>
                             <Eye className="h-4 w-4" />
                         </Button>
                         
-                        {/* PROTECCIÓN: Botón EDITAR (Solo Visible para ADMIN) */}
+                        {/* Botón EDITAR (Solo Admin) */}
                         {user?.role === 'admin' && (
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEditWithId(slip)}>
                                 <Edit className="h-4 w-4" />
@@ -458,7 +485,6 @@ export default function RouteSlipsPage() {
                     <h2 className="text-xl font-bold">Detalle de Hoja de Ruta</h2>
                     <p className="text-sm text-muted-foreground">ID: {viewSlip?.id?.slice(0,8)}</p>
                 </div>
-                {/* 🟢 CAMBIO 1: Eliminada la X manual, solo queda la del componente Dialog */}
             </div>
 
             <div className="p-6 space-y-6" ref={printRef}>
@@ -501,14 +527,9 @@ export default function RouteSlipsPage() {
                 <div className="bg-zinc-50 p-4 rounded-lg flex flex-col items-center justify-center border border-zinc-100 mt-4">
                     <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider">Escanear para validar</p>
                     <div className="bg-white p-2 rounded shadow-sm">
+                        {/* 🟢 QR CORREGIDO: Ahora contiene un LINK real */}
                         <QRCode 
-                            value={JSON.stringify({
-                                id: viewSlip?.id,
-                                conductor: viewSlip?.driver?.name,
-                                patente: viewSlip?.vehicle?.plate,
-                                fecha: viewSlip?.date,
-                                estado: viewSlip?.paymentStatus
-                            })}
+                            value={getQrUrl(viewSlip?.id)}
                             size={128}
                         />
                     </div>
@@ -517,7 +538,6 @@ export default function RouteSlipsPage() {
 
             <div className="p-4 bg-zinc-50 border-t flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setViewSlip(null)}>Cerrar</Button>
-                {/* 🟢 CAMBIO 2: Botón sin flecha, solo texto */}
                 <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={handlePrint}>
                     Descargar
                 </Button>
