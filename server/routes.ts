@@ -29,7 +29,18 @@ const upload = multer({ storage: storageMulter });
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+  // 🟢 SOLUCIÓN APLICADA: RUTA API SEGURA PARA ARCHIVOS
+  // Reemplaza a app.use('/uploads'...) para evitar errores 404 en el visor
+  app.get("/api/uploads/:filename", (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(process.cwd(), 'uploads', filename);
+
+    if (fs.existsSync(filePath)) {
+      res.sendFile(filePath);
+    } else {
+      res.status(404).send("Archivo no encontrado");
+    }
+  });
 
   // 🟢 HELPER: REGISTER AUDIT LOG
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {

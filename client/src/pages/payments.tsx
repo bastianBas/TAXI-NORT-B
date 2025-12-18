@@ -57,7 +57,7 @@ export default function PaymentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
-  // 🟢 ESTADO ACTUALIZADO: Ahora guarda URL y TIPO
+  // Estado para el visor de archivos (URL y Tipo)
   const [viewFile, setViewFile] = useState<{url: string, type: string} | null>(null);
   
   const [file, setFile] = useState<File | null>(null);
@@ -163,24 +163,29 @@ export default function PaymentsPage() {
     }
   };
 
-  // Función auxiliar para limpiar la ruta (la mantenemos porque es útil)
-  const getFileUrl = (path: string) => {
-    if (!path) return "";
-    const cleanPath = path.replace(/^(\/?uploads\/)+/, ''); 
-    return `/uploads/${cleanPath}`;
-  };
-
-  // 🟢 FUNCIÓN DE VISUALIZACIÓN CORREGIDA E INTEGRADA
-  const handleViewFile = (path: string) => {
-    if (!path) return;
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN CORREGIDA (SOLUCIÓN DEFINITIVA)
+  // Ahora usa la ruta segura /api/uploads/ que configuramos en el servidor
+  const handleViewFile = (dbPath: string) => {
+    if (!dbPath) {
+       toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
+       return;
+    }
     
-    // Usamos el auxiliar para asegurar que la URL sea válida para el navegador
-    const cleanUrl = getFileUrl(path); 
-    const lowerPath = path.toLowerCase();
+    // 1. Extraemos el nombre del archivo (ej: "123456-imagen.png") eliminando carpetas previas
+    // Soporta tanto barras normales (/) como invertidas (\)
+    const filename = dbPath.split(/[/\\]/).pop();
+
+    if (!filename) return;
+    
+    // 2. Construimos la URL segura de la API
+    const secureUrl = `/api/uploads/${filename}`;
+    
+    // 3. Detectamos el tipo
+    const lowerPath = dbPath.toLowerCase();
     const isPdf = lowerPath.endsWith('.pdf');
     
-    // Guardamos en el estado tanto la URL limpia como el tipo
-    setViewFile({ url: cleanUrl, type: isPdf ? 'pdf' : 'image' });
+    // 4. Guardamos en el estado para abrir el modal
+    setViewFile({ url: secureUrl, type: isPdf ? 'pdf' : 'image' });
   };
 
   return (
@@ -271,7 +276,7 @@ export default function PaymentsPage() {
                         variant="outline" 
                         size="sm" 
                         className="h-8 text-xs gap-2"
-                        // 🟢 AQUÍ USAMOS LA NUEVA FUNCIÓN
+                        // Llamamos a la nueva función corregida
                         onClick={() => handleViewFile(p.proofOfPayment)}
                       >
                         <Eye className="h-3 w-3" /> Ver Archivo
@@ -367,7 +372,7 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR ACTUALIZADO */}
+      {/* 🟢 MODAL VISUALIZADOR */}
       <Dialog open={!!viewFile} onOpenChange={(open) => !open && setViewFile(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
