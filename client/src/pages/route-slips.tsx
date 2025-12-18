@@ -5,12 +5,8 @@ import {
   Search, 
   Eye, 
   Edit, 
-  Calendar, 
-  User, 
-  Car, 
-  Printer, 
-  Download,
-  X
+  X,
+  Printer
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -48,7 +44,10 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
-// Validación del formulario
+// IMPORTAMOS TU NUEVO COMPONENTE
+import EditControlModal from "@/components/EditControlModal";
+
+// Validación del formulario (Solo para CREAR)
 const routeSlipSchema = z.object({
   driverId: z.string().min(1, "Selecciona un conductor"),
   vehicleId: z.string().min(1, "Selecciona un vehículo"),
@@ -62,18 +61,21 @@ type FormData = z.infer<typeof routeSlipSchema>;
 const getShiftLabel = (shift: string) => {
   switch(shift) {
     case 'mañana': return '08:00 - 18:00';
-    case 'tarde': return '14:00 - 00:00'; // Ajustado según lo común, puedes editarlo
+    case 'tarde': return '14:00 - 00:00'; 
     case 'noche': return '20:00 - 06:00';
-    default: return '09:00 - 19:00'; // Default
+    default: return '09:00 - 19:00'; 
   }
 };
 
 export default function RouteSlipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Estado para Crear/Editar
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Estado para Crear (Formulario antiguo)
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+
+  // --- NUEVOS ESTADOS PARA EL MODAL DE EDICIÓN ---
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [slipToEdit, setSlipToEdit] = useState<any>(null);
 
   // Estado para Visualizar (Ojo)
   const [viewSlip, setViewSlip] = useState<any>(null);
@@ -123,7 +125,7 @@ export default function RouteSlipsPage() {
     );
   });
 
-  // Configuración del Formulario
+  // Configuración del Formulario (SOLO CREACIÓN)
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(routeSlipSchema),
     defaultValues: {
@@ -134,71 +136,138 @@ export default function RouteSlipsPage() {
 
   // --- LÓGICA DE APERTURA DE MODALES ---
 
-  // Abrir para CREAR
+  // Abrir para CREAR (Usa el modal antiguo)
   const handleOpenCreate = () => {
-    setEditingId(null); // No estamos editando
     reset({
       date: new Date().toISOString().split('T')[0],
       shift: "mañana",
       driverId: "",
       vehicleId: ""
     });
-    setIsFormOpen(true);
+    setIsCreateFormOpen(true);
   };
 
-  // Abrir para EDITAR (Botón Lápiz)
+  // Abrir para EDITAR (Usa el NUEVO modal EditControlModal)
   const handleOpenEdit = (slip: any) => {
-    setEditingId(slip.id); // Guardamos el ID que estamos editando
-    // Rellenamos el formulario con los datos existentes
-    reset({
-      date: slip.date,
-      shift: slip.shift,
-      driverId: slip.driverId,
-      vehicleId: slip.vehicleId
-    });
-    setIsFormOpen(true);
+    // Mapeamos los datos de tu tabla al formato que espera EditControlModal
+    // Asumimos que 'slip' tiene driver y vehicle populados
+    const dataFormatted = {
+        fecha: slip.date,
+        conductor: { 
+            id: slip.driverId, // ID original
+            nombre: slip.driver?.name || "Conductor Desconocido" 
+        },
+        vehiculo: { 
+            id: slip.vehicleId, // ID original
+            patente: slip.vehicle?.plate || "Sin Patente" 
+        },
+        // Si ya tienes horaInicio en tu DB úsala, si no, pon un default basado en el turno antiguo o vacío
+        horaInicio: slip.startTime || "08:00", 
+        horaFin: slip.endTime || "15:00"
+    };
+
+    setSlipToEdit(dataFormatted);
+    setIsEditModalOpen(true);
   };
 
-  // --- MUTACIONES (GUARDAR / EDITAR) ---
-  const mutation = useMutation({
+  // --- MUTACIÓN PARA CREAR (POST) ---
+  const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const payload = { ...data, status: 'active' }; // status por defecto
-
-      let url = "/api/route-slips";
-      let method = "POST";
-
-      // Si hay un ID editando, cambiamos a PUT (Actualizar)
-      if (editingId) {
-        url = `/api/route-slips/${editingId}`;
-        method = "PUT";
-      }
-
-      const res = await fetch(url, {
-        method: method,
-        headers: { "Content-Type": "application/json" }, // Enviamos JSON siempre
+      const payload = { ...data, status: 'active' }; 
+      const res = await fetch("/api/route-slips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      if (!res.ok) throw new Error("Error al guardar");
+      if (!res.ok) throw new Error("Error al crear");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["route-slips"] });
-      toast({ title: "Éxito", description: editingId ? "Registro actualizado" : "Registro creado" });
-      setIsFormOpen(false);
+      toast({ title: "Éxito", description: "Registro creado correctamente" });
+      setIsCreateFormOpen(false);
     },
     onError: () => {
-      toast({ title: "Error", description: "No se pudo guardar la operación", variant: "destructive" });
+      toast({ title: "Error", description: "No se pudo crear el registro", variant: "destructive" });
     }
   });
 
-  const onSubmit = (data: FormData) => {
-    mutation.mutate(data);
+  // --- FUNCION PARA GUARDAR EDICIÓN (PUT) DESDE EL NUEVO MODAL ---
+  const handleSaveEdit = async (formData: any) => {
+    try {
+        // Preparamos el payload con los campos nuevos de hora
+        const payload = {
+            // Necesitamos el ID original de la hoja de ruta. 
+            // Como slipToEdit es un objeto formateado, buscaremos el ID en el objeto original 'slips' si es necesario
+            // o lo pasamos si lo hubieramos guardado.
+            // TRUCO: Buscamos el slip original que coincida con fecha y conductor para obtener el ID, 
+            // o mejor, guardamos el ID en el estado slipToEdit al abrir el modal.
+            
+            // NOTA: Para simplificar, asumiremos que slipToEdit tiene el ID de la ruta si lo agregamos en handleOpenEdit.
+            // Voy a ajustar handleOpenEdit abajo para incluir el ID de la ruta.
+            
+            date: formData.fecha,
+            driverId: formData.conductorId,
+            vehicleId: formData.vehiculoId,
+            startTime: formData.horaInicio, // NUEVO CAMPO
+            endTime: formData.horaFin,      // NUEVO CAMPO
+            shift: 'personalizado' // Opcional: marcamos que es horario manual
+        };
+
+        // NOTA IMPORTANTE: Necesitamos el ID del registro para hacer el PUT.
+        // Lo recuperamos del estado viewSlip o del objeto original.
+        // Aquí usaré una lógica segura buscando en el array 'slips' el registro actual siendo editado
+        // o asumiendo que lo pasamos. Lo más limpio es modificar handleOpenEdit un poco.
+        
+        // Hacemos la petición
+        // OJO: formData.id debe venir del modal si lo pasamos, si no, usaremos 'slipToEdit.id'
+        const url = `/api/route-slips/${slipToEdit.id}`; 
+        
+        const res = await fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) throw new Error("Error al actualizar");
+
+        queryClient.invalidateQueries({ queryKey: ["route-slips"] });
+        toast({ title: "Actualizado", description: "Se han guardado los cambios y el horario de 7 horas." });
+        setIsEditModalOpen(false);
+
+    } catch (error) {
+        console.error(error);
+        toast({ title: "Error", description: "No se pudo actualizar.", variant: "destructive" });
+    }
+  };
+
+  // Ajuste en handleOpenEdit para pasar el ID correctamente
+  const handleOpenEditWithId = (slip: any) => {
+      const dataFormatted = {
+          id: slip.id, // GUARDAMOS EL ID DEL REGISTRO
+          fecha: slip.date,
+          conductor: { 
+              id: slip.driverId, 
+              nombre: slip.driver?.name || "Conductor Desconocido" 
+          },
+          vehiculo: { 
+              id: slip.vehicleId, 
+              patente: slip.vehicle?.plate || "Sin Patente" 
+          },
+          horaInicio: slip.startTime || "08:00", 
+          horaFin: slip.endTime || "15:00"
+      };
+      setSlipToEdit(dataFormatted);
+      setIsEditModalOpen(true);
+  }
+
+  const onSubmitCreate = (data: FormData) => {
+    createMutation.mutate(data);
   };
 
   // --- IMPRESIÓN ---
   const handlePrint = useReactToPrint({
-    contentRef: printRef, // Usamos la sintaxis nueva para evitar errores de TS
+    contentRef: printRef, 
     documentTitle: viewSlip ? `Hoja_Ruta_${viewSlip.date}` : "Hoja_Ruta",
   });
 
@@ -264,9 +333,12 @@ export default function RouteSlipsPage() {
                         {slip.vehicle?.plate}
                     </Badge>
                   </TableCell>
-                  {/* Visualización del horario según el turno */}
+                  {/* Visualización del horario: Priorizamos hora personalizada si existe */}
                   <TableCell className="text-muted-foreground text-sm">
-                    {getShiftLabel(slip.shift)}
+                    {slip.startTime && slip.endTime 
+                        ? `${slip.startTime} - ${slip.endTime}`
+                        : getShiftLabel(slip.shift)
+                    }
                   </TableCell>
                   <TableCell>
                     <Badge 
@@ -279,9 +351,9 @@ export default function RouteSlipsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                     <span className={`text-sm font-medium px-2 py-1 rounded ${slip.signatureUrl ? "text-blue-600 bg-blue-50" : "text-zinc-400"}`}>
+                      <span className={`text-sm font-medium px-2 py-1 rounded ${slip.signatureUrl ? "text-blue-600 bg-blue-50" : "text-zinc-400"}`}>
                         {slip.signatureUrl ? "Firmado" : "Pendiente"}
-                     </span>
+                      </span>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -289,8 +361,8 @@ export default function RouteSlipsPage() {
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => setViewSlip(slip)}>
                             <Eye className="h-4 w-4" />
                         </Button>
-                        {/* Botón EDITAR (Activado) */}
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEdit(slip)}>
+                        {/* Botón EDITAR (Modificado para usar handleOpenEditWithId) */}
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEditWithId(slip)}>
                             <Edit className="h-4 w-4" />
                         </Button>
                     </div>
@@ -302,13 +374,13 @@ export default function RouteSlipsPage() {
         </Table>
       </div>
 
-      {/* MODAL FORMULARIO (CREAR / EDITAR) */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      {/* MODAL FORMULARIO (SOLO PARA CREAR) */}
+      <Dialog open={isCreateFormOpen} onOpenChange={setIsCreateFormOpen}>
         <DialogContent className="sm:max-w-[425px] bg-white text-black">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar Control Diario" : "Nuevo Control Diario"}</DialogTitle>
+            <DialogTitle>Nuevo Control Diario</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
+          <form onSubmit={handleSubmit(onSubmitCreate)} className="space-y-4 pt-4">
             
             <div className="space-y-2">
               <Label>Fecha</Label>
@@ -317,11 +389,7 @@ export default function RouteSlipsPage() {
 
             <div className="space-y-2">
               <Label>Conductor</Label>
-              <Select 
-                onValueChange={(val) => setValue("driverId", val)} 
-                defaultValue={editingId ? undefined : ""} // Reset logic
-                value={editingId ? undefined : undefined} // Dejamos que react-hook-form controle
-              >
+              <Select onValueChange={(val) => setValue("driverId", val)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar conductor" />
                 </SelectTrigger>
@@ -362,14 +430,22 @@ export default function RouteSlipsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-              <Button type="submit" className="bg-zinc-950 text-white hover:bg-zinc-900" disabled={mutation.isPending}>
-                {mutation.isPending ? "Guardando..." : (editingId ? "Guardar Cambios" : "Crear")}
+              <Button type="button" variant="ghost" onClick={() => setIsCreateFormOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-zinc-950 text-white hover:bg-zinc-900" disabled={createMutation.isPending}>
+                {createMutation.isPending ? "Guardando..." : "Crear"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* NUEVO MODAL DE EDICIÓN (INTEGRADO) */}
+      <EditControlModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSave={handleSaveEdit}
+        dataToEdit={slipToEdit}
+      />
 
       {/* MODAL DE VISUALIZACIÓN / QR / DESCARGA */}
       <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
@@ -407,7 +483,13 @@ export default function RouteSlipsPage() {
                     </div>
                     <div>
                         <p className="text-sm text-muted-foreground">Horario Asignado</p>
-                        <p className="font-medium">{getShiftLabel(viewSlip?.shift)}</p>
+                        {/* Ajuste en visualización para mostrar hora real si existe */}
+                        <p className="font-medium">
+                            {viewSlip?.startTime && viewSlip?.endTime 
+                                ? `${viewSlip.startTime} - ${viewSlip.endTime}` 
+                                : getShiftLabel(viewSlip?.shift)
+                            }
+                        </p>
                     </div>
                     <div>
                         <p className="text-sm text-muted-foreground">Estado Pago</p>
