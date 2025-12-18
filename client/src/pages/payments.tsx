@@ -56,7 +56,10 @@ export default function PaymentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
-  const [viewFile, setViewFile] = useState<string | null>(null);
+  
+  // 🟢 ESTADO ACTUALIZADO: Ahora guarda URL y TIPO
+  const [viewFile, setViewFile] = useState<{url: string, type: string} | null>(null);
+  
   const [file, setFile] = useState<File | null>(null);
 
   const { toast } = useToast();
@@ -131,7 +134,7 @@ export default function PaymentsPage() {
     try {
       const formData = new FormData();
       formData.append("routeSlipId", data.routeSlipId);
-      formData.append("amount", "1800"); // 🟢 FORZAMOS EL VALOR EN EL ENVÍO TAMBIÉN
+      formData.append("amount", "1800"); // FORZAMOS EL VALOR EN EL ENVÍO TAMBIÉN
       formData.append("date", data.date);
       formData.append("type", "transfer");
       
@@ -160,13 +163,25 @@ export default function PaymentsPage() {
     }
   };
 
+  // Función auxiliar para limpiar la ruta (la mantenemos porque es útil)
   const getFileUrl = (path: string) => {
     if (!path) return "";
     const cleanPath = path.replace(/^(\/?uploads\/)+/, ''); 
     return `/uploads/${cleanPath}`;
   };
 
-  const isPdf = (path: string) => path?.toLowerCase().endsWith(".pdf");
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN CORREGIDA E INTEGRADA
+  const handleViewFile = (path: string) => {
+    if (!path) return;
+    
+    // Usamos el auxiliar para asegurar que la URL sea válida para el navegador
+    const cleanUrl = getFileUrl(path); 
+    const lowerPath = path.toLowerCase();
+    const isPdf = lowerPath.endsWith('.pdf');
+    
+    // Guardamos en el estado tanto la URL limpia como el tipo
+    setViewFile({ url: cleanUrl, type: isPdf ? 'pdf' : 'image' });
+  };
 
   return (
     <div className="space-y-6">
@@ -256,7 +271,8 @@ export default function PaymentsPage() {
                         variant="outline" 
                         size="sm" 
                         className="h-8 text-xs gap-2"
-                        onClick={() => setViewFile(p.proofOfPayment)}
+                        // 🟢 AQUÍ USAMOS LA NUEVA FUNCIÓN
+                        onClick={() => handleViewFile(p.proofOfPayment)}
                       >
                         <Eye className="h-3 w-3" /> Ver Archivo
                       </Button>
@@ -276,7 +292,7 @@ export default function PaymentsPage() {
         </Table>
       </div>
 
-      {/* 🟢 MODAL FORMULARIO (CORREGIDO: Monto Fijo y ReadOnly) */}
+      {/* MODAL FORMULARIO */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[500px] bg-white text-black">
           <DialogHeader>
@@ -307,12 +323,11 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-2 gap-4">
                <div className="space-y-2">
                  <Label>Monto a Pagar</Label>
-                 {/* 🟢 CAMBIO AQUÍ: readOnly y estilo gris para indicar que es fijo */}
                  <Input 
                    type="number" 
                    {...register("amount")} 
                    className="bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed" 
-                   readOnly // Impide la edición
+                   readOnly
                  />
                </div>
                <div className="space-y-2">
@@ -325,7 +340,6 @@ export default function PaymentsPage() {
                </div>
             </div>
 
-            {/* CAJA DE SUBIDA GRANDE (Estilo antiguo) */}
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors mt-2" onClick={() => document.getElementById('file-upload')?.click()}>
                 <Upload className="h-8 w-8 text-gray-400 mb-2" />
                 <p className="text-sm font-medium text-gray-700">
@@ -353,7 +367,7 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZADOR */}
+      {/* 🟢 MODAL VISUALIZADOR ACTUALIZADO */}
       <Dialog open={!!viewFile} onOpenChange={(open) => !open && setViewFile(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
@@ -362,7 +376,7 @@ export default function PaymentsPage() {
             </h2>
             {viewFile && (
                 <a 
-                  href={getFileUrl(viewFile)} 
+                  href={viewFile.url} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-2"
@@ -374,15 +388,15 @@ export default function PaymentsPage() {
           
           <div className="flex-1 bg-zinc-900/50 flex justify-center items-center p-4 relative overflow-hidden">
              {viewFile ? (
-               isPdf(viewFile) ? (
+               viewFile.type === 'pdf' ? (
                  <iframe 
-                   src={getFileUrl(viewFile)} 
+                   src={viewFile.url} 
                    className="w-full h-full border-0 rounded bg-white" 
                    title="PDF"
                  />
                ) : (
                  <img 
-                   src={getFileUrl(viewFile)} 
+                   src={viewFile.url} 
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
                    onError={(e) => {

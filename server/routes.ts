@@ -29,7 +29,7 @@ const upload = multer({ storage: storageMulter });
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // 🟢 HELPER: REGISTER AUDIT LOG
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
