@@ -19,17 +19,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// 🟢 IMPORTACIONES CORREGIDAS PARA TUS ARCHIVOS:
+// 1. Notificaciones (notifications-panel.tsx)
+import { NotificationsPanel } from "@/components/notifications-panel";
+// 2. Tema Oscuro (theme-toggle.tsx -> export function ThemeToggle)
+import { ThemeToggle } from "@/components/theme-toggle";
+
 export function MainNav() {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
   const queryClient = useQueryClient();
 
-  // 🚀 LÓGICA VITAL: Desconexión GPS al salir
   const handleLogout = async () => {
     if (user?.role === 'driver') {
       try {
-        // Enviar señal OFF inmediatamente
-        const data = JSON.stringify({ lat: 0, lng: 0, status: 'offline', speed: 0 });
+        const data = JSON.stringify({ lat: 0, lng: 0, status: 'offline', speed: 0, driverId: user.id });
         if (navigator.sendBeacon) {
           navigator.sendBeacon("/api/vehicle-locations", new Blob([data], { type: 'application/json' }));
         } else {
@@ -43,12 +47,10 @@ export function MainNav() {
         console.error("Error GPS logout:", error);
       }
     }
-    // Limpiar caché y salir
     queryClient.removeQueries({ queryKey: ["vehicle-locations"] });
     logoutMutation.mutate();
   };
 
-  // Definición de enlaces
   const links = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ['admin', 'driver', 'operator', 'finance'] },
     { href: "/drivers", label: "Conductores", icon: Users, roles: ['admin', 'operator'] },
@@ -70,7 +72,7 @@ export function MainNav() {
           </Link>
         </div>
 
-        {/* MENÚ MÓVIL (Hamburguesa) - Visible solo en celular */}
+        {/* MENÚ MÓVIL */}
         <div className="md:hidden mr-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -95,10 +97,9 @@ export function MainNav() {
           </DropdownMenu>
         </div>
         
-        {/* LOGO MÓVIL */}
         <div className="md:hidden flex-1 font-bold text-lg">TaxiNort</div>
 
-        {/* MENÚ ESCRITORIO - Visible solo en PC */}
+        {/* MENÚ ESCRITORIO */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium flex-1">
           {allowedLinks.map((link) => (
             <Link 
@@ -114,8 +115,15 @@ export function MainNav() {
           ))}
         </nav>
 
-        {/* USUARIO Y SALIR (Derecha) */}
-        <div className="flex items-center gap-4">
+        {/* LADO DERECHO */}
+        <div className="flex items-center gap-2 md:gap-4">
+          
+          {/* BOTÓN DE TEMA (Con tu código funciona perfecto aquí) */}
+          <ThemeToggle />
+          
+          {/* NOTIFICACIONES */}
+          <NotificationsPanel />
+
           <div className="hidden md:block text-right">
             <p className="text-sm font-medium leading-none">{user?.name}</p>
             <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
