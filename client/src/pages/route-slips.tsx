@@ -5,8 +5,8 @@ import {
   Search, 
   Eye, 
   Edit, 
-  X,
-  Printer
+  X
+  // Eliminé el icono Download aquí
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -87,7 +87,7 @@ export default function RouteSlipsPage() {
   // Referencia para impresión
   const printRef = useRef<HTMLDivElement>(null);
 
-  const { user } = useAuth(); // <--- OBTENEMOS EL USUARIO AQUÍ
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -349,7 +349,7 @@ export default function RouteSlipsPage() {
                             <Eye className="h-4 w-4" />
                         </Button>
                         
-                        {/* 🟢 PROTECCIÓN: Botón EDITAR (Solo Visible para ADMIN) */}
+                        {/* PROTECCIÓN: Botón EDITAR (Solo Visible para ADMIN) */}
                         {user?.role === 'admin' && (
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEditWithId(slip)}>
                                 <Edit className="h-4 w-4" />
@@ -458,9 +458,7 @@ export default function RouteSlipsPage() {
                     <h2 className="text-xl font-bold">Detalle de Hoja de Ruta</h2>
                     <p className="text-sm text-muted-foreground">ID: {viewSlip?.id?.slice(0,8)}</p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => setViewSlip(null)}>
-                    <X className="h-4 w-4" />
-                </Button>
+                {/* 🟢 CAMBIO 1: Eliminada la X manual, solo queda la del componente Dialog */}
             </div>
 
             <div className="p-6 space-y-6" ref={printRef}>
@@ -519,8 +517,9 @@ export default function RouteSlipsPage() {
 
             <div className="p-4 bg-zinc-50 border-t flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setViewSlip(null)}>Cerrar</Button>
-                <Button className="gap-2 bg-blue-600 text-white hover:bg-blue-700" onClick={handlePrint}>
-                    <Printer className="h-4 w-4" /> Imprimir / Guardar como PDF
+                {/* 🟢 CAMBIO 2: Botón sin flecha, solo texto */}
+                <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={handlePrint}>
+                    Descargar
                 </Button>
             </div>
         </DialogContent>
