@@ -12,6 +12,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import storage from "./storage";
 
+// Configuración de almacenamiento
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.resolve(process.cwd(), "uploads");
@@ -20,20 +21,21 @@ const storageMulter = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Aseguramos que la extensión sea en minúsculas
+    // Forzamos extensión en minúsculas para evitar problemas de compatibilidad
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
 
-// 🟢 CAMBIO 1: Filtro para aceptar SOLO IMÁGENES
+// 🟢 FILTRO DE SEGURIDAD: SOLO IMÁGENES
 const upload = multer({ 
     storage: storageMulter,
     fileFilter: (req, file, cb) => {
+        // Aceptamos solo tipos de imagen (jpeg, png, webp, etc.)
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
         } else {
-            cb(null, false); // Rechaza el archivo silenciosamente o lanza error si prefieres
+            cb(null, false); 
         }
     }
 });
@@ -41,15 +43,17 @@ const upload = multer({
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // 🟢 CAMBIO 2: RUTA API SEGURA Y ROBUSTA PARA IMÁGENES
-  // Esta ruta reemplaza a la estática y fuerza la entrega del archivo
+  // 🟢 RUTA API ESPECIAL ANTI-CACHÉ
+  // Esta ruta sirve la imagen y le grita al navegador "¡NO LA GUARDES EN CACHÉ!"
   app.get("/api/uploads/:filename", (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(process.cwd(), 'uploads', filename);
 
     if (fs.existsSync(filePath)) {
-       // Forzamos cabeceras para evitar caché agresivo que causa la pantalla negra
-       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+       // Cabeceras críticas para solucionar el problema de "funciona una vez y luego no"
+       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+       res.setHeader('Pragma', 'no-cache');
+       res.setHeader('Expires', '0');
        res.sendFile(filePath);
     } else {
        res.status(404).send("Imagen no encontrada");
@@ -116,7 +120,6 @@ export function registerRoutes(app: Express): Server {
         createdAt: new Date()
       });
 
-      // Log action (Self-registration)
       await logAction({ id: uid, name: name }, "REGISTER", "User", `New driver registered: ${name}`, uid);
 
       req.login(newUser, (err: any) => {
@@ -233,19 +236,17 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // --- ROUTE SLIPS (Filtered by Role) ---
+  // --- ROUTE SLIPS ---
   app.post("/api/route-slips", verifyAuth, upload.any(), async (req, res) => {
      if (req.user?.role !== 'admin') return res.status(403).send("Unauthorized");
      try {
        const newId = randomUUID();
        let url = null;
-       // Nota: Como ahora filtramos solo imagenes en multer, esto seguirá funcionando para firmas si son imagenes
        if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
 
        const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
        
        await db.insert(routeSlips).values(data);
-
        await logAction(req.user, "CREATE", "Route Slip", `Created for date ${data.date}`, newId);
 
        try {
@@ -263,13 +264,9 @@ export function registerRoutes(app: Express): Server {
     try { 
       const data: any = { ...req.body }; 
       if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; 
-      
       if (data.isDuplicate === undefined) delete data.isDuplicate;
-
       await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); 
-      
       await logAction(req.user, "MODIFY", "Route Slip", `Modified ID: ...${req.params.id.slice(-6)}`, req.params.id);
-      
       res.json({ message: "Updated" }); 
     } catch (e) { res.status(500).send("Error"); } 
   });
@@ -277,20 +274,12 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
         if (req.user?.role === 'admin') {
-            const all = await db.query.routeSlips.findMany({ 
-                with: { driver: true, vehicle: true }, 
-                orderBy: (t, { desc }) => [desc(t.createdAt)] 
-            });
+            const all = await db.query.routeSlips.findMany({ with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.createdAt)] });
             return res.json(all);
         } else {
             const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user!.id) });
             if (!driver) return res.json([]);
-            
-            const mySlips = await db.query.routeSlips.findMany({ 
-                where: eq(routeSlips.driverId, driver.id), 
-                with: { driver: true, vehicle: true }, 
-                orderBy: (t, { desc }) => [desc(t.createdAt)] 
-            });
+            const mySlips = await db.query.routeSlips.findMany({ where: eq(routeSlips.driverId, driver.id), with: { driver: true, vehicle: true }, orderBy: (t, { desc }) => [desc(t.createdAt)] });
             return res.json(mySlips);
         }
     } catch (e) { console.error(e); res.status(500).json([]); }
@@ -315,9 +304,7 @@ export function registerRoutes(app: Express): Server {
       const did = randomUUID(); 
       const dData = { id: did, userId: uid, email, name, rut, phone, commune, address: address || null, licenseNumber, licenseClass, licenseDate, createdAt: new Date(), status: 'active' }; 
       await db.insert(drivers).values(dData); 
-      
       await logAction(req.user, "CREATE", "Driver", `Created driver: ${name}`, did);
-
       res.status(201).json(dData); 
     } catch (e) { console.error(e); res.status(500).send("Error"); } 
   });
@@ -334,12 +321,9 @@ export function registerRoutes(app: Express): Server {
     try { 
       const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); 
       if (!d) return res.status(404).send("Not found"); 
-      
       await db.delete(drivers).where(eq(drivers.id, req.params.id)); 
       if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); 
-      
       await logAction(req.user, "DELETE", "Driver", `Deleted driver: ${d.name}`, req.params.id);
-      
       res.json({ message: "Deleted" }); 
     } catch (e) { res.status(500).send("Error"); } 
   });
@@ -355,7 +339,6 @@ export function registerRoutes(app: Express): Server {
       const vid = randomUUID(); 
       const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; 
       await db.insert(vehicles).values(vData); 
-      
       await logAction(req.user, "CREATE", "Vehicle", `Created vehicle: ${req.body.plate}`, vid);
       res.status(201).json(vData); 
     } catch (e) { res.status(500).send("Error"); } 
@@ -377,25 +360,17 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error"); } 
   });
   
-  // --- PAYMENTS (Filtered by Role) ---
+  // --- PAYMENTS ---
   app.get("/api/payments", verifyAuth, async (req, res) => { 
       if (!req.user) return res.sendStatus(401); 
       try { 
           if (req.user.role === 'admin') {
-              const all = await db.query.payments.findMany({ 
-                  with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
-                  orderBy: (p, { desc }) => [desc(p.date)] 
-              }); 
+              const all = await db.query.payments.findMany({ with: { routeSlip: { with: { driver: true, vehicle: true } } }, orderBy: (p, { desc }) => [desc(p.date)] }); 
               return res.json(all); 
           } else {
               const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
               if (!driver) return res.json([]);
-              
-              const myPayments = await db.query.payments.findMany({ 
-                  where: eq(payments.driverId, driver.id), 
-                  with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
-                  orderBy: (p, { desc }) => [desc(p.date)] 
-              }); 
+              const myPayments = await db.query.payments.findMany({ where: eq(payments.driverId, driver.id), with: { routeSlip: { with: { driver: true, vehicle: true } } }, orderBy: (p, { desc }) => [desc(p.date)] }); 
               return res.json(myPayments);
           }
       } catch (e) { res.status(500).json([]); } 
@@ -405,6 +380,7 @@ export function registerRoutes(app: Express): Server {
       try { 
           const pid = randomUUID(); 
           let proof = null; 
+          // Guardamos la ruta. Nota: Esto guarda "uploads/archivo.jpg"
           if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; 
           
           const pData = { 
@@ -424,9 +400,7 @@ export function registerRoutes(app: Express): Server {
           if (req.body.routeSlipId) { 
               await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); 
           }
-          
           await logAction(req.user, "CREATE", "Payment", `Payment registered: $${pData.amount}`, pid);
-
           res.status(201).json(pData); 
       } catch (e) { console.error(e); res.status(500).send("Error"); } 
   });
@@ -439,11 +413,8 @@ export function registerRoutes(app: Express): Server {
             data.proofOfPayment = `uploads/${req.files[0].filename}`;
         }
         if (data.amount) data.amount = parseInt(data.amount);
-
         await db.update(payments).set(data).where(eq(payments.id, pId));
-        
         await logAction(req.user, "MODIFY", "Payment", `Payment updated ID: ...${pId.slice(-6)}`, pId);
-
         res.json({ message: "Payment updated" });
     } catch (e) {
         console.error("Error updating payment:", e);

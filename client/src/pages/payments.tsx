@@ -6,11 +6,11 @@ import {
   DollarSign,
   Eye,
   Edit,
-  FileText,
   ExternalLink,
   Upload,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Image as ImageIcon
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -43,7 +43,6 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
-// Esquema de validación
 const insertPaymentSchema = z.object({
   routeSlipId: z.string().min(1, "Debes seleccionar una hoja de ruta"),
   amount: z.string().min(1, "El monto es obligatorio"),
@@ -57,7 +56,7 @@ export default function PaymentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
-  // 🟢 ESTADO: Solo guarda la URL, porque ahora todo será imagen
+  // Guardamos solo la URL de la imagen a visualizar
   const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
   
   const [file, setFile] = useState<File | null>(null);
@@ -65,7 +64,6 @@ export default function PaymentsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // 1. OBTENER PAGOS
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
@@ -75,7 +73,6 @@ export default function PaymentsPage() {
     },
   });
 
-  // 2. OBTENER HOJAS DE RUTA
   const { data: routeSlips = [] } = useQuery({
     queryKey: ["route-slips"], 
     queryFn: async () => {
@@ -85,7 +82,6 @@ export default function PaymentsPage() {
     }
   });
 
-  // --- KPIs ---
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
   const totalPaymentsCount = payments.length;
   
@@ -98,7 +94,6 @@ export default function PaymentsPage() {
 
   const totalAmount = filteredPayments.reduce((sum: number, p: any) => sum + (parseInt(p.amount) || 0), 0);
 
-  // --- FORMULARIO ---
   const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
@@ -112,7 +107,7 @@ export default function PaymentsPage() {
     setEditingPayment(null);
     setFile(null);
     reset({
-      amount: "1800", // Valor fijo inicial
+      amount: "1800",
       date: new Date().toISOString().split('T')[0],
       routeSlipId: ""
     });
@@ -163,14 +158,15 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 FUNCIÓN DE VISUALIZACIÓN DE IMÁGENES
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN DE IMÁGENES (Solución caché + rutas antiguas)
   const handleViewFile = (dbPath: string) => {
     if (!dbPath) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // Extraer solo el nombre del archivo
+    // 1. Limpiamos la ruta. Esto arregla archivos antiguos que tengan "uploads/" o "\"
+    // Toma siempre la parte final (el nombre del archivo)
     const filename = dbPath.split(/[/\\]/).pop();
 
     if (!filename) {
@@ -178,8 +174,7 @@ export default function PaymentsPage() {
        return;
     }
     
-    // Construimos la URL segura de la API
-    // 🟢 IMPORTANTE: Agregamos ?t=TIMESTAMP para evitar que el navegador guarde versiones rotas en caché
+    // 2. Construimos la URL segura + TIMESTAMP para romper la caché
     const secureUrl = `/api/uploads/${filename}?t=${Date.now()}`;
     
     setViewFileUrl(secureUrl);
@@ -275,7 +270,7 @@ export default function PaymentsPage() {
                         className="h-8 text-xs gap-2"
                         onClick={() => handleViewFile(p.proofOfPayment)}
                       >
-                        <Eye className="h-3 w-3" /> Ver Imagen
+                        <ImageIcon className="h-3 w-3" /> Ver Imagen
                       </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">Sin archivo</span>
@@ -369,7 +364,7 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR SOLO IMÁGENES */}
+      {/* 🟢 MODAL VISUALIZADOR DE SOLO IMÁGENES */}
       <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
@@ -395,8 +390,9 @@ export default function PaymentsPage() {
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
                    onError={(e) => {
+                      // Si la imagen falla (ej: es un PDF antiguo), mostramos mensaje amigable
                       (e.target as HTMLImageElement).style.display = 'none';
-                      toast({ title: "Error", description: "No se pudo cargar la imagen", variant: "destructive" });
+                      toast({ title: "Formato no soportado", description: "Este archivo no es una imagen o ha sido movido.", variant: "destructive" });
                    }}
                  />
              ) : (
