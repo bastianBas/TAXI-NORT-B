@@ -11,24 +11,21 @@ import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
 import storage from "./storage";
+import mime from "mime"; // Aseguramos detección de tipos
 
-// --- CONFIGURACIÓN DE SUBIDA DE IMÁGENES ---
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.resolve(process.cwd(), "uploads");
-    // Asegurar que la carpeta existe
     if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
     cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Forzamos extensión en minúsculas (.JPG -> .jpg) para evitar errores de Linux vs Windows
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
 
-// Filtro: Solo aceptamos imágenes
 const upload = multer({ 
     storage: storageMulter,
     fileFilter: (req, file, cb) => {
@@ -43,31 +40,33 @@ const upload = multer({
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // 🟢 RUTA API PARA SERVIR IMÁGENES (SOLUCIÓN DEFINITIVA)
+  // 🟢 RUTA API MANUAL Y ESTRICTA (Anti-Caché)
   app.get("/api/uploads/:filename", (req, res) => {
     const filename = req.params.filename;
-    
-    // Buscamos el archivo en la carpeta uploads del servidor
-    const filePath = path.resolve(process.cwd(), 'uploads', filename);
+    // Ruta absoluta segura
+    const filePath = path.join(process.cwd(), 'uploads', filename);
 
-    // DEBUG: Verás esto en tu terminal si hay errores
-    // console.log(`[Server] Solicitando imagen: ${filename} -> Ruta: ${filePath}`);
+    // Logs para depuración en la terminal del servidor
+    // console.log(`Solicitando archivo: ${filename}`);
 
     if (fs.existsSync(filePath)) {
-       // CABECERAS ANTI-CACHÉ: Esto soluciona el error de "funciona una vez y luego no"
+       // Detectar tipo MIME (image/png, image/jpeg)
+       const mimeType = mime.getType(filePath) || 'application/octet-stream';
+       res.setHeader('Content-Type', mimeType);
+       
+       // Cabeceras para MATAR la caché del navegador
        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
        res.setHeader('Pragma', 'no-cache');
        res.setHeader('Expires', '0');
-       res.setHeader('Surrogate-Control', 'no-store');
        
        res.sendFile(filePath);
     } else {
-       console.error(`[Server] Error 404: No se encontró el archivo ${filePath}`);
-       res.status(404).send("Imagen no encontrada en el servidor");
+       console.error(`[404] No encontrado: ${filePath}`);
+       res.status(404).send("Archivo no encontrado");
     }
   });
 
-  // 🟢 HELPER: AUDIT LOG
+  // 🟢 HELPER: REGISTER AUDIT LOG
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
     if (!user) return;
     try {
@@ -387,7 +386,6 @@ export function registerRoutes(app: Express): Server {
       try { 
           const pid = randomUUID(); 
           let proof = null; 
-          // Guardamos la ruta. Ojo: La ruta se guarda relativa "uploads/nombre.jpg"
           if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; 
           
           const pData = { 

@@ -56,7 +56,9 @@ export default function PaymentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
+  // URL de la imagen que queremos ver
   const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
+  
   const [file, setFile] = useState<File | null>(null);
 
   const { toast } = useToast();
@@ -156,26 +158,24 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 FUNCIÓN DE VISUALIZACIÓN BLINDADA (Limpia rutas viejas y evita caché)
+  // 🟢 FUNCIÓN VISOR DEFINITIVA
   const handleViewFile = (dbPath: string) => {
     if (!dbPath) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // 1. Limpieza Agresiva: Convertimos "uploads\foto.png" o "uploads/foto.png" a "foto.png"
-    // Usamos split con expresión regular para atrapar barras normales (/) y de Windows (\)
+    // 1. Limpieza de ruta (quita uploads/, quita barras invertidas)
     const segments = dbPath.split(/[/\\]/);
-    const filename = segments.pop(); // Tomamos siempre lo último (el nombre del archivo)
+    const filename = segments.pop(); 
 
     if (!filename) {
-       toast({ variant: "destructive", title: "Error", description: "Ruta de archivo inválida" });
+       toast({ variant: "destructive", title: "Error", description: "Archivo inválido" });
        return;
     }
     
-    // 2. Construimos la URL apuntando a nuestra nueva ruta API
-    // Agregamos ?t=Date.now() para OBLIGAR al navegador a recargar la imagen si la abres dos veces
-    const secureUrl = `/api/uploads/${filename}?t=${Date.now()}`;
+    // 2. Construcción URL + Random ID para evitar caché a toda costa
+    const secureUrl = `/api/uploads/${filename}?r=${Math.random()}`;
     
     setViewFileUrl(secureUrl);
   };
@@ -364,8 +364,9 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR DE SOLO IMÁGENES */}
-      <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
+      {/* 🟢 MODAL VISUALIZADOR */}
+      {/* Usamos !viewFileUrl en onOpenChange para asegurarnos de que al cerrar se limpie el estado */}
+      <Dialog open={!!viewFileUrl} onOpenChange={(open) => { if(!open) setViewFileUrl(null); }}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -386,13 +387,14 @@ export default function PaymentsPage() {
           <div className="flex-1 bg-zinc-900/50 flex justify-center items-center p-4 relative overflow-hidden">
              {viewFileUrl ? (
                  <img 
+                   // 🟢 AQUÍ ESTÁ LA CLAVE: El atributo key fuerza a React a recrear la imagen desde cero
+                   key={viewFileUrl} 
                    src={viewFileUrl} 
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
                    onError={(e) => {
-                      // Si falla (ej: archivo viejo perdido o PDF renombrado), ocultamos y mostramos error
                       (e.target as HTMLImageElement).style.display = 'none';
-                      toast({ title: "No se pudo cargar", description: "Es posible que este archivo antiguo ya no exista o no sea una imagen.", variant: "destructive" });
+                      toast({ title: "Formato no soportado", description: "Este archivo no es una imagen válida o ha sido movido.", variant: "destructive" });
                    }}
                  />
              ) : (
