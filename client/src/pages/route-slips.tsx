@@ -48,18 +48,16 @@ import { useAuth } from "@/lib/auth";
 import EditControlModal from "@/components/EditControlModal";
 
 // --- VALIDACIÓN DEL FORMULARIO DE CREACIÓN ---
-// Modificado: Ahora pedimos hora de inicio en lugar de turno fijo
 const routeSlipSchema = z.object({
   driverId: z.string().min(1, "Selecciona un conductor"),
   vehicleId: z.string().min(1, "Selecciona un vehículo"),
   date: z.string().min(1, "Selecciona una fecha"),
-  startTime: z.string().min(1, "Selecciona hora de inicio"), // Nuevo campo obligatorio
-  // shift ya no es obligatorio en el formulario, lo manejamos internamente
+  startTime: z.string().min(1, "Selecciona hora de inicio"), 
 });
 
 type FormData = z.infer<typeof routeSlipSchema>;
 
-// Helper para mostrar los horarios (retrocompatibilidad con registros viejos)
+// Helper para mostrar los horarios 
 const getShiftLabel = (shift: string) => {
   switch(shift) {
     case 'mañana': return '08:00 - 18:00';
@@ -73,13 +71,13 @@ const getShiftLabel = (shift: string) => {
 export default function RouteSlipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Estado para Crear (Formulario antiguo modificado)
+  // Estado para Crear 
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   
   // Estado local para calcular la hora de fin en el modal de CREACIÓN
   const [createEndTime, setCreateEndTime] = useState("15:00"); 
 
-  // --- NUEVOS ESTADOS PARA EL MODAL DE EDICIÓN ---
+  // --- ESTADOS PARA EL MODAL DE EDICIÓN ---
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [slipToEdit, setSlipToEdit] = useState<any>(null);
 
@@ -89,7 +87,7 @@ export default function RouteSlipsPage() {
   // Referencia para impresión
   const printRef = useRef<HTMLDivElement>(null);
 
-  const { user } = useAuth();
+  const { user } = useAuth(); // <--- OBTENEMOS EL USUARIO AQUÍ
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -132,17 +130,16 @@ export default function RouteSlipsPage() {
   });
 
   // Configuración del Formulario (SOLO CREACIÓN)
-  const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(routeSlipSchema),
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
-      startTime: "08:00" // Hora por defecto
+      startTime: "08:00" 
     }
   });
 
   // --- LÓGICA DE APERTURA DE MODALES ---
 
-  // Abrir para CREAR
   const handleOpenCreate = () => {
     reset({
       date: new Date().toISOString().split('T')[0],
@@ -150,14 +147,13 @@ export default function RouteSlipsPage() {
       driverId: "",
       vehicleId: ""
     });
-    setCreateEndTime("15:00"); // Resetear hora fin calculada por defecto
+    setCreateEndTime("15:00"); 
     setIsCreateFormOpen(true);
   };
 
-  // Abrir para EDITAR (Usa el NUEVO modal EditControlModal)
   const handleOpenEditWithId = (slip: any) => {
       const dataFormatted = {
-          id: slip.id, // ID Necesario para actualizar
+          id: slip.id, 
           fecha: slip.date,
           conductor: { 
               id: slip.driverId, 
@@ -174,10 +170,10 @@ export default function RouteSlipsPage() {
       setIsEditModalOpen(true);
   }
 
-  // --- LÓGICA DE CÁLCULO DE HORA PARA EL FORMULARIO DE CREACIÓN ---
+  // --- LÓGICA DE CÁLCULO DE HORA ---
   const handleCreateTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newStartTime = e.target.value;
-    setValue("startTime", newStartTime); // Actualizamos el formulario
+    setValue("startTime", newStartTime); 
 
     if (!newStartTime) return;
 
@@ -196,11 +192,10 @@ export default function RouteSlipsPage() {
   // --- MUTACIÓN PARA CREAR (POST) ---
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      // Preparamos el payload con las horas calculadas
       const payload = { 
         ...data, 
-        endTime: createEndTime, // Enviamos la hora calculada
-        shift: 'personalizado', // Marcamos como personalizado
+        endTime: createEndTime, 
+        shift: 'personalizado', 
         status: 'active' 
       }; 
 
@@ -222,19 +217,18 @@ export default function RouteSlipsPage() {
     }
   });
 
-  // --- FUNCION PARA GUARDAR EDICIÓN (PUT) DESDE EL NUEVO MODAL ---
+  // --- FUNCION PARA GUARDAR EDICIÓN (PUT) ---
   const handleSaveEdit = async (formData: any) => {
     try {
         const payload = {
             date: formData.fecha,
-            driverId: formData.conductorId, // Mantenemos IDs originales
+            driverId: formData.conductorId, 
             vehicleId: formData.vehiculoId,
             startTime: formData.horaInicio, 
             endTime: formData.horaFin,      
             shift: 'personalizado' 
         };
 
-        // Usamos el ID guardado en slipToEdit
         const url = `/api/route-slips/${slipToEdit.id}`; 
         
         const res = await fetch(url, {
@@ -259,7 +253,6 @@ export default function RouteSlipsPage() {
     createMutation.mutate(data);
   };
 
-  // --- IMPRESIÓN ---
   const handlePrint = useReactToPrint({
     contentRef: printRef, 
     documentTitle: viewSlip ? `Hoja_Ruta_${viewSlip.date}` : "Hoja_Ruta",
@@ -273,6 +266,7 @@ export default function RouteSlipsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Control Diario</h1>
           <p className="text-muted-foreground">Bitácora de servicios y estado de pagos.</p>
         </div>
+        {/* PROTECCIÓN: Solo Admin puede ver el botón de CREAR */}
         {user?.role === 'admin' && (
           <Button onClick={handleOpenCreate} className="gap-2 bg-zinc-950 text-white hover:bg-zinc-900">
             <Plus className="h-4 w-4" /> Nuevo Control Diario
@@ -327,7 +321,6 @@ export default function RouteSlipsPage() {
                         {slip.vehicle?.plate}
                     </Badge>
                   </TableCell>
-                  {/* Visualización del horario: Priorizamos hora personalizada si existe */}
                   <TableCell className="text-muted-foreground text-sm">
                     {slip.startTime && slip.endTime 
                         ? `${slip.startTime} - ${slip.endTime}`
@@ -351,14 +344,17 @@ export default function RouteSlipsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                        {/* Botón VER */}
+                        {/* Botón VER (Visible para TODOS) */}
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => setViewSlip(slip)}>
                             <Eye className="h-4 w-4" />
                         </Button>
-                        {/* Botón EDITAR (Modificado para usar handleOpenEditWithId) */}
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEditWithId(slip)}>
-                            <Edit className="h-4 w-4" />
-                        </Button>
+                        
+                        {/* 🟢 PROTECCIÓN: Botón EDITAR (Solo Visible para ADMIN) */}
+                        {user?.role === 'admin' && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" onClick={() => handleOpenEditWithId(slip)}>
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -368,7 +364,7 @@ export default function RouteSlipsPage() {
         </Table>
       </div>
 
-      {/* MODAL FORMULARIO (CREAR - Actualizado con Horario Personalizado) */}
+      {/* MODAL FORMULARIO (CREAR) */}
       <Dialog open={isCreateFormOpen} onOpenChange={setIsCreateFormOpen}>
         <DialogContent className="sm:max-w-[425px] bg-white text-black">
           <DialogHeader>
@@ -412,11 +408,9 @@ export default function RouteSlipsPage() {
               {errors.vehicleId && <p className="text-xs text-red-500">{errors.vehicleId.message}</p>}
             </div>
 
-            {/* SECCIÓN DE HORARIO PERSONALIZADO (IGUAL QUE EDITAR) */}
             <div className="flex gap-4">
                 <div className="flex-1 space-y-2">
                   <Label>Inicio (Entrada)</Label>
-                  {/* Usamos onChange manual para disparar el cálculo */}
                   <Input 
                     type="time" 
                     defaultValue="08:00"
@@ -448,7 +442,7 @@ export default function RouteSlipsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* NUEVO MODAL DE EDICIÓN (INTEGRADO) */}
+      {/* NUEVO MODAL DE EDICIÓN */}
       <EditControlModal 
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
@@ -456,7 +450,7 @@ export default function RouteSlipsPage() {
         dataToEdit={slipToEdit}
       />
 
-      {/* MODAL DE VISUALIZACIÓN / QR / DESCARGA */}
+      {/* MODAL DE VISUALIZACIÓN */}
       <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
         <DialogContent className="sm:max-w-[600px] bg-white text-black p-0 overflow-hidden">
             <div className="p-6 pb-0 flex justify-between items-start">
@@ -469,7 +463,6 @@ export default function RouteSlipsPage() {
                 </Button>
             </div>
 
-            {/* CONTENIDO IMPRIMIBLE */}
             <div className="p-6 space-y-6" ref={printRef}>
                 <div className="flex justify-between items-center border-b pb-4">
                     <div>
@@ -492,7 +485,6 @@ export default function RouteSlipsPage() {
                     </div>
                     <div>
                         <p className="text-sm text-muted-foreground">Horario Asignado</p>
-                        {/* Ajuste en visualización para mostrar hora real si existe */}
                         <p className="font-medium">
                             {viewSlip?.startTime && viewSlip?.endTime 
                                 ? `${viewSlip.startTime} - ${viewSlip.endTime}` 
@@ -508,7 +500,6 @@ export default function RouteSlipsPage() {
                     </div>
                 </div>
 
-                {/* SECCIÓN QR */}
                 <div className="bg-zinc-50 p-4 rounded-lg flex flex-col items-center justify-center border border-zinc-100 mt-4">
                     <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider">Escanear para validar</p>
                     <div className="bg-white p-2 rounded shadow-sm">
