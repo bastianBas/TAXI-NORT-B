@@ -156,30 +156,26 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 FUNCIÓN MEJORADA: Maneja rutas viejas y nuevas
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN BLINDADA (Limpia rutas viejas y evita caché)
   const handleViewFile = (dbPath: string) => {
     if (!dbPath) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // Normalizamos las barras para evitar errores Windows/Linux
-    let cleanPath = dbPath.replace(/\\/g, '/');
+    // 1. Limpieza Agresiva: Convertimos "uploads\foto.png" o "uploads/foto.png" a "foto.png"
+    // Usamos split con expresión regular para atrapar barras normales (/) y de Windows (\)
+    const segments = dbPath.split(/[/\\]/);
+    const filename = segments.pop(); // Tomamos siempre lo último (el nombre del archivo)
 
-    // Si la ruta empieza con "uploads/", lo quitamos para quedarnos con lo que sigue
-    // Ejemplo: "uploads/proof-1/foto.png" -> "proof-1/foto.png"
-    // Ejemplo: "uploads/foto.png" -> "foto.png"
-    if (cleanPath.startsWith('uploads/')) {
-        cleanPath = cleanPath.substring(8); // 'uploads/' son 8 caracteres
-    }
-
-    if (!cleanPath) {
+    if (!filename) {
        toast({ variant: "destructive", title: "Error", description: "Ruta de archivo inválida" });
        return;
     }
     
-    // Construimos la URL usando el prefijo estático que definimos en el servidor
-    const secureUrl = `/api/uploads/${cleanPath}?t=${Date.now()}`;
+    // 2. Construimos la URL apuntando a nuestra nueva ruta API
+    // Agregamos ?t=Date.now() para OBLIGAR al navegador a recargar la imagen si la abres dos veces
+    const secureUrl = `/api/uploads/${filename}?t=${Date.now()}`;
     
     setViewFileUrl(secureUrl);
   };
@@ -368,7 +364,7 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL VISUALIZADOR DE SOLO IMÁGENES */}
+      {/* 🟢 MODAL VISUALIZADOR DE SOLO IMÁGENES */}
       <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
@@ -394,10 +390,9 @@ export default function PaymentsPage() {
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
                    onError={(e) => {
-                      // Si falla la carga (ej: era un PDF viejo y estamos intentando abrirlo como imagen)
-                      // Ocultamos la imagen rota y mostramos un mensaje amigable
+                      // Si falla (ej: archivo viejo perdido o PDF renombrado), ocultamos y mostramos error
                       (e.target as HTMLImageElement).style.display = 'none';
-                      toast({ title: "Formato no soportado", description: "Este archivo no es una imagen válida o ha sido movido.", variant: "destructive" });
+                      toast({ title: "No se pudo cargar", description: "Es posible que este archivo antiguo ya no exista o no sea una imagen.", variant: "destructive" });
                    }}
                  />
              ) : (
