@@ -57,8 +57,8 @@ export default function PaymentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
-  // Estado para el visor de archivos (URL y Tipo)
-  const [viewFile, setViewFile] = useState<{url: string, type: string} | null>(null);
+  // 🟢 ESTADO: Solo guarda la URL, porque ahora todo será imagen
+  const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
   
   const [file, setFile] = useState<File | null>(null);
 
@@ -134,7 +134,7 @@ export default function PaymentsPage() {
     try {
       const formData = new FormData();
       formData.append("routeSlipId", data.routeSlipId);
-      formData.append("amount", "1800"); // FORZAMOS EL VALOR EN EL ENVÍO TAMBIÉN
+      formData.append("amount", "1800"); 
       formData.append("date", data.date);
       formData.append("type", "transfer");
       
@@ -163,29 +163,26 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 FUNCIÓN DE VISUALIZACIÓN CORREGIDA (SOLUCIÓN DEFINITIVA)
-  // Ahora usa la ruta segura /api/uploads/ que configuramos en el servidor
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN DE IMÁGENES
   const handleViewFile = (dbPath: string) => {
     if (!dbPath) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // 1. Extraemos el nombre del archivo (ej: "123456-imagen.png") eliminando carpetas previas
-    // Soporta tanto barras normales (/) como invertidas (\)
+    // Extraer solo el nombre del archivo
     const filename = dbPath.split(/[/\\]/).pop();
 
-    if (!filename) return;
+    if (!filename) {
+       toast({ variant: "destructive", title: "Error", description: "Archivo inválido" });
+       return;
+    }
     
-    // 2. Construimos la URL segura de la API
-    const secureUrl = `/api/uploads/${filename}`;
+    // Construimos la URL segura de la API
+    // 🟢 IMPORTANTE: Agregamos ?t=TIMESTAMP para evitar que el navegador guarde versiones rotas en caché
+    const secureUrl = `/api/uploads/${filename}?t=${Date.now()}`;
     
-    // 3. Detectamos el tipo
-    const lowerPath = dbPath.toLowerCase();
-    const isPdf = lowerPath.endsWith('.pdf');
-    
-    // 4. Guardamos en el estado para abrir el modal
-    setViewFile({ url: secureUrl, type: isPdf ? 'pdf' : 'image' });
+    setViewFileUrl(secureUrl);
   };
 
   return (
@@ -276,10 +273,9 @@ export default function PaymentsPage() {
                         variant="outline" 
                         size="sm" 
                         className="h-8 text-xs gap-2"
-                        // Llamamos a la nueva función corregida
                         onClick={() => handleViewFile(p.proofOfPayment)}
                       >
-                        <Eye className="h-3 w-3" /> Ver Archivo
+                        <Eye className="h-3 w-3" /> Ver Imagen
                       </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">Sin archivo</span>
@@ -345,16 +341,17 @@ export default function PaymentsPage() {
                </div>
             </div>
 
+            {/* 🟢 INPUT SOLO IMÁGENES */}
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors mt-2" onClick={() => document.getElementById('file-upload')?.click()}>
                 <Upload className="h-8 w-8 text-gray-400 mb-2" />
                 <p className="text-sm font-medium text-gray-700">
-                  {file ? file.name : (editingPayment?.proofOfPayment ? "Archivo cargado (Click para cambiar)" : "Subir Comprobante")}
+                  {file ? file.name : (editingPayment?.proofOfPayment ? "Imagen cargada (Click para cambiar)" : "Subir Imagen Comprobante")}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Soporta: JPG, PNG, PDF</p>
+                <p className="text-xs text-gray-500 mt-1">Solo Imágenes (JPG, PNG)</p>
                 <Input 
                    id="file-upload" 
                    type="file" 
-                   accept="image/*,application/pdf" 
+                   accept="image/*" 
                    className="hidden" 
                    onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} 
                 />
@@ -372,16 +369,16 @@ export default function PaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR */}
-      <Dialog open={!!viewFile} onOpenChange={(open) => !open && setViewFile(null)}>
+      {/* 🟢 MODAL VISUALIZADOR SOLO IMÁGENES */}
+      <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
                <Eye className="h-4 w-4"/> Visualizador de Comprobante
             </h2>
-            {viewFile && (
+            {viewFileUrl && (
                 <a 
-                  href={viewFile.url} 
+                  href={viewFileUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-2"
@@ -392,16 +389,9 @@ export default function PaymentsPage() {
           </div>
           
           <div className="flex-1 bg-zinc-900/50 flex justify-center items-center p-4 relative overflow-hidden">
-             {viewFile ? (
-               viewFile.type === 'pdf' ? (
-                 <iframe 
-                   src={viewFile.url} 
-                   className="w-full h-full border-0 rounded bg-white" 
-                   title="PDF"
-                 />
-               ) : (
+             {viewFileUrl ? (
                  <img 
-                   src={viewFile.url} 
+                   src={viewFileUrl} 
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 
                    onError={(e) => {
@@ -409,7 +399,6 @@ export default function PaymentsPage() {
                       toast({ title: "Error", description: "No se pudo cargar la imagen", variant: "destructive" });
                    }}
                  />
-               )
              ) : (
                <p className="text-zinc-500">Cargando...</p>
              )}

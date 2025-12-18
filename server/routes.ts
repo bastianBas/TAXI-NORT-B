@@ -20,25 +20,39 @@ const storageMulter = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    // Aseguramos que la extensión sea en minúsculas
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
 
-const upload = multer({ storage: storageMulter });
+// 🟢 CAMBIO 1: Filtro para aceptar SOLO IMÁGENES
+const upload = multer({ 
+    storage: storageMulter,
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(null, false); // Rechaza el archivo silenciosamente o lanza error si prefieres
+        }
+    }
+});
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // 🟢 SOLUCIÓN APLICADA: RUTA API SEGURA PARA ARCHIVOS
-  // Reemplaza a app.use('/uploads'...) para evitar errores 404 en el visor
+  // 🟢 CAMBIO 2: RUTA API SEGURA Y ROBUSTA PARA IMÁGENES
+  // Esta ruta reemplaza a la estática y fuerza la entrega del archivo
   app.get("/api/uploads/:filename", (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(process.cwd(), 'uploads', filename);
 
     if (fs.existsSync(filePath)) {
-      res.sendFile(filePath);
+       // Forzamos cabeceras para evitar caché agresivo que causa la pantalla negra
+       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+       res.sendFile(filePath);
     } else {
-      res.status(404).send("Archivo no encontrado");
+       res.status(404).send("Imagen no encontrada");
     }
   });
 
@@ -156,7 +170,6 @@ export function registerRoutes(app: Express): Server {
       
       for (const loc of activeLocations) {
         const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, loc.vehicleId) });
-        // MySQL uses 0/1 for boolean sometimes, verify driver relation
         const slip = await db.query.routeSlips.findFirst({
            where: eq(routeSlips.vehicleId, loc.vehicleId),
            orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -226,6 +239,7 @@ export function registerRoutes(app: Express): Server {
      try {
        const newId = randomUUID();
        let url = null;
+       // Nota: Como ahora filtramos solo imagenes en multer, esto seguirá funcionando para firmas si son imagenes
        if (req.files && Array.isArray(req.files) && req.files.length > 0) url = `uploads/${req.files[0].filename}`;
 
        const data = { ...req.body, id: newId, signatureUrl: url, paymentStatus: 'pending', isDuplicate: false, createdAt: new Date() };
@@ -250,7 +264,6 @@ export function registerRoutes(app: Express): Server {
       const data: any = { ...req.body }; 
       if (req.files && Array.isArray(req.files) && req.files.length > 0) data.signatureUrl = `uploads/${req.files[0].filename}`; 
       
-      // Remove any undefined/null fields that might break update
       if (data.isDuplicate === undefined) delete data.isDuplicate;
 
       await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); 
