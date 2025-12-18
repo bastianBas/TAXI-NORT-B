@@ -56,9 +56,7 @@ export default function PaymentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   
-  // URL de la imagen que queremos ver
   const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
-  
   const [file, setFile] = useState<File | null>(null);
 
   const { toast } = useToast();
@@ -158,14 +156,15 @@ export default function PaymentsPage() {
     }
   };
 
-  // 🟢 FUNCIÓN VISOR DEFINITIVA
+  // 🟢 FUNCIÓN DE VISUALIZACIÓN A PRUEBA DE ERRORES
   const handleViewFile = (dbPath: string) => {
     if (!dbPath) {
        toast({ variant: "destructive", title: "Error", description: "No hay archivo adjunto" });
        return;
     }
     
-    // 1. Limpieza de ruta (quita uploads/, quita barras invertidas)
+    // 1. Limpieza Agresiva: Toma SIEMPRE la última parte del path (el nombre del archivo).
+    // Esto corrige automáticamente rutas como "uploads/foto.png", "uploads\foto.png" o "C:\fake\path\foto.png"
     const segments = dbPath.split(/[/\\]/);
     const filename = segments.pop(); 
 
@@ -174,7 +173,8 @@ export default function PaymentsPage() {
        return;
     }
     
-    // 2. Construcción URL + Random ID para evitar caché a toda costa
+    // 2. URL con Random ID para evitar caché a toda costa
+    // Usamos Math.random() para que la URL sea única en cada clic
     const secureUrl = `/api/uploads/${filename}?r=${Math.random()}`;
     
     setViewFileUrl(secureUrl);
@@ -365,7 +365,7 @@ export default function PaymentsPage() {
       </Dialog>
 
       {/* 🟢 MODAL VISUALIZADOR */}
-      {/* Usamos !viewFileUrl en onOpenChange para asegurarnos de que al cerrar se limpie el estado */}
+      {/* Al cerrar el modal, limpiamos la URL para obligar a una recarga limpia la próxima vez */}
       <Dialog open={!!viewFileUrl} onOpenChange={(open) => { if(!open) setViewFileUrl(null); }}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
@@ -387,8 +387,8 @@ export default function PaymentsPage() {
           <div className="flex-1 bg-zinc-900/50 flex justify-center items-center p-4 relative overflow-hidden">
              {viewFileUrl ? (
                  <img 
-                   // 🟢 AQUÍ ESTÁ LA CLAVE: El atributo key fuerza a React a recrear la imagen desde cero
-                   key={viewFileUrl} 
+                   // La propiedad key es vital para reiniciar el componente de imagen si cambia la URL
+                   key={viewFileUrl}
                    src={viewFileUrl} 
                    className="max-w-full max-h-full object-contain rounded" 
                    alt="Comprobante" 

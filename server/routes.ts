@@ -11,8 +11,8 @@ import fs from "fs";
 import express from "express";
 import bcrypt from "bcryptjs";
 import storage from "./storage";
-import mime from "mime"; // Aseguramos detección de tipos
 
+// Configuración de almacenamiento
 const storageMulter = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.resolve(process.cwd(), "uploads");
@@ -21,11 +21,13 @@ const storageMulter = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    // Forzar extensión a minúsculas para evitar problemas
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
 
+// Filtro: Solo imágenes
 const upload = multer({ 
     storage: storageMulter,
     fileFilter: (req, file, cb) => {
@@ -40,33 +42,33 @@ const upload = multer({
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
   
-  // 🟢 RUTA API MANUAL Y ESTRICTA (Anti-Caché)
+  // 🟢 RUTA API SIMPLIFICADA (Sin librería 'mime')
   app.get("/api/uploads/:filename", (req, res) => {
     const filename = req.params.filename;
-    // Ruta absoluta segura
-    const filePath = path.join(process.cwd(), 'uploads', filename);
+    const filePath = path.resolve(process.cwd(), 'uploads', filename);
 
-    // Logs para depuración en la terminal del servidor
-    // console.log(`Solicitando archivo: ${filename}`);
+    // console.log(`[Server] Solicitud de archivo: ${filename}`); // Descomenta para depurar
 
     if (fs.existsSync(filePath)) {
-       // Detectar tipo MIME (image/png, image/jpeg)
-       const mimeType = mime.getType(filePath) || 'application/octet-stream';
-       res.setHeader('Content-Type', mimeType);
-       
-       // Cabeceras para MATAR la caché del navegador
+       // Cabeceras para evitar que el navegador guarde la imagen rota en caché
        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
        res.setHeader('Pragma', 'no-cache');
        res.setHeader('Expires', '0');
        
-       res.sendFile(filePath);
+       // Express detecta automáticamente el Content-Type correcto
+       res.sendFile(filePath, (err) => {
+         if (err) {
+           console.error("[Server] Error al enviar archivo:", err);
+           if (!res.headersSent) res.status(500).send("Error al enviar archivo");
+         }
+       });
     } else {
-       console.error(`[404] No encontrado: ${filePath}`);
+       console.error(`[Server] 404 No encontrado: ${filePath}`);
        res.status(404).send("Archivo no encontrado");
     }
   });
 
-  // 🟢 HELPER: REGISTER AUDIT LOG
+  // 🟢 HELPER: AUDIT LOG
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
     if (!user) return;
     try {
@@ -386,6 +388,7 @@ export function registerRoutes(app: Express): Server {
       try { 
           const pid = randomUUID(); 
           let proof = null; 
+          // Guardamos la ruta.
           if (req.files && Array.isArray(req.files) && req.files.length > 0) proof = `uploads/${req.files[0].filename}`; 
           
           const pData = { 
