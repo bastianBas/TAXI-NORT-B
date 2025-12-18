@@ -37,8 +37,30 @@ export function registerRoutes(app: Express): Server {
   };
 
   // =================================================================
-  // ZONA PÚBLICA (Registro de Nuevos Conductores)
+  // ZONA PÚBLICA (Accesible SIN Login)
   // =================================================================
+
+  // 🟢 NUEVO ENDPOINT PARA EL QR (Permite ver el PDF sin loguearse)
+  app.get("/api/public/route-slips/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      // Buscamos la hoja de ruta con sus datos (Conductor y Vehículo)
+      const slip = await db.query.routeSlips.findFirst({
+        where: eq(routeSlips.id, id),
+        with: { driver: true, vehicle: true }
+      });
+      
+      if (!slip) return res.status(404).send("Documento no encontrado");
+      
+      // Devolvemos los datos al frontend público
+      res.json(slip);
+    } catch (e) {
+      console.error("Error fetching public slip:", e);
+      res.status(500).send("Error del servidor");
+    }
+  });
+
+  // Registro de Nuevos Conductores
   app.post("/api/register", async (req: any, res, next) => {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;

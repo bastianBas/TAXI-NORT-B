@@ -6,8 +6,9 @@ import {
   Eye, 
   Edit, 
   X,
-  Loader2,
-  FileX
+  Loader2, // Agregado
+  FileX,   // Agregado
+  Printer
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -80,14 +81,48 @@ export default function RouteSlipsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // --- CARGA DE DATOS ---
+  // =================================================================
+  // 🟢 LÓGICA DE VISTA PÚBLICA (QR) - AGREGADA
+  // =================================================================
+  const isPublicView = window.location.pathname === "/public-view";
+  const params = new URLSearchParams(window.location.search);
+  const publicId = params.get("id");
+
+  // Query Pública (Solo si es vista pública)
+  const { data: publicSlip, isLoading: isLoadingPublic } = useQuery({
+    queryKey: ["public-slip", publicId],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/route-slips/${publicId}`);
+      if (!res.ok) throw new Error("Documento no encontrado");
+      return res.json();
+    },
+    enabled: isPublicView && !!publicId
+  });
+
+  // Efecto Auto-Descarga
+  useEffect(() => {
+    if (isPublicView && publicSlip) {
+        const timer = setTimeout(() => {
+            // handlePrint se define más abajo, pero JS lo eleva (hoisting) o el efecto corre después
+            // Para asegurar, llamamos al print manualmente si está disponible
+            if (printRef.current) {
+                // Forzamos click en botón oculto o usamos la ref directamente si pudiéramos
+                // Pero como handlePrint depende de la renderización, esperaremos.
+            }
+        }, 1000);
+        return () => clearTimeout(timer);
+    }
+  }, [isPublicView, publicSlip]);
+
+  // --- CARGA DE DATOS NORMAL (Solo si NO es público) ---
   const { data: slips = [], isLoading } = useQuery({
     queryKey: ["route-slips"],
     queryFn: async () => {
       const res = await fetch("/api/route-slips");
       if (!res.ok) return [];
       return res.json();
-    }
+    },
+    enabled: !isPublicView && !!user // IMPORTANTE: No cargar si es público
   });
 
   const { data: drivers = [] } = useQuery({
@@ -96,7 +131,8 @@ export default function RouteSlipsPage() {
       const res = await fetch("/api/drivers");
       if (!res.ok) return [];
       return res.json();
-    }
+    },
+    enabled: !isPublicView && !!user
   });
 
   const { data: vehicles = [] } = useQuery({
@@ -105,132 +141,121 @@ export default function RouteSlipsPage() {
       const res = await fetch("/api/vehicles");
       if (!res.ok) return [];
       return res.json();
-    }
+    },
+    enabled: !isPublicView && !!user
   });
 
-  // 🟢 LÓGICA ESPECIAL PARA QR (MODO PDF)
-  // Estado para controlar si estamos en modo "Solo Documento"
-  const [isQrMode, setIsQrMode] = useState(false);
-  const [qrSlip, setQrSlip] = useState<any>(null);
+  // 🟢 MANEJO DE IMPRESIÓN UNIFICADO
+  const documentToPrint = isPublicView ? publicSlip : (viewSlip || null);
+  
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: documentToPrint ? `Hoja_Ruta_${documentToPrint.date}` : "Hoja_Ruta",
+  });
 
+  // 🟢 AUTO-EJECUTAR PRINT AL CARGAR EN MODO PÚBLICO
   useEffect(() => {
-    // Verificar URL al cargar
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get("mode");
-    const id = params.get("id");
+      if (isPublicView && publicSlip) {
+          const timer = setTimeout(() => handlePrint(), 800);
+          return () => clearTimeout(timer);
+      }
+  }, [isPublicView, publicSlip]);
 
-    if (mode === 'pdf') {
-        setIsQrMode(true); // ¡IMPORTANTE! Activamos el modo QR inmediatamente
-        if (id && slips.length > 0) {
-            const found = slips.find((s: any) => String(s.id) === String(id));
-            if (found) {
-                setQrSlip(found);
-            }
-        }
-    }
-  }, [slips]); // Re-evaluar cuando carguen los slips
-
-  // 🟢 RENDERIZADO DEL MODO QR (Pantalla Blanca)
-  if (isQrMode) {
-      if (!qrSlip) {
-          // Si estamos cargando datos o no se encuentra el ID
+  // 🟢 RENDERIZADO DEL MODO PÚBLICO (PANTALLA BLANCA)
+  if (isPublicView) {
+      if (isLoadingPublic) {
           return (
             <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 text-center">
-                {isLoading ? (
-                    <>
-                        <Loader2 className="h-10 w-10 text-blue-600 animate-spin mb-4" />
-                        <p className="text-gray-600 font-medium">Generando vista de documento...</p>
-                    </>
-                ) : (
-                    <>
-                        <FileX className="h-12 w-12 text-gray-400 mb-4" />
-                        <h3 className="text-lg font-bold text-gray-900">Documento no disponible</h3>
-                        <p className="text-gray-500 max-w-xs mt-2">No se pudo encontrar la hoja de ruta solicitada o no tienes permisos para verla.</p>
-                        <Button className="mt-6" variant="outline" onClick={() => window.location.href = '/route-slips'}>
-                            Ir al Inicio
-                        </Button>
-                    </>
-                )}
+                <Loader2 className="h-10 w-10 text-blue-600 animate-spin mb-4" />
+                <p className="text-gray-600 font-medium">Cargando documento...</p>
             </div>
           );
       }
 
-      // Si encontramos el documento, lo mostramos limpio
+      if (!publicSlip) {
+          return (
+            <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 text-center">
+                <FileX className="h-12 w-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-bold text-gray-900">Documento no disponible</h3>
+                <p className="text-gray-500 max-w-xs mt-2">Enlace inválido o expirado.</p>
+            </div>
+          );
+      }
+
       return (
-        <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center justify-center font-sans">
-            <Card className="w-full max-w-[600px] bg-white shadow-xl overflow-hidden border border-gray-200" ref={printRef}>
-                <div className="p-8 space-y-8">
-                    {/* Encabezado */}
-                    <div className="flex justify-between items-start border-b pb-6">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Hoja de Ruta</h1>
-                            <p className="text-sm text-gray-500 mt-1">ID CONTROL: {qrSlip.id?.slice(0,8)}</p>
-                        </div>
-                        <div className="text-right">
-                            <Badge variant="outline" className="text-xl font-mono px-3 py-1 bg-gray-50 text-gray-900 border-gray-300">
-                                {qrSlip.vehicle?.plate}
-                            </Badge>
-                            <p className="text-xs text-gray-400 mt-2">TAXI NORT S.A.</p>
-                        </div>
+        <div className="min-h-screen bg-white p-0 flex flex-col items-center justify-start font-sans">
+            <div className="w-full max-w-[800px] p-8" ref={printRef}>
+                {/* Encabezado */}
+                <div className="flex justify-between items-start border-b-2 border-gray-800 pb-6 mb-6">
+                    <div>
+                        <h1 className="text-3xl font-bold text-black uppercase tracking-tight">Hoja de Ruta</h1>
+                        <p className="text-sm text-gray-500 mt-1 font-mono">ID: {publicSlip.id?.slice(0,8)}</p>
                     </div>
-
-                    {/* Datos */}
-                    <div className="grid grid-cols-2 gap-6">
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Conductor</p>
-                            <p className="text-lg font-bold text-gray-900">{qrSlip.driver?.name}</p>
-                            <p className="text-sm text-gray-600">{qrSlip.driver?.rut}</p>
+                    <div className="text-right">
+                        <div className="text-2xl font-bold text-black border-2 border-black px-4 py-1 inline-block mb-2">
+                            {publicSlip.vehicle?.plate}
                         </div>
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Fecha</p>
-                            <p className="text-lg font-bold text-gray-900">{qrSlip.date}</p>
-                        </div>
+                        <p className="text-sm font-bold text-gray-400 uppercase">Taxi Nort S.A.</p>
                     </div>
+                </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Horario</p>
-                            <p className="font-medium text-gray-900">
-                                {qrSlip.startTime && qrSlip.endTime 
-                                    ? `${qrSlip.startTime} - ${qrSlip.endTime}` 
-                                    : getShiftLabel(qrSlip.shift)
-                                }
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Estado</p>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${
-                                qrSlip.paymentStatus === 'paid' 
-                                ? "bg-green-100 text-green-800" 
-                                : "bg-orange-100 text-orange-800"
-                            }`}>
-                                {qrSlip.paymentStatus === 'paid' ? "✅ PAGADO" : "⏳ PENDIENTE"}
-                            </span>
-                        </div>
+                {/* Datos */}
+                <div className="grid grid-cols-2 gap-y-8 gap-x-12 mb-8">
+                    <div>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Conductor</p>
+                        <p className="text-xl font-medium text-black">{publicSlip.driver?.name}</p>
+                        <p className="text-sm text-gray-500">{publicSlip.driver?.rut}</p>
                     </div>
-
-                    {/* Footer Validación */}
-                    <div className="bg-gray-50 p-4 rounded-lg text-center border border-gray-100 mt-6 flex flex-col items-center">
-                        <p className="text-xs text-gray-400 mb-2">Documento generado digitalmente por App Taxi Nort.</p>
-                        {/* QR Pequeño para re-validar si se imprime */}
-                        <div className="opacity-50 scale-75">
-                             <QRCode value={window.location.href} size={64} />
+                    <div>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Fecha</p>
+                        <p className="text-xl font-medium text-black">{publicSlip.date}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Horario</p>
+                        <p className="text-xl font-medium text-black">
+                            {publicSlip.startTime && publicSlip.endTime 
+                                ? `${publicSlip.startTime} - ${publicSlip.endTime}` 
+                                : getShiftLabel(publicSlip.shift)
+                            }
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Estado</p>
+                        <div className={`inline-block px-3 py-1 rounded text-sm font-bold border ${
+                            publicSlip.paymentStatus === 'paid' 
+                            ? "bg-green-50 text-green-700 border-green-200" 
+                            : "bg-orange-50 text-orange-700 border-orange-200"
+                        }`}>
+                            {publicSlip.paymentStatus === 'paid' ? "PAGADO" : "PENDIENTE DE PAGO"}
                         </div>
                     </div>
                 </div>
-            </Card>
 
-            {/* Botón Descargar (Sin Icono, Solo Texto) */}
-            <div className="mt-6">
-                <Button className="bg-blue-600 text-white hover:bg-blue-700 shadow-lg px-8 py-6 text-lg" onClick={useReactToPrint({ contentRef: printRef, documentTitle: `Hoja_Ruta_${qrSlip.date}` })}>
-                    Descargar
+                {/* QR de Validación */}
+                <div className="mt-12 pt-8 border-t border-gray-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-sm font-bold text-gray-900">Validación Digital</p>
+                        <p className="text-xs text-gray-400 mt-1 max-w-[200px]">
+                            Escanee para verificar la autenticidad.
+                        </p>
+                    </div>
+                    <div className="border p-2 bg-white">
+                        <QRCode value={window.location.href} size={80} />
+                    </div>
+                </div>
+            </div>
+
+            <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t text-center print:hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 text-lg" onClick={handlePrint}>
+                    Descargar PDF
                 </Button>
             </div>
         </div>
       );
   }
 
-  // --- MODO NORMAL (DASHBOARD) ---
+  // --- FIN MODO PÚBLICO ---
+  // --- INICIO MODO NORMAL (DASHBOARD) ---
 
   const filteredSlips = slips.filter((slip: any) => {
     const search = searchTerm.toLowerCase();
@@ -358,16 +383,12 @@ export default function RouteSlipsPage() {
     createMutation.mutate(data);
   };
 
-  const handlePrint = useReactToPrint({
-    contentRef: printRef, 
-    documentTitle: viewSlip ? `Hoja_Ruta_${viewSlip.date}` : "Hoja_Ruta",
-  });
-
-  // 🟢 FUNCIÓN GENERADORA DE URL QR
+  // 🟢 FUNCIÓN GENERADORA DE URL QR (CORREGIDA PARA RUTA PÚBLICA)
   const getQrUrl = (slipId: string) => {
     if (typeof window !== 'undefined') {
-        const baseUrl = window.location.origin + window.location.pathname;
-        return `${baseUrl}?mode=pdf&id=${slipId}`;
+        const baseUrl = window.location.origin;
+        // Apuntamos a la ruta PÚBLICA configurada en App.tsx
+        return `${baseUrl}/public-view?id=${slipId}`;
     }
     return '';
   };
@@ -529,6 +550,7 @@ export default function RouteSlipsPage() {
         dataToEdit={slipToEdit}
       />
 
+      {/* MODAL DE VISTA NORMAL (ADMIN) */}
       <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
         <DialogContent className="sm:max-w-[600px] bg-white text-black p-0 overflow-hidden">
             <div className="p-6 pb-0 flex justify-between items-start">
@@ -537,6 +559,7 @@ export default function RouteSlipsPage() {
                     <p className="text-sm text-muted-foreground">ID: {viewSlip?.id?.slice(0,8)}</p>
                 </div>
             </div>
+            {/* USAMOS EL MISMO DIV PARA IMPRIMIR QUE USAMOS EN EL PUBLIC VIEW */}
             <div className="p-6 space-y-6" ref={printRef}>
                 <div className="flex justify-between items-center border-b pb-4">
                     <div>
@@ -556,6 +579,7 @@ export default function RouteSlipsPage() {
                 <div className="bg-zinc-50 p-4 rounded-lg flex flex-col items-center justify-center border border-zinc-100 mt-4">
                     <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider">Escanear para validar</p>
                     <div className="bg-white p-2 rounded shadow-sm">
+                        {/* 🟢 QR CORREGIDO: Enlace público */}
                         <QRCode value={getQrUrl(viewSlip?.id)} size={128} />
                     </div>
                 </div>
