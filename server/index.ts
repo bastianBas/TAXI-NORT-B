@@ -11,28 +11,26 @@ const app = express();
 
 app.set("trust proxy", true);
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// 🟢 PASO 3 REALIZADO: AUMENTAMOS EL LÍMITE DE TAMAÑO
+// Cambiamos el límite por defecto (100kb) a 50mb para permitir subida de imágenes en Base64
+app.use(express.json({ limit: '50mb' })); 
+app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+
 app.use(cookieParser());
 
 // 🟢 CORRECCIÓN CRÍTICA PARA ARCHIVOS ESTÁTICOS
-// 1. Obtenemos la ruta absoluta a la carpeta 'uploads' desde la raíz del proyecto.
-//    Usamos path.resolve(process.cwd(), 'uploads') para que sea seguro en cualquier entorno.
 const uploadsDir = path.resolve(process.cwd(), "uploads");
 
-// 2. Aseguramos que la carpeta exista antes de intentar servirla.
 if (!fs.existsSync(uploadsDir)) {
   try {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log(`📁 [INFO] Carpeta de subidas creada en: ${uploadsDir}`);
   } catch (err) {
     console.error("❌ [ERROR] No se pudo crear la carpeta 'uploads':", err);
-    // Si esto falla, las imágenes no funcionarán, pero el server debe seguir.
   }
 }
 
-// 3. Servimos la carpeta 'uploads' en la URL '/uploads'.
-//    Ejemplo: Un archivo en /app/uploads/foto.jpg será accesible en http://host/uploads/foto.jpg
 console.log(`📂 [INFO] Sirviendo archivos estáticos desde: ${uploadsDir}`);
 app.use("/uploads", express.static(uploadsDir));
 
@@ -42,9 +40,7 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (req.path.startsWith("/api")) {
-      // Simplificamos el log para que sea menos ruidoso
       const logLine = `${req.method} ${req.path} ${res.statusCode} in ${duration}ms`;
-       // log(logLine); // Descomenta si usas la función log personalizada
        console.log(logLine);
     }
   });
@@ -71,7 +67,6 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    // Puerto estándar para Cloud Run
     const port = parseInt(process.env.PORT || '8080', 10);
     
     server.listen(port, '0.0.0.0', () => {
@@ -82,6 +77,6 @@ app.use((req, res, next) => {
 
   } catch (err) {
     console.error("❌ Error FATAL al iniciar el servidor:", err);
-    process.exit(1); // Salir si algo crítico falla al inicio
+    process.exit(1);
   }
 })();

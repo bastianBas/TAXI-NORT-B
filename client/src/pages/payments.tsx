@@ -15,8 +15,8 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { format } from "date-fns"; // Asegúrate de tener esto
-import { es } from "date-fns/locale"; // Asegúrate de tener esto
+import { format } from "date-fns"; 
+import { es } from "date-fns/locale"; 
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
+// IMPORTAMOS EL COMPRESOR (Asegúrate de haber creado el archivo en el Paso 1)
+import { compressImage } from "@/lib/compressor";
+
 // Esquema de validación idéntico al original
 const insertPaymentSchema = z.object({
   routeSlipId: z.string().min(1, "Debes seleccionar una hoja de ruta"),
@@ -54,7 +57,7 @@ const insertPaymentSchema = z.object({
 
 type FormData = z.infer<typeof insertPaymentSchema>;
 
-// 🟢 FUNCIÓN VITAL: Convierte la imagen a Texto (Base64) para que no se borre del servidor
+// FUNCIÓN VITAL: Convierte la imagen a Texto (Base64)
 const convertToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -72,6 +75,7 @@ export default function PaymentsPage() {
   // Estado para el visor
   const [viewFileUrl, setViewFileUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false); // Nuevo estado para feedback visual
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -95,7 +99,7 @@ export default function PaymentsPage() {
     }
   });
 
-  // 2. CÁLCULOS KPI (Manteniendo tu lógica original)
+  // 2. CÁLCULOS KPI
   const pendingSlipsCount = routeSlips.filter((s: any) => s.paymentStatus !== 'paid').length;
   const totalPaymentsCount = payments.length;
   
@@ -140,13 +144,34 @@ export default function PaymentsPage() {
     setIsModalOpen(true);
   };
 
-  // 🟢 4. ENVÍO DE DATOS (JSON + BASE64)
+  // NUEVA FUNCIÓN: Maneja la selección de archivo y lo comprime
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    try {
+        setIsCompressing(true);
+        toast({ title: "Procesando imagen...", description: "Optimizando tamaño para subida rápida." });
+        
+        // Comprimimos la imagen usando la utilidad
+        const compressed = await compressImage(selectedFile);
+        
+        setFile(compressed);
+        toast({ title: "Imagen lista", description: "Tamaño reducido correctamente." });
+    } catch (error) {
+        console.error("Error compresión:", error);
+        toast({ title: "Error", description: "No se pudo procesar la imagen. Intenta con otra.", variant: "destructive" });
+    } finally {
+        setIsCompressing(false);
+    }
+  };
+
+  // 4. ENVÍO DE DATOS
   const onSubmit = async (data: FormData) => {
     try {
-      // Construimos el objeto JSON
       const payload: any = {
         routeSlipId: data.routeSlipId,
-        amount: "1800", // Valor fijo según tu lógica
+        amount: "1800",
         date: data.date,
         type: "transfer"
       };
@@ -157,7 +182,6 @@ export default function PaymentsPage() {
         payload.vehicleId = selectedSlip.vehicleId;
       }
 
-      // Si hay archivo nuevo, lo convertimos a texto
       if (file) {
         const base64 = await convertToBase64(file);
         payload.proofOfPayment = base64; 
@@ -166,7 +190,6 @@ export default function PaymentsPage() {
       const url = editingPayment ? `/api/payments/${editingPayment.id}` : "/api/payments";
       const method = editingPayment ? "PUT" : "POST";
 
-      // Enviamos como application/json
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -180,20 +203,17 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["route-slips"] }); 
     } catch (e) {
-      toast({ title: "Error", description: "No se pudo guardar. Verifica el tamaño de la imagen.", variant: "destructive" });
+      toast({ title: "Error", description: "No se pudo guardar. Verifica tu conexión.", variant: "destructive" });
     }
   };
 
-  // 🟢 5. VISOR DE IMÁGENES (Compatible con Base64 y Rutas viejas)
+  // 5. VISOR DE IMÁGENES
   const handleViewFile = (data: string) => {
     if (!data) return toast({ title: "Sin archivo", variant: "destructive" });
     
-    // Si empieza con 'data:', es una imagen Base64 (las nuevas) -> Funciona siempre
     if (data.startsWith('data:')) {
         setViewFileUrl(data);
     } else {
-        // Si no, es una ruta vieja. Intentamos limpiarla y apuntar al API
-        // Ojo: Si el servidor borró la carpeta física, esto fallará, pero es lo mejor que podemos hacer con datos viejos.
         const filename = data.split(/[/\\]/).pop();
         if (filename) setViewFileUrl(`/api/uploads/${filename}`);
     }
@@ -279,7 +299,6 @@ export default function PaymentsPage() {
               filteredPayments.map((p: any) => (
                 <TableRow key={p.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium">
-                    {/* Aseguramos formato fecha */}
                     {p.date ? format(new Date(p.date), "dd/MM/yyyy", { locale: es }) : p.routeSlip?.date}
                   </TableCell>
                   <TableCell>{p.routeSlip?.driver?.name}</TableCell>
@@ -294,7 +313,6 @@ export default function PaymentsPage() {
                         variant="outline" 
                         size="sm" 
                         className="h-8 text-xs gap-2"
-                        // 🟢 LLAMADA AL VISOR
                         onClick={() => handleViewFile(p.proofOfPayment)}
                       >
                         <ImageIcon className="h-3 w-3" /> Ver Imagen
@@ -344,38 +362,42 @@ export default function PaymentsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-               <div className="space-y-2">
-                 <Label>Monto a Pagar</Label>
-                 <Input 
-                   type="number" 
-                   {...register("amount")} 
-                   className="bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed" 
-                   readOnly
-                 />
-               </div>
-               <div className="space-y-2">
-                 <Label>Fecha Pago</Label>
-                 <Input 
-                   type="date" 
-                   {...register("date")} 
-                   className="bg-white border-gray-200" 
-                 />
-               </div>
+                <div className="space-y-2">
+                  <Label>Monto a Pagar</Label>
+                  <Input 
+                    type="number" 
+                    {...register("amount")} 
+                    className="bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed" 
+                    readOnly
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fecha Pago</Label>
+                  <Input 
+                    type="date" 
+                    {...register("date")} 
+                    className="bg-white border-gray-200" 
+                  />
+                </div>
             </div>
 
-            {/* INPUT SUBIDA IMAGEN */}
+            {/* INPUT SUBIDA IMAGEN (ACTUALIZADO) */}
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors mt-2" onClick={() => document.getElementById('file-upload')?.click()}>
-                <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                <Upload className={`h-8 w-8 mb-2 ${isCompressing ? "text-blue-500 animate-bounce" : "text-gray-400"}`} />
                 <p className="text-sm font-medium text-gray-700">
-                  {file ? file.name : (editingPayment?.proofOfPayment ? "Imagen cargada (Click para cambiar)" : "Subir Imagen Comprobante")}
+                  {isCompressing 
+                    ? "Comprimiendo..." 
+                    : (file ? `Listo: ${file.name}` : (editingPayment?.proofOfPayment ? "Imagen cargada (Click para cambiar)" : "Subir Imagen Comprobante"))}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Solo Imágenes (JPG, PNG)</p>
+                <p className="text-xs text-gray-500 mt-1">
+                    {isCompressing ? "Optimizando tamaño..." : "Solo Imágenes (JPG, PNG)"}
+                </p>
                 <Input 
                    id="file-upload" 
                    type="file" 
                    accept="image/*" 
                    className="hidden" 
-                   onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} 
+                   onChange={handleFileChange} // Usamos la nueva función
                 />
             </div>
 
@@ -383,15 +405,15 @@ export default function PaymentsPage() {
               <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
-                {editingPayment ? "Guardar Cambios" : "Registrar Pago"}
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isCompressing}>
+                {isCompressing ? "Procesando..." : (editingPayment ? "Guardar Cambios" : "Registrar Pago")}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* 🟢 MODAL VISUALIZADOR FINAL */}
+      {/* MODAL VISUALIZADOR FINAL */}
       <Dialog open={!!viewFileUrl} onOpenChange={(open) => !open && setViewFileUrl(null)}>
         <DialogContent className="max-w-4xl h-[85vh] p-0 bg-zinc-950 border-zinc-800 flex flex-col overflow-hidden [&>button]:text-zinc-400">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
