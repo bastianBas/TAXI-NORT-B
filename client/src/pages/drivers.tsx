@@ -38,8 +38,32 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertDriverSchema, type Driver, type InsertDriver } from "@shared/schema";
+import { type Driver } from "@shared/schema";
+import { z } from "zod"; // 🟢 Importamos Zod
 import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car } from "lucide-react";
+
+// 🟢 IMPORTS NUEVOS
+import { validateRut } from "@/lib/rut-utils";
+import { toTitleCase } from "@/lib/format-utils";
+import { RutInput } from "@/components/rut-input";
+
+// 🟢 ESQUEMA DE VALIDACIÓN ESTRICTO
+const strictDriverSchema = z.object({
+  name: z.string().min(1, "El nombre es obligatorio"),
+  email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
+  rut: z.string()
+    .min(1, "El RUT es obligatorio")
+    .refine((val) => validateRut(val), { message: "RUT inválido (Dígito incorrecto)" }),
+  phone: z.string().min(1, "El teléfono es obligatorio"),
+  commune: z.string().min(1, "La comuna es obligatoria"),
+  address: z.string().min(1, "La dirección es obligatoria"),
+  licenseNumber: z.string().min(1, "N° Licencia obligatorio"),
+  licenseClass: z.string().min(1, "Clase obligatoria"),
+  licenseDate: z.string().min(1, "Vencimiento obligatorio"),
+  status: z.string().default("active"),
+});
+
+type DriverFormValues = z.infer<typeof strictDriverSchema>;
 
 export default function Drivers() {
   const { user } = useAuth();
@@ -53,8 +77,8 @@ export default function Drivers() {
     queryKey: ["/api/drivers"],
   });
 
-  const form = useForm<InsertDriver>({
-    resolver: zodResolver(insertDriverSchema),
+  const form = useForm<DriverFormValues>({
+    resolver: zodResolver(strictDriverSchema), // 🟢 Usamos el esquema estricto
     defaultValues: {
       name: "",
       email: "",
@@ -70,7 +94,7 @@ export default function Drivers() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: InsertDriver) => {
+    mutationFn: async (data: DriverFormValues) => {
       await apiRequestJson("/api/drivers", "POST", data);
     },
     onSuccess: () => {
@@ -88,7 +112,7 @@ export default function Drivers() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: InsertDriver) => {
+    mutationFn: async (data: DriverFormValues) => {
       if (!editingId) return;
       await apiRequestJson(`/api/drivers/${editingId}`, "PUT", data);
     },
@@ -111,7 +135,7 @@ export default function Drivers() {
     },
   });
 
-  const onSubmit = (data: InsertDriver) => {
+  const onSubmit = (data: DriverFormValues) => {
     if (editingId) {
       updateMutation.mutate(data);
     } else {
@@ -182,18 +206,23 @@ export default function Drivers() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField control={form.control} name="name" render={({ field }) => (
                         <FormItem className="col-span-2">
-                          <FormLabel>Nombre Completo</FormLabel>
-                          <FormControl><Input {...field} placeholder="Ej: Juan Andrés Pérez Cotapos" /></FormControl>
+                          <FormLabel>Nombre Completo *</FormLabel>
+                          <FormControl>
+                            <Input 
+                                {...field} 
+                                placeholder="Ej: Juan Andrés Pérez Cotapos"
+                                // 🟢 AUTO-CAPITALIZAR 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       
-                      {/* CAMPO EMAIL NUEVO (CORREGIDO) */}
                       <FormField control={form.control} name="email" render={({ field }) => (
                         <FormItem className="col-span-2">
-                          <FormLabel>Email (Para inicio de sesión)</FormLabel>
+                          <FormLabel>Email (Para inicio de sesión) *</FormLabel>
                           <FormControl>
-                            {/* AQUÍ ESTÁ LA CORRECCIÓN: value={field.value || ""} */}
                             <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
                           </FormControl>
                           <FormMessage />
@@ -202,29 +231,46 @@ export default function Drivers() {
 
                       <FormField control={form.control} name="rut" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>RUT (Será la contraseña)</FormLabel>
-                          <FormControl><Input {...field} placeholder="12.345.678-9" /></FormControl>
+                          <FormLabel>RUT (Será la contraseña) *</FormLabel>
+                          <FormControl>
+                            {/* 🟢 INPUT RUT INTELIGENTE */}
+                            <RutInput {...field} placeholder="12.345.678-9" />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
+                      
                       <FormField control={form.control} name="phone" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Teléfono</FormLabel>
+                          <FormLabel>Teléfono *</FormLabel>
                           <FormControl><Input {...field} placeholder="+56 9..." /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="commune" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Comuna</FormLabel>
-                          <FormControl><Input {...field} /></FormControl>
+                          <FormLabel>Comuna *</FormLabel>
+                          <FormControl>
+                            <Input 
+                                {...field}
+                                // 🟢 AUTO-CAPITALIZAR 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))} 
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="address" render={({ field }) => (
                         <FormItem className="col-span-2">
-                          <FormLabel>Dirección (Opcional)</FormLabel>
-                          <FormControl><Input {...field} value={field.value || ""} /></FormControl>
+                          <FormLabel>Dirección *</FormLabel>
+                          <FormControl>
+                            <Input 
+                                {...field} 
+                                value={field.value || ""} 
+                                // 🟢 AUTO-CAPITALIZAR 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -237,14 +283,14 @@ export default function Drivers() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <FormField control={form.control} name="licenseNumber" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>N° Licencia</FormLabel>
+                          <FormLabel>N° Licencia *</FormLabel>
                           <FormControl><Input {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="licenseClass" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Clase</FormLabel>
+                          <FormLabel>Clase *</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                             <SelectContent>
@@ -260,7 +306,7 @@ export default function Drivers() {
                       )} />
                       <FormField control={form.control} name="licenseDate" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Próx. Control</FormLabel>
+                          <FormLabel>Próx. Control *</FormLabel>
                           <FormControl><Input type="date" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>

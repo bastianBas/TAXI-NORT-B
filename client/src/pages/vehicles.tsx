@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { queryClient, apiRequestJson } from "@/lib/queryClient";
@@ -11,8 +12,35 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertVehicleSchema, type Vehicle, type InsertVehicle } from "@shared/schema";
-import { useState } from "react";
+import { z } from "zod"; // 🟢 ZOD
+import { type Vehicle } from "@shared/schema";
+
+// 🟢 IMPORTS NUEVOS
+import { validateRut } from "@/lib/rut-utils";
+import { toTitleCase } from "@/lib/format-utils";
+import { RutInput } from "@/components/rut-input";
+import { PlateInput } from "@/components/plate-input";
+
+// 🟢 ESQUEMA DE VALIDACIÓN ESTRICTO
+const strictVehicleSchema = z.object({
+  plate: z.string()
+    .min(1, "La patente es obligatoria")
+    .max(8, "Máximo 8 caracteres")
+    .transform(val => val.toUpperCase()), // Aseguramos mayúsculas
+  model: z.string().min(1, "El modelo es obligatorio"),
+  color: z.string().min(1, "El color es obligatorio"),
+  ownerName: z.string().min(1, "El nombre del dueño es obligatorio"),
+  ownerRut: z.string()
+    .min(1, "El RUT del dueño es obligatorio")
+    .refine((val) => validateRut(val), { message: "RUT inválido (Dígito incorrecto)" }),
+  technicalReviewDate: z.string().min(1, "Fecha obligatoria"),
+  circulationPermitDate: z.string().min(1, "Fecha obligatoria"),
+  soapDate: z.string().min(1, "Fecha obligatoria"),
+  authorizationDate: z.string().min(1, "Fecha obligatoria"),
+  status: z.string().default("active"),
+});
+
+type VehicleFormValues = z.infer<typeof strictVehicleSchema>;
 
 export default function Vehicles() {
   const { user } = useAuth();
@@ -25,8 +53,8 @@ export default function Vehicles() {
     queryKey: ["/api/vehicles"],
   });
 
-  const form = useForm<InsertVehicle>({
-    resolver: zodResolver(insertVehicleSchema),
+  const form = useForm<VehicleFormValues>({
+    resolver: zodResolver(strictVehicleSchema), // 🟢 Usamos esquema estricto
     defaultValues: {
       plate: "",
       model: "",
@@ -42,7 +70,7 @@ export default function Vehicles() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: InsertVehicle) => {
+    mutationFn: async (data: VehicleFormValues) => {
       await apiRequestJson("/api/vehicles", "POST", data);
     },
     onSuccess: () => {
@@ -57,7 +85,7 @@ export default function Vehicles() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: InsertVehicle) => {
+    mutationFn: async (data: VehicleFormValues) => {
       if (!editingId) return;
       await apiRequestJson(`/api/vehicles/${editingId}`, "PUT", data);
     },
@@ -80,7 +108,7 @@ export default function Vehicles() {
     }
   });
 
-  const onSubmit = (data: InsertVehicle) => {
+  const onSubmit = (data: VehicleFormValues) => {
     if (editingId) {
       updateMutation.mutate(data);
     } else {
@@ -150,13 +178,41 @@ export default function Vehicles() {
                     <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4"/> Datos del Vehículo</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <FormField control={form.control} name="plate" render={({ field }) => (
-                        <FormItem><FormLabel>Patente</FormLabel><FormControl><Input {...field} placeholder="ABCD-12" /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Patente *</FormLabel>
+                            <FormControl>
+                                {/* 🟢 INPUT DE PATENTE INTELIGENTE */}
+                                <PlateInput {...field} placeholder="ABCD-12" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                       <FormField control={form.control} name="model" render={({ field }) => (
-                        <FormItem><FormLabel>Modelo</FormLabel><FormControl><Input {...field} placeholder="Ej: Toyota Yaris" /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Modelo *</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    placeholder="Ej: Toyota Yaris" 
+                                    // 🟢 AUTO-CAPITALIZAR 
+                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                       <FormField control={form.control} name="color" render={({ field }) => (
-                        <FormItem><FormLabel>Color</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Color *</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    // 🟢 AUTO-CAPITALIZAR 
+                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                     </div>
                   </div>
@@ -166,10 +222,27 @@ export default function Vehicles() {
                     <h3 className="font-semibold flex items-center gap-2"><User className="h-4 w-4"/> Propietario</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField control={form.control} name="ownerName" render={({ field }) => (
-                        <FormItem><FormLabel>Nombre Completo</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Nombre Completo *</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    // 🟢 AUTO-CAPITALIZAR 
+                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                       <FormField control={form.control} name="ownerRut" render={({ field }) => (
-                        <FormItem><FormLabel>RUT Propietario</FormLabel><FormControl><Input {...field} placeholder="12.345.678-9" /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>RUT Propietario *</FormLabel>
+                            <FormControl>
+                                {/* 🟢 INPUT RUT INTELIGENTE */}
+                                <RutInput {...field} placeholder="12.345.678-9" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                     </div>
                   </div>
@@ -179,16 +252,32 @@ export default function Vehicles() {
                     <h3 className="font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> Vencimiento Documentos</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField control={form.control} name="technicalReviewDate" render={({ field }) => (
-                        <FormItem><FormLabel>Revisión Técnica</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Revisión Técnica *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                       <FormField control={form.control} name="circulationPermitDate" render={({ field }) => (
-                        <FormItem><FormLabel>Permiso de Circulación</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Permiso de Circulación *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                       <FormField control={form.control} name="soapDate" render={({ field }) => (
-                        <FormItem><FormLabel>Vencimiento SOAP</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Vencimiento SOAP *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                       <FormField control={form.control} name="authorizationDate" render={({ field }) => (
-                        <FormItem><FormLabel>Vencimiento Cartón (CIRNSTP)</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem>
+                            <FormLabel>Vencimiento Cartón (CIRNSTP) *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
                       )} />
                     </div>
                   </div>
