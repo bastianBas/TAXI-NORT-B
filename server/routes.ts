@@ -12,11 +12,10 @@ import storage from "./storage";
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
-  // 🟢 CONFIGURACIÓN GLOBAL
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // 🟢 HELPER: Logs de Auditoría
+  // HELPER: Logs de Auditoría
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
     if (!user) return;
     try {
@@ -35,7 +34,7 @@ export function registerRoutes(app: Express): Server {
     }
   };
 
-  // 🟢 HELPER 1: Notificar a TODOS los Administradores
+  // HELPER 1: Notificar a TODOS los Administradores
   const notifyAdmins = async (type: 'info' | 'warning' | 'success', title: string, message: string, link: string) => {
     try {
       const admins = await db.query.users.findMany({
@@ -56,7 +55,7 @@ export function registerRoutes(app: Express): Server {
     }
   };
 
-  // 🟢 HELPER 2: Notificar a un Usuario Específico
+  // HELPER 2: Notificar a un Usuario Específico
   const notifyUser = async (userId: string, type: 'info' | 'warning' | 'success', title: string, message: string, link: string) => {
     try {
         await storage.createNotification({
@@ -90,7 +89,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Registro Público (Aquí el usuario elige su propia password)
+  // Registro Público
   app.post("/api/register", async (req: any, res, next) => {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
@@ -231,15 +230,26 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error GPS"); }
   });
 
-  // --- HOJAS DE RUTA ---
+  // --- HOJAS DE RUTA (LÓGICA CON SNAPSHOTS) ---
   app.post("/api/route-slips", verifyAuth, async (req, res) => {
      if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
      
      try {
        const newId = randomUUID();
+
+       // 1. OBTENER INFORMACIÓN ANTES DE CREAR (Snapshot)
+       const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, req.body.driverId) });
+       const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, req.body.vehicleId) });
+       const driverName = driverInfo?.name || "Conductor";
+       const plate = vehicleInfo?.plate || "Sin patente";
+
+       // 2. INCLUIR LOS SNAPSHOTS EN LA DATA
        const data = { 
            ...req.body, 
            id: newId, 
+           // Guardamos el historial congelado
+           driverNameSnapshot: driverName,
+           vehiclePlateSnapshot: plate,
            signatureUrl: req.body.signatureUrl || null,
            paymentStatus: 'pending', 
            isDuplicate: false, 
@@ -248,14 +258,9 @@ export function registerRoutes(app: Express): Server {
        
        await db.insert(routeSlips).values(data);
        
-       const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, data.driverId) });
-       const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, data.vehicleId) });
-       const driverName = driverInfo?.name || "Un conductor";
-       const plate = vehicleInfo?.plate || "Sin patente";
-
        await logAction(req.user, "CREATE", "Route Slip", `Creada hoja para ${driverName} (${plate}) - ${data.date}`, newId);
 
-       // 🔔 CASO 1: AVISO AL ADMIN (NARANJA)
+       // AVISO AL ADMIN (NARANJA)
        await notifyAdmins(
          "warning", 
          "⚠️ Hoja Pendiente de Pago",
@@ -263,7 +268,7 @@ export function registerRoutes(app: Express): Server {
          "/route-slips"
        );
 
-       // 🔔 CASO 2: AVISO AL CONDUCTOR (NARANJA)
+       // AVISO AL CONDUCTOR (NARANJA)
        if (driverInfo && driverInfo.userId) {
           await notifyUser(
               driverInfo.userId,
@@ -275,7 +280,10 @@ export function registerRoutes(app: Express): Server {
        }
 
        res.status(201).json(data);
-     } catch (e) { res.status(500).send("Error guardando en BD."); }
+     } catch (e) { 
+         console.error(e);
+         res.status(500).send("Error guardando en BD."); 
+     }
   });
 
   app.put("/api/route-slips/:id", verifyAuth, async (req, res) => { 
@@ -288,53 +296,71 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error al actualizar"); } 
   });
   
+  // 3. GET INTELIGENTE (RECUPERA DATOS DE SNAPSHOT SI ES NULL)
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
+        let result = [];
         if (req.user?.role === 'admin') {
-            const all = await db.query.routeSlips.findMany({ 
+            result = await db.query.routeSlips.findMany({ 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
-            return res.json(all);
         } else {
             const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user!.id) });
             if (!driver) return res.json([]);
-            const mySlips = await db.query.routeSlips.findMany({ 
+            result = await db.query.routeSlips.findMany({ 
                 where: eq(routeSlips.driverId, driver.id), 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
-            return res.json(mySlips);
         }
+
+        // Procesamos para usar el snapshot si la relación se borró
+        const processed = result.map(slip => {
+            const finalDriver = slip.driver || {
+                id: "deleted",
+                name: slip.driverNameSnapshot || "(Conductor Eliminado)",
+                rut: "---"
+            };
+            const finalVehicle = slip.vehicle || {
+                id: "deleted",
+                plate: slip.vehiclePlateSnapshot || "(Eliminado)",
+                model: "---"
+            };
+            return { ...slip, driver: finalDriver, vehicle: finalVehicle };
+        });
+
+        return res.json(processed);
     } catch (e) { res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES (CRUD ADMIN) ---
+  // --- CONDUCTORES (CRUD ADMIN CON SOFT DELETE) ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { 
       try {
-        const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); 
+        // FILTRAMOS SOLO LOS ACTIVOS
+        const all = await db.query.drivers.findMany({ 
+            where: eq(drivers.status, 'active'),
+            orderBy: (d, { desc }) => [desc(d.createdAt)] 
+        }); 
         res.json(all); 
       } catch (e) { res.status(500).send("Error obteniendo conductores"); }
   });
   
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
     try { 
-      const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body; 
+      const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate, lastControlDate } = req.body; 
       
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); 
       if (exist) return res.status(400).json({ message: "El correo ya existe" }); 
       
       const uid = randomUUID(); 
       
-      // 🟢 1. LÓGICA DE CONTRASEÑA = RUT SIN DV
-      // Limpiamos todo lo que no sea número o K (por seguridad), luego quitamos el último caracter
+      // LÓGICA DE CONTRASEÑA = RUT SIN DV
       const cleanRut = rut.replace(/[^0-9kK]/g, ""); 
       const rutBody = cleanRut.slice(0, -1);
       
-      // La contraseña será el cuerpo numérico
       const pass = await bcrypt.hash(rutBody, 10); 
       
-      // Creamos usuario login
       await db.insert(users).values({ 
           id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() 
       }); 
@@ -352,11 +378,11 @@ export function registerRoutes(app: Express): Server {
           licenseNumber, 
           licenseClass, 
           licenseDate, 
+          lastControlDate: lastControlDate || null, 
           createdAt: new Date(), 
           status: 'active' 
       }; 
       
-      // Creamos perfil conductor
       await db.insert(drivers).values(dData); 
       
       await logAction(req.user, "CREATE", "Driver", `Creado conductor manualmente: ${name}`, did);
@@ -376,17 +402,30 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error actualizando conductor"); } 
   });
 
+  // 4. DELETE DRIVER (BORRADO FÍSICO CON DESVINCULACIÓN)
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { 
     try { 
       const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); 
       if (!d) return res.status(404).send("No encontrado"); 
       
-      await db.delete(drivers).where(eq(drivers.id, req.params.id)); 
+      // A) Desvincular Hojas de Ruta (El snapshot mantiene el nombre)
+      await db.update(routeSlips).set({ driverId: null }).where(eq(routeSlips.driverId, req.params.id));
+
+      // B) Desvincular Pagos
+      await db.update(payments).set({ driverId: null }).where(eq(payments.driverId, req.params.id));
+
+      // C) Borrar Usuario Login
       if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); 
       
-      await logAction(req.user, "DELETE", "Driver", `Eliminado conductor: ${d.name}`, req.params.id);
+      // D) BORRAR FÍSICAMENTE EL CONDUCTOR
+      await db.delete(drivers).where(eq(drivers.id, req.params.id));
+      
+      await logAction(req.user, "DELETE", "Driver", `Eliminado totalmente: ${d.name}`, req.params.id);
       res.json({ message: "Eliminado" }); 
-    } catch (e) { res.status(500).send("Error eliminando"); } 
+    } catch (e) { 
+        console.error(e);
+        res.status(500).send("Error eliminando"); 
+    } 
   });
   
   // --- VEHÍCULOS ---
@@ -492,7 +531,6 @@ export function registerRoutes(app: Express): Server {
           );
 
           // 🔔 AVISO AL CONDUCTOR (VERDE)
-          // 🟢 CORREGIDO: Se usa driverInfo.userId
           if (driverInfo && driverInfo.userId) {
               await notifyUser(
                   driverInfo.userId,

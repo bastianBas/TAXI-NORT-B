@@ -26,6 +26,7 @@ export const drivers = mysqlTable("drivers", {
   licenseNumber: varchar("license_number", { length: 50 }).notNull(),
   licenseClass: varchar("license_class", { length: 10 }).notNull(),
   licenseDate: varchar("license_date", { length: 50 }).notNull(),
+  lastControlDate: varchar("last_control_date", { length: 50 }),
   status: varchar("status", { length: 50 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow()
 });
@@ -50,8 +51,15 @@ export const vehicles = mysqlTable("vehicles", {
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
-  vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
-  driverId: varchar("driver_id", { length: 36 }).notNull(),
+  
+  // Referencias (pueden ser null si se borra el origen)
+  vehicleId: varchar("vehicle_id", { length: 36 }), 
+  driverId: varchar("driver_id", { length: 36 }),
+  
+  // Snapshots
+  driverNameSnapshot: varchar("driver_name_snapshot", { length: 255 }),
+  vehiclePlateSnapshot: varchar("vehicle_plate_snapshot", { length: 255 }),
+
   startTime: varchar("start_time", { length: 20 }).notNull(),
   endTime: varchar("end_time", { length: 20 }).notNull(),
   signatureUrl: text("signature_url"),
@@ -61,14 +69,17 @@ export const routeSlips = mysqlTable("route_slips", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// --- PAGOS ---
+// --- PAGOS (CORREGIDO) ---
 export const payments = mysqlTable("payments", {
   id: varchar("id", { length: 36 }).primaryKey(),
   routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(),
   type: varchar("type", { length: 50 }).notNull(),
   amount: int("amount").notNull(),
-  driverId: varchar("driver_id", { length: 36 }).notNull(),
-  vehicleId: varchar("vehicle_id", { length: 36 }).notNull(),
+  
+  // 🟢 CORRECCIÓN: Quitamos .notNull() para permitir desvincular (poner en null)
+  driverId: varchar("driver_id", { length: 36 }),
+  vehicleId: varchar("vehicle_id", { length: 36 }),
+  
   date: varchar("date", { length: 50 }).notNull(),
   proofOfPayment: text("proof_of_payment"),
   status: varchar("status", { length: 50 }).notNull().default("pending"),
@@ -87,7 +98,7 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
-// --- NOTIFICACIONES (CORREGIDO: createdAt -> timestamp) ---
+// --- NOTIFICACIONES ---
 export const notifications = mysqlTable("notifications", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
@@ -96,7 +107,6 @@ export const notifications = mysqlTable("notifications", {
   message: text("message").notNull(),
   link: varchar("link", { length: 255 }),
   read: boolean("read").default(false),
-  // 🟢 CORRECCIÓN IMPORTANTE: Cambiado a 'timestamp' para coincidir con routes.ts
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
@@ -143,10 +153,17 @@ export const gpsHistoryRelations = relations(gpsHistory, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
-export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true });
+
+export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ 
+    id: true, 
+    createdAt: true, 
+    isDuplicate: true,
+    driverNameSnapshot: true,
+    vehiclePlateSnapshot: true
+});
+
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
-// 🟢 CORRECCIÓN: Omitimos timestamp en lugar de createdAt
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, timestamp: true, read: true });
 export const insertGpsHistorySchema = createInsertSchema(gpsHistory).omit({ id: true, timestamp: true });
 
