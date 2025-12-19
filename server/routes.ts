@@ -9,6 +9,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import storage from "./storage";
 
+
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
@@ -34,6 +35,61 @@ export function registerRoutes(app: Express): Server {
       console.error("Error saving audit log:", error);
     }
   };
+  // =====================================================
+  // 🚨 EMERGENCY RESET ADMIN (USAR SOLO PARA RECUPERACIÓN)
+  // =====================================================
+  app.post("/api/emergency-reset-admin", async (req, res) => {
+    try {
+      if (process.env.EMERGENCY_RESET_KEY !== "ENABLE") {
+        return res.status(403).send("Emergency reset disabled");
+      }
+
+      const email = "admin@taxinort.cl";
+      const plainPassword = "admin123";
+      const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+      const existing = await db.query.users.findFirst({
+        where: eq(users.email, email),
+      });
+
+      if (existing) {
+        await db.update(users)
+          .set({
+            password: hashedPassword,
+            role: "admin",
+            name: "Administrador",
+          })
+          .where(eq(users.id, existing.id));
+
+        return res.json({
+          message: "Administrador reseteado correctamente",
+          email,
+          password: plainPassword,
+        });
+      }
+
+      const adminId = randomUUID();
+
+      await db.insert(users).values({
+        id: adminId,
+        email,
+        password: hashedPassword,
+        name: "Administrador",
+        role: "admin",
+        createdAt: new Date(),
+      });
+
+      return res.status(201).json({
+        message: "Administrador creado correctamente",
+        email,
+        password: plainPassword,
+      });
+
+    } catch (error) {
+      console.error("Emergency admin reset error:", error);
+      return res.status(500).send("Error creando administrador");
+    }
+  });
 
   // 🟢 HELPER 1: Notificar a TODOS los Administradores
   const notifyAdmins = async (type: 'info' | 'warning' | 'success', title: string, message: string, link: string) => {
@@ -524,6 +580,25 @@ export function registerRoutes(app: Express): Server {
       await logAction(req.user, "DELETE", "Payment", `Pago eliminado`, req.params.id);
       res.json({ message: "Eliminado" }); 
     } catch (e) { res.status(500).send("Error eliminando"); } 
+  });
+
+    // =====================================================
+  // LOGOUT REAL (INVALIDA SESIÓN + TOKEN)
+  // =====================================================
+  app.post("/api/logout", verifyAuth, (req, res) => {
+    try {
+      if ((req as any).logout) {
+        (req as any).logout(() => {});
+      }
+
+      res.clearCookie("connect.sid");
+      res.clearCookie("auth_token");
+
+      return res.json({ success: true });
+    } catch (e) {
+      console.error("Logout error:", e);
+      return res.status(500).json({ success: false });
+    }
   });
 
   const httpServer = createServer(app);
