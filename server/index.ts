@@ -6,6 +6,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import fs from "fs";
 import path from "path";
+import { createEmergencyAdmin } from "./setup-admin";
+createEmergencyAdmin();
 
 const app = express();
 
