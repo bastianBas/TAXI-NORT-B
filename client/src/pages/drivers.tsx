@@ -40,27 +40,44 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type Driver } from "@shared/schema";
 import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car } from "lucide-react";
-import { z } from "zod";
+import { z } from "zod"; 
 
-// IMPORTS
+// 🟢 IMPORTS DE UTILIDADES
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PhoneInput } from "@/components/phone-input";
 
-// ESQUEMA ESTRICTO
+// 🟢 ESQUEMA ESTRICTO CORREGIDO Y AMPLIADO
 const strictDriverSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
+  
+  // RUT Principal (Usuario/Contraseña)
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), { message: "RUT inválido (Dígito incorrecto)" }),
-  phone: z.string().min(16, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
+
+  // 🟢 CORRECCIÓN: Teléfono min(15) exactos (+56 9 XXXX XXXX son 15 chars)
+  phone: z.string()
+    .min(15, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
+
   commune: z.string().min(1, "La comuna es obligatoria"),
   address: z.string().min(1, "La dirección es obligatoria"),
-  licenseNumber: z.string().min(1, "N° Licencia obligatorio"),
+  
+  // N° Licencia (RUT)
+  licenseNumber: z.string()
+    .min(1, "N° Licencia obligatorio")
+    .refine((val) => validateRut(val), { message: "RUT de licencia inválido" }),
+
   licenseClass: z.string().min(1, "Clase obligatoria"),
+  
+  // 🟢 NUEVO CAMPO: Último Control
+  lastControlDate: z.string().min(1, "Fecha último control obligatoria"),
+  
+  // Próximo Control
   licenseDate: z.string().min(1, "Vencimiento obligatorio"),
+  
   status: z.string().default("active"),
 });
 
@@ -89,6 +106,7 @@ export default function Drivers() {
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
+      lastControlDate: "", // 🟢 Default nuevo campo
       licenseDate: "",
       status: "active",
     },
@@ -102,8 +120,6 @@ export default function Drivers() {
       queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
       setOpen(false);
       form.reset();
-      
-      // 🟢 TOAST ACTUALIZADO
       toast({ 
         title: "Conductor creado", 
         description: "Contraseña asignada: Números del RUT sin el dígito verificador." 
@@ -146,7 +162,7 @@ export default function Drivers() {
     }
   };
 
-  const handleEdit = (driver: Driver) => {
+  const handleEdit = (driver: any) => { // Usamos any temporalmente si el tipo Driver en DB aun no tiene lastControlDate
     setEditingId(driver.id);
     form.reset({
       name: driver.name,
@@ -157,6 +173,7 @@ export default function Drivers() {
       address: driver.address || "",
       licenseNumber: driver.licenseNumber,
       licenseClass: driver.licenseClass,
+      lastControlDate: driver.lastControlDate || "", // 🟢 Cargar dato al editar
       licenseDate: driver.licenseDate,
       status: driver.status,
     });
@@ -174,6 +191,7 @@ export default function Drivers() {
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
+      lastControlDate: "", // 🟢 Reset nuevo campo
       licenseDate: "",
       status: "active",
     });
@@ -284,14 +302,21 @@ export default function Drivers() {
                   {/* LICENCIA */}
                   <div className="p-4 border rounded-md bg-slate-50 dark:bg-slate-900/50 space-y-4">
                     <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4" /> Licencia de Conducir</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 🟢 CAMBIO GRID: md:grid-cols-2 para acomodar 4 campos */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
+                      {/* N° LICENCIA */}
                       <FormField control={form.control} name="licenseNumber" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>N° Licencia *</FormLabel>
-                          <FormControl><Input {...field} /></FormControl>
+                          <FormLabel>N° Licencia (RUT) *</FormLabel>
+                          <FormControl>
+                            <RutInput {...field} placeholder="12.345.678-9" />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
+
+                      {/* CLASE */}
                       <FormField control={form.control} name="licenseClass" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Clase *</FormLabel>
@@ -308,6 +333,17 @@ export default function Drivers() {
                           <FormMessage />
                         </FormItem>
                       )} />
+
+                      {/* 🟢 NUEVO CAMPO: ÚLTIMO CONTROL */}
+                      <FormField control={form.control} name="lastControlDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Último Control *</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+
+                      {/* PRÓXIMO CONTROL */}
                       <FormField control={form.control} name="licenseDate" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Próx. Control *</FormLabel>
@@ -337,7 +373,9 @@ export default function Drivers() {
                 <TableHead>RUT</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Licencia</TableHead>
-                <TableHead>Control</TableHead>
+                {/* 🟢 AGREGAR HEADER SI QUIERES VERLO EN LA TABLA */}
+                {/* <TableHead>Ult. Control</TableHead> */}
+                <TableHead>Próx. Control</TableHead>
                 <TableHead>Teléfono</TableHead>
                 {canEdit && <TableHead className="w-[100px]"></TableHead>}
               </TableRow>
@@ -361,6 +399,7 @@ export default function Drivers() {
                       </span>
                       {driver.licenseNumber}
                     </TableCell>
+                    {/* <TableCell>{driver.lastControlDate}</TableCell> */}
                     <TableCell>{driver.licenseDate}</TableCell>
                     <TableCell>{driver.phone}</TableCell>
                     {canEdit && (
