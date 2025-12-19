@@ -56,7 +56,7 @@ export const routeSlips = mysqlTable("route_slips", {
   vehicleId: varchar("vehicle_id", { length: 36 }), 
   driverId: varchar("driver_id", { length: 36 }),
   
-  // Snapshots
+  // Snapshots (Datos Históricos)
   driverNameSnapshot: varchar("driver_name_snapshot", { length: 255 }),
   vehiclePlateSnapshot: varchar("vehicle_plate_snapshot", { length: 255 }),
 
@@ -69,14 +69,13 @@ export const routeSlips = mysqlTable("route_slips", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// --- PAGOS (CORREGIDO) ---
+// --- PAGOS ---
 export const payments = mysqlTable("payments", {
   id: varchar("id", { length: 36 }).primaryKey(),
   routeSlipId: varchar("route_slip_id", { length: 36 }).notNull(),
   type: varchar("type", { length: 50 }).notNull(),
   amount: int("amount").notNull(),
   
-  // 🟢 CORRECCIÓN: Quitamos .notNull() para permitir desvincular (poner en null)
   driverId: varchar("driver_id", { length: 36 }),
   vehicleId: varchar("vehicle_id", { length: 36 }),
   
@@ -154,6 +153,7 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true, creat
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
 
+// OMITIMOS los campos snapshot para que el backend los llene, no el frontend
 export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ 
     id: true, 
     createdAt: true, 
