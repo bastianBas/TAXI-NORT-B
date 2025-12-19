@@ -39,22 +39,23 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type Driver } from "@shared/schema";
-import { z } from "zod"; // 🟢 Importamos Zod
 import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car } from "lucide-react";
+import { z } from "zod";
 
-// 🟢 IMPORTS NUEVOS
+// IMPORTS
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
+import { PhoneInput } from "@/components/phone-input";
 
-// 🟢 ESQUEMA DE VALIDACIÓN ESTRICTO
+// ESQUEMA ESTRICTO
 const strictDriverSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), { message: "RUT inválido (Dígito incorrecto)" }),
-  phone: z.string().min(1, "El teléfono es obligatorio"),
+  phone: z.string().min(16, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
   commune: z.string().min(1, "La comuna es obligatoria"),
   address: z.string().min(1, "La dirección es obligatoria"),
   licenseNumber: z.string().min(1, "N° Licencia obligatorio"),
@@ -78,12 +79,12 @@ export default function Drivers() {
   });
 
   const form = useForm<DriverFormValues>({
-    resolver: zodResolver(strictDriverSchema), // 🟢 Usamos el esquema estricto
+    resolver: zodResolver(strictDriverSchema),
     defaultValues: {
       name: "",
       email: "",
       rut: "",
-      phone: "",
+      phone: "+56 9 ",
       commune: "Copiapó",
       address: "",
       licenseNumber: "",
@@ -101,9 +102,11 @@ export default function Drivers() {
       queryClient.invalidateQueries({ queryKey: ["/api/drivers"] });
       setOpen(false);
       form.reset();
+      
+      // 🟢 TOAST ACTUALIZADO
       toast({ 
         title: "Conductor creado", 
-        description: "Se ha creado también una cuenta de usuario. La contraseña es el RUT." 
+        description: "Contraseña asignada: Números del RUT sin el dígito verificador." 
       });
     },
     onError: (error: Error) => {
@@ -166,7 +169,7 @@ export default function Drivers() {
       name: "",
       email: "",
       rut: "",
-      phone: "",
+      phone: "+56 9 ",
       commune: "Copiapó",
       address: "",
       licenseNumber: "",
@@ -204,14 +207,14 @@ export default function Drivers() {
                   <div className="p-4 border rounded-md space-y-4">
                     <h3 className="font-semibold flex items-center gap-2"><UserSquare2 className="h-4 w-4" /> Datos Personales</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
                       <FormField control={form.control} name="name" render={({ field }) => (
                         <FormItem className="col-span-2">
                           <FormLabel>Nombre Completo *</FormLabel>
                           <FormControl>
                             <Input 
                                 {...field} 
-                                placeholder="Ej: Juan Andrés Pérez Cotapos"
-                                // 🟢 AUTO-CAPITALIZAR 
+                                placeholder="Ej: Juan Andrés Pérez Cotapos" 
                                 onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                             />
                           </FormControl>
@@ -233,7 +236,6 @@ export default function Drivers() {
                         <FormItem>
                           <FormLabel>RUT (Será la contraseña) *</FormLabel>
                           <FormControl>
-                            {/* 🟢 INPUT RUT INTELIGENTE */}
                             <RutInput {...field} placeholder="12.345.678-9" />
                           </FormControl>
                           <FormMessage />
@@ -243,23 +245,26 @@ export default function Drivers() {
                       <FormField control={form.control} name="phone" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Teléfono *</FormLabel>
-                          <FormControl><Input {...field} placeholder="+56 9..." /></FormControl>
+                          <FormControl>
+                            <PhoneInput {...field} />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
+
                       <FormField control={form.control} name="commune" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Comuna *</FormLabel>
                           <FormControl>
                             <Input 
-                                {...field}
-                                // 🟢 AUTO-CAPITALIZAR 
-                                onChange={(e) => field.onChange(toTitleCase(e.target.value))} 
+                                {...field} 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
+                      
                       <FormField control={form.control} name="address" render={({ field }) => (
                         <FormItem className="col-span-2">
                           <FormLabel>Dirección *</FormLabel>
@@ -267,7 +272,6 @@ export default function Drivers() {
                             <Input 
                                 {...field} 
                                 value={field.value || ""} 
-                                // 🟢 AUTO-CAPITALIZAR 
                                 onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                             />
                           </FormControl>

@@ -1,27 +1,26 @@
-// Limpia el RUT dejando solo números y K
 export const cleanRut = (rut: string): string => {
   return typeof rut === 'string' ? rut.replace(/[^0-9kK]+/g, '').toUpperCase() : '';
 };
 
-// Algoritmo Módulo 11 para validar
 export const validateRut = (rut: string): boolean => {
+  // 1. Limpiar el RUT (quitar puntos y guión)
   const clean = cleanRut(rut);
   
-  // Validaciones básicas: largo mínimo y formato
-  if (clean.length < 2) return false;
-  
-  // Separar cuerpo y dígito verificador
+  // 2. Validar largo mínimo (Ej: 1.111-1 son 5 caracteres limpios mínimo)
+  if (clean.length < 7) return false; // Bloquea números cortos al azar como "999"
+
+  // 3. Separar Cuerpo y Dígito Verificador (DV)
   const body = clean.slice(0, -1);
-  const dv = clean.slice(-1).toUpperCase();
+  const dv = clean.slice(-1);
   
-  // Validar que el cuerpo sean solo números
+  // 4. Validar que el cuerpo sea numérico
   if (!/^[0-9]+$/.test(body)) return false;
 
-  // Cálculo Módulo 11
+  // 5. ALGORITMO MÓDULO 11
   let sum = 0;
   let multiplier = 2;
 
-  // Recorrer el cuerpo de atrás hacia adelante
+  // Recorrer el cuerpo de derecha a izquierda
   for (let i = body.length - 1; i >= 0; i--) {
     sum += parseInt(body[i]) * multiplier;
     multiplier = multiplier === 7 ? 2 : multiplier + 1;
@@ -33,20 +32,20 @@ export const validateRut = (rut: string): boolean => {
   if (remainder === 11) calculatedDv = "0";
   if (remainder === 10) calculatedDv = "K";
 
+  // 6. Comparar
   return dv === calculatedDv;
 };
 
 // Formateador visual (12.345.678-K)
 export const formatRut = (rut: string): string => {
   const clean = cleanRut(rut);
-  
   if (clean.length <= 1) return clean;
 
   const body = clean.slice(0, -1);
   const dv = clean.slice(-1);
-
-  // Agregar puntos de miles
-  const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-
+  
+  // Formato con puntos
+  let formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  
   return `${formattedBody}-${dv}`;
 };

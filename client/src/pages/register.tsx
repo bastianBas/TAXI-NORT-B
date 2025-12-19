@@ -22,24 +22,28 @@ import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { Car } from "lucide-react";
 
-// 🟢 IMPORTS NUEVOS
+// 🟢 IMPORTS DE UTILIDADES
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
+import { PhoneInput } from "@/components/phone-input"; // 🟢 IMPORTAR PHONE INPUT
 
-// Esquema ampliado con validaciones estrictas
+// Schema Estricto
 const registerSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
   
-  // 🟢 VALIDACIÓN RUT MÓDULO 11
+  // 🟢 RUT ESTRICTO
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), {
-      message: "RUT inválido (Dígito verificador incorrecto)",
+      message: "RUT inválido (El dígito verificador no coincide)",
     }),
 
-  phone: z.string().min(1, "El teléfono es obligatorio"),
+  // 🟢 TELÉFONO ESTRICTO (+56 9 1234 5678 son 16 caracteres)
+  phone: z.string()
+    .min(16, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
+
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
   confirmPassword: z.string().min(1, "Confirme la contraseña"),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -58,7 +62,7 @@ export default function Register() {
       name: "",
       email: "",
       rut: "",
-      phone: "",
+      phone: "+56 9 ", // Valor inicial
       password: "",
       confirmPassword: "",
     },
@@ -94,7 +98,6 @@ export default function Register() {
                       <Input 
                         placeholder="Juan Pérez" 
                         {...field} 
-                        // 🟢 AUTO-CAPITALIZAR
                         onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                       />
                     </FormControl>
@@ -128,11 +131,7 @@ export default function Register() {
                     <FormItem>
                         <FormLabel>RUT *</FormLabel>
                         <FormControl>
-                        {/* 🟢 INPUT INTELIGENTE DE RUT */}
-                        <RutInput 
-                            placeholder="12.345.678-9" 
-                            {...field}
-                        />
+                        <RutInput placeholder="12.345.678-9" {...field} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -145,7 +144,8 @@ export default function Register() {
                     <FormItem>
                         <FormLabel>Teléfono *</FormLabel>
                         <FormControl>
-                        <Input placeholder="+56 9..." {...field} />
+                        {/* 🟢 USAMOS EL COMPONENTE DE TELÉFONO */}
+                        <PhoneInput {...field} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
