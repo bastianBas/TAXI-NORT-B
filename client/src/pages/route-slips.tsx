@@ -1,14 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
-  Plus, 
-  Search, 
-  Eye, 
-  Edit, 
-  X,
-  Loader2, // Agregado
-  FileX,   // Agregado
-  Printer
+  Plus, Search, Eye, Edit, X, Loader2, FileX, Printer
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,27 +14,9 @@ import { useReactToPrint } from "react-to-print";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card"; 
 import { useToast } from "@/hooks/use-toast";
@@ -82,13 +57,13 @@ export default function RouteSlipsPage() {
   const queryClient = useQueryClient();
 
   // =================================================================
-  // 🟢 LÓGICA DE VISTA PÚBLICA (QR) - AGREGADA
+  // 🟢 LÓGICA DE VISTA PÚBLICA (QR) - INSERCIÓN SEGURA
   // =================================================================
   const isPublicView = window.location.pathname === "/public-view";
   const params = new URLSearchParams(window.location.search);
   const publicId = params.get("id");
 
-  // Query Pública (Solo si es vista pública)
+  // Query Pública
   const { data: publicSlip, isLoading: isLoadingPublic } = useQuery({
     queryKey: ["public-slip", publicId],
     queryFn: async () => {
@@ -102,14 +77,7 @@ export default function RouteSlipsPage() {
   // Efecto Auto-Descarga
   useEffect(() => {
     if (isPublicView && publicSlip) {
-        const timer = setTimeout(() => {
-            // handlePrint se define más abajo, pero JS lo eleva (hoisting) o el efecto corre después
-            // Para asegurar, llamamos al print manualmente si está disponible
-            if (printRef.current) {
-                // Forzamos click en botón oculto o usamos la ref directamente si pudiéramos
-                // Pero como handlePrint depende de la renderización, esperaremos.
-            }
-        }, 1000);
+        const timer = setTimeout(() => handlePrint(), 800);
         return () => clearTimeout(timer);
     }
   }, [isPublicView, publicSlip]);
@@ -153,15 +121,7 @@ export default function RouteSlipsPage() {
     documentTitle: documentToPrint ? `Hoja_Ruta_${documentToPrint.date}` : "Hoja_Ruta",
   });
 
-  // 🟢 AUTO-EJECUTAR PRINT AL CARGAR EN MODO PÚBLICO
-  useEffect(() => {
-      if (isPublicView && publicSlip) {
-          const timer = setTimeout(() => handlePrint(), 800);
-          return () => clearTimeout(timer);
-      }
-  }, [isPublicView, publicSlip]);
-
-  // 🟢 RENDERIZADO DEL MODO PÚBLICO (PANTALLA BLANCA)
+  // 🟢 RENDERIZADO DEL MODO PÚBLICO
   if (isPublicView) {
       if (isLoadingPublic) {
           return (
@@ -185,7 +145,6 @@ export default function RouteSlipsPage() {
       return (
         <div className="min-h-screen bg-white p-0 flex flex-col items-center justify-start font-sans">
             <div className="w-full max-w-[800px] p-8" ref={printRef}>
-                {/* Encabezado */}
                 <div className="flex justify-between items-start border-b-2 border-gray-800 pb-6 mb-6">
                     <div>
                         <h1 className="text-3xl font-bold text-black uppercase tracking-tight">Hoja de Ruta</h1>
@@ -199,7 +158,6 @@ export default function RouteSlipsPage() {
                     </div>
                 </div>
 
-                {/* Datos */}
                 <div className="grid grid-cols-2 gap-y-8 gap-x-12 mb-8">
                     <div>
                         <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Conductor</p>
@@ -231,7 +189,6 @@ export default function RouteSlipsPage() {
                     </div>
                 </div>
 
-                {/* QR de Validación */}
                 <div className="mt-12 pt-8 border-t border-gray-100 flex items-center justify-between">
                     <div>
                         <p className="text-sm font-bold text-gray-900">Validación Digital</p>
@@ -245,7 +202,7 @@ export default function RouteSlipsPage() {
                 </div>
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t text-center print:hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t text-center print:hidden shadow-lg">
                 <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 text-lg" onClick={handlePrint}>
                     Descargar PDF
                 </Button>
@@ -550,7 +507,6 @@ export default function RouteSlipsPage() {
         dataToEdit={slipToEdit}
       />
 
-      {/* MODAL DE VISTA NORMAL (ADMIN) */}
       <Dialog open={!!viewSlip} onOpenChange={(open) => !open && setViewSlip(null)}>
         <DialogContent className="sm:max-w-[600px] bg-white text-black p-0 overflow-hidden">
             <div className="p-6 pb-0 flex justify-between items-start">

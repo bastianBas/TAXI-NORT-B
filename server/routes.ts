@@ -13,7 +13,6 @@ export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
   // 🟢 CONFIGURACIÓN GLOBAL: Aumentar límite a 50MB
-  // Esto permite recibir imágenes en Base64 (Texto) y datos JSON grandes sin errores
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -33,6 +32,27 @@ export function registerRoutes(app: Express): Server {
       });
     } catch (error) {
       console.error("Error saving audit log:", error);
+    }
+  };
+
+  // 🟢 HELPER: Notificar a TODOS los Administradores
+  const notifyAdmins = async (title: string, message: string, link: string) => {
+    try {
+      const admins = await db.query.users.findMany({
+        where: eq(users.role, 'admin')
+      });
+      
+      for (const admin of admins) {
+        await storage.createNotification({
+          userId: admin.id,
+          type: 'info',
+          title,
+          message,
+          link
+        });
+      }
+    } catch (e) {
+      console.error("Error notificando admins:", e);
     }
   };
 
@@ -109,6 +129,9 @@ export function registerRoutes(app: Express): Server {
       });
 
       await logAction({ id: uid, name: name }, "REGISTER", "User", `Nuevo conductor registrado por formulario público: ${name}`, uid);
+
+      // Notificar a Admins del registro
+      await notifyAdmins("Nuevo Conductor", `${name} (${rut}) se ha registrado en la plataforma.`, "/drivers");
 
       // Auto-Login después del registro
       req.login(newUser, (err: any) => {
@@ -258,17 +281,30 @@ export function registerRoutes(app: Express): Server {
        };
        
        await db.insert(routeSlips).values(data);
-       await logAction(req.user, "CREATE", "Route Slip", `Creada hoja para fecha ${data.date}`, newId);
+       
+       // 🟢 OBTENER DATOS DETALLADOS (Nombre y Patente)
+       const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, data.driverId) });
+       const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, data.vehicleId) });
+       const driverName = driverInfo?.name || "Un conductor";
+       const plate = vehicleInfo?.plate || "Sin patente";
 
-       // Notificación automática al conductor
+       await logAction(req.user, "CREATE", "Route Slip", `Creada hoja para ${driverName} (${plate}) - ${data.date}`, newId);
+
+       // 🟢 2. NOTIFICAR AL ADMIN (CON DETALLE)
+       await notifyAdmins(
+         "⚠️ Nueva Hoja Pendiente",
+         `${driverName} (${plate}) tiene una hoja pendiente para el ${data.date}.`,
+         "/route-slips"
+       );
+
+       // 🟢 3. NOTIFICAR AL CONDUCTOR (CON DETALLE)
        try {
-         const driverProfile = await storage.getDriver(data.driverId);
-         if (driverProfile && driverProfile.userId) {
+         if (driverInfo && driverInfo.userId) {
             await storage.createNotification({ 
-                userId: driverProfile.userId, 
-                type: 'info', 
-                title: 'Nueva Hoja de Ruta', 
-                message: `Se te ha asignado una hoja para el ${data.date}.`, 
+                userId: driverInfo.userId, 
+                type: 'warning', 
+                title: 'Nueva Hoja de Ruta Pendiente', 
+                message: `Se te ha asignado la hoja del ${data.date}. Estado: Pendiente de pago.`, 
                 link: '/route-slips' 
             });
          }
@@ -506,7 +542,20 @@ export function registerRoutes(app: Express): Server {
               await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); 
           }
           
-          await logAction(req.user, "CREATE", "Payment", `Pago registrado: $${pData.amount}`, pid);
+          // 🟢 1. OBTENER DETALLES (Nombre y Patente)
+          const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, pData.driverId) });
+          const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, pData.vehicleId) });
+          const driverName = driverInfo?.name || "Conductor";
+          const plate = vehicleInfo?.plate || "Sin patente";
+
+          await logAction(req.user, "CREATE", "Payment", `Pago: $${pData.amount} de ${driverName}`, pid);
+
+          // 🟢 2. NOTIFICAR A ADMINS (CON DETALLE)
+          await notifyAdmins(
+            "💰 Nuevo Pago Recibido", 
+            `${driverName} (${plate}) ha pagado $${pData.amount}.`, 
+            "/payments"
+          );
 
           res.status(201).json(pData); 
       } catch (e) { 

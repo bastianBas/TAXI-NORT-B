@@ -15,7 +15,7 @@ import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import Drivers from "@/pages/drivers";
 import Vehicles from "@/pages/vehicles";
-import RouteSlips from "@/pages/route-slips"; // Usamos el mismo componente para Admin y Público
+import RouteSlips from "@/pages/route-slips"; // Usado para Admin y Público
 import Payments from "@/pages/payments";
 import Audit from "@/pages/audit";
 import NotFound from "@/pages/not-found";

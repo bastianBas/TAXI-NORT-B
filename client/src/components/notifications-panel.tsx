@@ -1,97 +1,130 @@
-import { useState, useEffect } from "react";
-import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { Bell, Check, Info, AlertTriangle, DollarSign } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { Link } from "wouter";
+
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useLocation } from "wouter";
+import { Badge } from "@/components/ui/badge";
+
+// Helper para iconos según el título o tipo de notificación
+const getIcon = (type: string, title: string) => {
+    if (type === 'warning' || title.includes('Pendiente')) return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+    if (type === 'success' || title.includes('Pago')) return <DollarSign className="h-4 w-4 text-green-500" />;
+    return <Info className="h-4 w-4 text-blue-500" />;
+};
 
 export function NotificationsPanel() {
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
-  const [location, setLocation] = useLocation();
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
 
-  const fetchNotifications = async () => {
-    try {
+  // 1. CARGAR NOTIFICACIONES (CON POLLING DE 5 SEGUNDOS)
+  const { data: notifications = [] } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: async () => {
       const res = await fetch("/api/notifications");
-      if (res.ok) setNotifications(await res.json());
-    } catch (e) {
-      console.error(e);
-    }
-  };
+      if (!res.ok) return [];
+      return res.json();
+    },
+    // 🟢 ESTO HACE LA MAGIA: Actualiza solo cada 5 segundos
+    refetchInterval: 5000, 
+  });
 
-  useEffect(() => {
-    fetchNotifications();
-    // Actualiza cada 10 segundos
-    const interval = setInterval(fetchNotifications, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  // 2. MARCAR COMO LEÍDA
+  const markAsReadMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await fetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n: any) => !n.read).length;
 
-  const handleNotificationClick = async (notif: any) => {
-    if (!notif.read) {
-        await fetch(`/api/notifications/${notif.id}/read`, { method: "PATCH" });
-        setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
-    }
-
-    if (notif.link) {
-        setLocation(notif.link);
-        setIsOpen(false);
-    }
+  const handleMarkAsRead = (id: string) => {
+    markAsReadMutation.mutate(id);
   };
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
+          <Bell className="h-5 w-5 text-gray-600" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 h-2.5 w-2.5 bg-red-500 rounded-full animate-pulse border border-white" />
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 rounded-full text-[10px]"
+            >
+              {unreadCount}
+            </Badge>
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
-        <div className="p-4 border-b font-semibold bg-gray-50 flex justify-between items-center">
-            <span>Notificaciones</span>
-            {unreadCount > 0 && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{unreadCount} nuevas</span>}
+        <div className="flex items-center justify-between p-4 border-b">
+          <h4 className="font-semibold leading-none">Notificaciones</h4>
+          {unreadCount > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {unreadCount} sin leer
+            </span>
+          )}
         </div>
         <ScrollArea className="h-[300px]">
           {notifications.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-500 flex flex-col items-center gap-2">
-              <Bell className="h-8 w-8 text-gray-300" />
-              <p>Sin notificaciones</p>
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              No tienes notificaciones
             </div>
           ) : (
             <div className="flex flex-col">
-              {notifications.map((notif) => (
-                <button
+              {notifications.map((notif: any) => (
+                <div
                   key={notif.id}
-                  onClick={() => handleNotificationClick(notif)}
-                  className={`p-4 text-left border-b hover:bg-gray-50 transition-colors flex gap-3 ${
-                    !notif.read ? "bg-blue-50/60" : ""
+                  className={`flex flex-col gap-1 p-4 border-b hover:bg-muted/50 transition-colors ${
+                    !notif.read ? "bg-blue-50/30" : ""
                   }`}
                 >
-                  {/* Icono según tipo */}
-                  <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${
-                        notif.type === 'gps_alert' ? 'bg-red-500' : 
-                        notif.type === 'payment_due' ? 'bg-orange-500' : 'bg-blue-500'
-                    }`} 
-                  />
-                  
-                  <div className="flex-1">
-                    <p className={`text-sm ${!notif.read ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
-                        {notif.title}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notif.message}</p>
-                    <p className="text-[10px] text-gray-400 mt-2 text-right">
-                        {new Date(notif.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={notif.link || "#"} onClick={() => {
+                        if(!notif.read) handleMarkAsRead(notif.id);
+                        setOpen(false);
+                    }}>
+                        <div className="flex items-center gap-2 cursor-pointer group">
+                            {getIcon(notif.type, notif.title)}
+                            <span className="text-sm font-medium group-hover:underline">
+                                {notif.title}
+                            </span>
+                        </div>
+                    </Link>
+                    {!notif.read && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-primary"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkAsRead(notif.id);
+                        }}
+                        title="Marcar como leída"
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
-                </button>
+                  <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+                    {notif.message}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground/70 pl-6">
+                    {format(new Date(notif.timestamp), "d MMM, HH:mm", { locale: es })}
+                  </span>
+                </div>
               ))}
             </div>
           )}
