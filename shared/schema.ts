@@ -46,7 +46,7 @@ export const vehicles = mysqlTable("vehicles", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// --- HOJAS DE RUTA (CORREGIDO: Coincide con tu DB real) ---
+// --- HOJAS DE RUTA ---
 export const routeSlips = mysqlTable("route_slips", {
   id: varchar("id", { length: 36 }).primaryKey(),
   date: varchar("date", { length: 50 }).notNull(),
@@ -58,7 +58,6 @@ export const routeSlips = mysqlTable("route_slips", {
   paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
   notes: text("notes"),
   isDuplicate: boolean("is_duplicate").default(false),
-  // 🟢 SE ELIMINARON: authorizedBy, authorizedAt, qrCodeData
   createdAt: timestamp("created_at").defaultNow()
 });
 
@@ -88,7 +87,7 @@ export const auditLogs = mysqlTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow()
 });
 
-// --- NOTIFICACIONES ---
+// --- NOTIFICACIONES (CORREGIDO: createdAt -> timestamp) ---
 export const notifications = mysqlTable("notifications", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
@@ -97,7 +96,8 @@ export const notifications = mysqlTable("notifications", {
   message: text("message").notNull(),
   link: varchar("link", { length: 255 }),
   read: boolean("read").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
+  // 🟢 CORRECCIÓN IMPORTANTE: Cambiado a 'timestamp' para coincidir con routes.ts
+  timestamp: timestamp("timestamp").defaultNow(),
 });
 
 // --- GPS HISTORY ---
@@ -143,11 +143,11 @@ export const gpsHistoryRelations = relations(gpsHistory, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true });
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({ id: true, createdAt: true });
-// 🟢 SE ACTUALIZÓ: Se eliminaron los campos omitidos que ya no existen
 export const insertRouteSlipSchema = createInsertSchema(routeSlips).omit({ id: true, createdAt: true, isDuplicate: true });
 export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
-export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true, read: true });
+// 🟢 CORRECCIÓN: Omitimos timestamp en lugar de createdAt
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, timestamp: true, read: true });
 export const insertGpsHistorySchema = createInsertSchema(gpsHistory).omit({ id: true, timestamp: true });
 
 // --- TYPES ---
