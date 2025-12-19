@@ -152,8 +152,7 @@ export default function RouteSlipsPage() {
                     </div>
                     <div className="text-right">
                         <div className="text-2xl font-bold text-black border-2 border-black px-4 py-1 inline-block mb-2">
-                            {/* 🟢 MODIFICACIÓN: Uso de snapshot patente */}
-                            {publicSlip.vehicle?.plate || publicSlip.vehiclePlateSnapshot}
+                            {publicSlip.vehicle?.plate}
                         </div>
                         <p className="text-sm font-bold text-gray-400 uppercase">Taxi Nort S.A.</p>
                     </div>
@@ -162,9 +161,8 @@ export default function RouteSlipsPage() {
                 <div className="grid grid-cols-2 gap-y-8 gap-x-12 mb-8">
                     <div>
                         <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Conductor</p>
-                        {/* 🟢 MODIFICACIÓN: Uso de snapshot nombre */}
-                        <p className="text-xl font-medium text-black">{publicSlip.driver?.name || publicSlip.driverNameSnapshot}</p>
-                        <p className="text-sm text-gray-500">{publicSlip.driver?.rut || "---"}</p>
+                        <p className="text-xl font-medium text-black">{publicSlip.driver?.name}</p>
+                        <p className="text-sm text-gray-500">{publicSlip.driver?.rut}</p>
                     </div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-1">Fecha</p>
@@ -218,15 +216,10 @@ export default function RouteSlipsPage() {
 
   const filteredSlips = slips.filter((slip: any) => {
     const search = searchTerm.toLowerCase();
-    // 🟢 MODIFICACIÓN: El filtrado ahora también busca en los snapshots históricos
-    const driverName = (slip.driver?.name || slip.driverNameSnapshot || "").toLowerCase();
-    const vehiclePlate = (slip.vehicle?.plate || slip.vehiclePlateSnapshot || "").toLowerCase();
-    const driverRut = (slip.driver?.rut || "").toLowerCase();
-
     return (
-      driverName.includes(search) ||
-      vehiclePlate.includes(search) ||
-      driverRut.includes(search)
+      slip.driver?.name?.toLowerCase().includes(search) ||
+      slip.vehicle?.plate?.toLowerCase().includes(search) ||
+      slip.driver?.rut?.includes(search)
     );
   });
 
@@ -255,13 +248,11 @@ export default function RouteSlipsPage() {
           fecha: slip.date,
           conductor: { 
               id: slip.driverId, 
-              // 🟢 MODIFICACIÓN: Muestra el nombre histórico si el objeto driver es null
-              nombre: slip.driver?.name || slip.driverNameSnapshot || "Conductor Desconocido" 
+              nombre: slip.driver?.name || "Conductor Desconocido" 
           },
           vehiculo: { 
               id: slip.vehicleId, 
-              // 🟢 MODIFICACIÓN: Muestra patente histórica
-              patente: slip.vehicle?.plate || slip.vehiclePlateSnapshot || "Sin Patente" 
+              patente: slip.vehicle?.plate || "Sin Patente" 
           },
           horaInicio: slip.startTime || "08:00", 
           horaFin: slip.endTime || "15:00"
@@ -349,9 +340,11 @@ export default function RouteSlipsPage() {
     createMutation.mutate(data);
   };
 
+  // 🟢 FUNCIÓN GENERADORA DE URL QR (CORREGIDA PARA RUTA PÚBLICA)
   const getQrUrl = (slipId: string) => {
     if (typeof window !== 'undefined') {
         const baseUrl = window.location.origin;
+        // Apuntamos a la ruta PÚBLICA configurada en App.tsx
         return `${baseUrl}/public-view?id=${slipId}`;
     }
     return '';
@@ -407,15 +400,13 @@ export default function RouteSlipsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                        {/* 🟢 MODIFICACIÓN: Muestra el nombre histórico si la relación driver ya no existe */}
-                        <span className="font-medium">{slip.driver?.name || slip.driverNameSnapshot}</span>
-                        <span className="text-xs text-muted-foreground">{slip.driver?.rut || "---"}</span>
+                        <span className="font-medium">{slip.driver?.name}</span>
+                        <span className="text-xs text-muted-foreground">{slip.driver?.rut}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="font-mono bg-zinc-100 text-zinc-800 border-zinc-200">
-                        {/* 🟢 MODIFICACIÓN: Muestra patente histórica */}
-                        {slip.vehicle?.plate || slip.vehiclePlateSnapshot}
+                        {slip.vehicle?.plate}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
@@ -524,17 +515,16 @@ export default function RouteSlipsPage() {
                     <p className="text-sm text-muted-foreground">ID: {viewSlip?.id?.slice(0,8)}</p>
                 </div>
             </div>
+            {/* USAMOS EL MISMO DIV PARA IMPRIMIR QUE USAMOS EN EL PUBLIC VIEW */}
             <div className="p-6 space-y-6" ref={printRef}>
                 <div className="flex justify-between items-center border-b pb-4">
                     <div>
                         <p className="text-sm text-muted-foreground">Conductor</p>
-                        {/* 🟢 MODIFICACIÓN: Muestra el nombre histórico en el detalle del slip */}
-                        <p className="text-lg font-bold">{viewSlip?.driver?.name || viewSlip?.driverNameSnapshot}</p>
+                        <p className="text-lg font-bold">{viewSlip?.driver?.name}</p>
                     </div>
                     <div className="text-right">
                         <p className="text-sm text-muted-foreground">Vehículo</p>
-                        {/* 🟢 MODIFICACIÓN: Muestra patente histórica */}
-                        <Badge variant="outline" className="text-lg font-mono px-3 py-1">{viewSlip?.vehicle?.plate || viewSlip?.vehiclePlateSnapshot}</Badge>
+                        <Badge variant="outline" className="text-lg font-mono px-3 py-1">{viewSlip?.vehicle?.plate}</Badge>
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -545,6 +535,7 @@ export default function RouteSlipsPage() {
                 <div className="bg-zinc-50 p-4 rounded-lg flex flex-col items-center justify-center border border-zinc-100 mt-4">
                     <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider">Escanear para validar</p>
                     <div className="bg-white p-2 rounded shadow-sm">
+                        {/* 🟢 QR CORREGIDO: Enlace público */}
                         <QRCode value={getQrUrl(viewSlip?.id)} size={128} />
                     </div>
                 </div>

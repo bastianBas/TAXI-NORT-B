@@ -39,31 +39,45 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type Driver } from "@shared/schema";
-// 🟢 1. AGREGAR 'Search' A LOS ICONOS
-import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car } from "lucide-react";
 import { z } from "zod"; 
 
+// 🟢 IMPORTS DE UTILIDADES
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PhoneInput } from "@/components/phone-input";
 
+// 🟢 ESQUEMA ESTRICTO CORREGIDO Y AMPLIADO
 const strictDriverSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
+  
+  // RUT Principal (Usuario/Contraseña)
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), { message: "RUT inválido (Dígito incorrecto)" }),
+
+  // 🟢 CORRECCIÓN: Teléfono min(15) exactos (+56 9 XXXX XXXX son 15 chars)
   phone: z.string()
     .min(15, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
+
   commune: z.string().min(1, "La comuna es obligatoria"),
   address: z.string().min(1, "La dirección es obligatoria"),
+  
+  // N° Licencia (RUT)
   licenseNumber: z.string()
     .min(1, "N° Licencia obligatorio")
     .refine((val) => validateRut(val), { message: "RUT de licencia inválido" }),
+
   licenseClass: z.string().min(1, "Clase obligatoria"),
+  
+  // 🟢 NUEVO CAMPO: Último Control
   lastControlDate: z.string().min(1, "Fecha último control obligatoria"),
+  
+  // Próximo Control
   licenseDate: z.string().min(1, "Vencimiento obligatorio"),
+  
   status: z.string().default("active"),
 });
 
@@ -74,21 +88,12 @@ export default function Drivers() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
-  // 🟢 2. ESTADO PARA LA BÚSQUEDA
-  const [searchTerm, setSearchTerm] = useState("");
 
   const canEdit = ["admin", "operator"].includes(user?.role || "");
 
   const { data: drivers, isLoading } = useQuery<Driver[]>({
     queryKey: ["/api/drivers"],
   });
-
-  // 🟢 3. LÓGICA DE FILTRADO (Por Nombre o RUT)
-  const filteredDrivers = drivers?.filter((driver) => 
-    driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    driver.rut.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const form = useForm<DriverFormValues>({
     resolver: zodResolver(strictDriverSchema),
@@ -101,7 +106,7 @@ export default function Drivers() {
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
-      lastControlDate: "",
+      lastControlDate: "", // 🟢 Default nuevo campo
       licenseDate: "",
       status: "active",
     },
@@ -157,7 +162,7 @@ export default function Drivers() {
     }
   };
 
-  const handleEdit = (driver: any) => {
+  const handleEdit = (driver: any) => { // Usamos any temporalmente si el tipo Driver en DB aun no tiene lastControlDate
     setEditingId(driver.id);
     form.reset({
       name: driver.name,
@@ -168,7 +173,7 @@ export default function Drivers() {
       address: driver.address || "",
       licenseNumber: driver.licenseNumber,
       licenseClass: driver.licenseClass,
-      lastControlDate: driver.lastControlDate || "",
+      lastControlDate: driver.lastControlDate || "", // 🟢 Cargar dato al editar
       licenseDate: driver.licenseDate,
       status: driver.status,
     });
@@ -186,7 +191,7 @@ export default function Drivers() {
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
-      lastControlDate: "",
+      lastControlDate: "", // 🟢 Reset nuevo campo
       licenseDate: "",
       status: "active",
     });
@@ -197,175 +202,166 @@ export default function Drivers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Conductores</h1>
           <p className="text-muted-foreground">Fichas de personal y licencias</p>
         </div>
+        {canEdit && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={handleCreate} className="bg-slate-900 text-white hover:bg-slate-800">
+                <Plus className="mr-2 h-4 w-4" /> Nuevo Conductor
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingId ? "Editar Ficha" : "Nueva Ficha de Conductor"}</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  
+                  {/* DATOS PERSONALES */}
+                  <div className="p-4 border rounded-md space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2"><UserSquare2 className="h-4 w-4" /> Datos Personales</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
+                      <FormField control={form.control} name="name" render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Nombre Completo *</FormLabel>
+                          <FormControl>
+                            <Input 
+                                {...field} 
+                                placeholder="Ej: Juan Andrés Pérez Cotapos" 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      
+                      <FormField control={form.control} name="email" render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Email (Para inicio de sesión) *</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-        {/* 🟢 4. BARRA DE BÚSQUEDA + BOTÓN */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative w-full md:w-64">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                    placeholder="Buscar por nombre o RUT..." 
-                    className="pl-8" 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                />
-            </div>
-            
-            {canEdit && (
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogTrigger asChild>
-                <Button onClick={handleCreate} className="bg-slate-900 text-white hover:bg-slate-800 shrink-0">
-                    <Plus className="mr-2 h-4 w-4" /> Nuevo
-                </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{editingId ? "Editar Ficha" : "Nueva Ficha de Conductor"}</DialogTitle>
-                </DialogHeader>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    
-                    {/* DATOS PERSONALES */}
-                    <div className="p-4 border rounded-md space-y-4">
-                        <h3 className="font-semibold flex items-center gap-2"><UserSquare2 className="h-4 w-4" /> Datos Personales</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        
-                        <FormField control={form.control} name="name" render={({ field }) => (
-                            <FormItem className="col-span-2">
-                            <FormLabel>Nombre Completo *</FormLabel>
-                            <FormControl>
-                                <Input 
-                                    {...field} 
-                                    placeholder="Ej: Juan Andrés Pérez Cotapos" 
-                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                                />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
-                        
-                        <FormField control={form.control} name="email" render={({ field }) => (
-                            <FormItem className="col-span-2">
-                            <FormLabel>Email (Para inicio de sesión) *</FormLabel>
-                            <FormControl>
-                                <Input {...field} value={field.value || ""} type="email" placeholder="conductor@taxinort.cl" />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
+                      <FormField control={form.control} name="rut" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>RUT (Será la contraseña) *</FormLabel>
+                          <FormControl>
+                            <RutInput {...field} placeholder="12.345.678-9" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      
+                      <FormField control={form.control} name="phone" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Teléfono *</FormLabel>
+                          <FormControl>
+                            <PhoneInput {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-                        <FormField control={form.control} name="rut" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>RUT (Será la contraseña) *</FormLabel>
-                            <FormControl>
-                                <RutInput {...field} placeholder="12.345.678-9" />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
-                        
-                        <FormField control={form.control} name="phone" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Teléfono *</FormLabel>
-                            <FormControl>
-                                <PhoneInput {...field} />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
-
-                        <FormField control={form.control} name="commune" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Comuna *</FormLabel>
-                            <FormControl>
-                                <Input 
-                                    {...field} 
-                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                                />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
-                        
-                        <FormField control={form.control} name="address" render={({ field }) => (
-                            <FormItem className="col-span-2">
-                            <FormLabel>Dirección *</FormLabel>
-                            <FormControl>
-                                <Input 
-                                    {...field} 
-                                    value={field.value || ""} 
-                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                                />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
-                        </div>
+                      <FormField control={form.control} name="commune" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Comuna *</FormLabel>
+                          <FormControl>
+                            <Input 
+                                {...field} 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      
+                      <FormField control={form.control} name="address" render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel>Dirección *</FormLabel>
+                          <FormControl>
+                            <Input 
+                                {...field} 
+                                value={field.value || ""} 
+                                onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
+                  </div>
 
-                    {/* LICENCIA */}
-                    <div className="p-4 border rounded-md bg-slate-50 dark:bg-slate-900/50 space-y-4">
-                        <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4" /> Licencia de Conducir</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        
-                        <FormField control={form.control} name="licenseNumber" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>N° Licencia (RUT) *</FormLabel>
-                            <FormControl>
-                                <RutInput {...field} placeholder="12.345.678-9" />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
+                  {/* LICENCIA */}
+                  <div className="p-4 border rounded-md bg-slate-50 dark:bg-slate-900/50 space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4" /> Licencia de Conducir</h3>
+                    {/* 🟢 CAMBIO GRID: md:grid-cols-2 para acomodar 4 campos */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
+                      {/* N° LICENCIA */}
+                      <FormField control={form.control} name="licenseNumber" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>N° Licencia (RUT) *</FormLabel>
+                          <FormControl>
+                            <RutInput {...field} placeholder="12.345.678-9" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-                        <FormField control={form.control} name="licenseClass" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Clase *</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                                <SelectContent>
-                                <SelectItem value="A1">A1</SelectItem>
-                                <SelectItem value="A2">A2</SelectItem>
-                                <SelectItem value="A3">A3</SelectItem>
-                                <SelectItem value="B">B</SelectItem>
-                                <SelectItem value="C">C</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
+                      {/* CLASE */}
+                      <FormField control={form.control} name="licenseClass" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Clase *</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent>
+                              <SelectItem value="A1">A1</SelectItem>
+                              <SelectItem value="A2">A2</SelectItem>
+                              <SelectItem value="A3">A3</SelectItem>
+                              <SelectItem value="B">B</SelectItem>
+                              <SelectItem value="C">C</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-                        <FormField control={form.control} name="lastControlDate" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Último Control *</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
+                      {/* 🟢 NUEVO CAMPO: ÚLTIMO CONTROL */}
+                      <FormField control={form.control} name="lastControlDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Último Control *</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-                        <FormField control={form.control} name="licenseDate" render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Próx. Control *</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )} />
-                        </div>
+                      {/* PRÓXIMO CONTROL */}
+                      <FormField control={form.control} name="licenseDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Próx. Control *</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
+                  </div>
 
-                    <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
-                        {editingId ? "Guardar Cambios" : "Registrar Conductor"}
-                    </Button>
-                    </form>
-                </Form>
-                </DialogContent>
-            </Dialog>
-            )}
-        </div>
+                  <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {editingId ? "Guardar Cambios" : "Registrar Conductor"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -377,21 +373,22 @@ export default function Drivers() {
                 <TableHead>RUT</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Licencia</TableHead>
+                {/* 🟢 AGREGAR HEADER SI QUIERES VERLO EN LA TABLA */}
+                {/* <TableHead>Ult. Control</TableHead> */}
                 <TableHead>Próx. Control</TableHead>
                 <TableHead>Teléfono</TableHead>
                 {canEdit && <TableHead className="w-[100px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDrivers?.length === 0 ? (
+              {drivers?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    {drivers?.length === 0 ? "No hay conductores registrados." : "No se encontraron resultados."}
+                    No hay conductores registrados.
                   </TableCell>
                 </TableRow>
               ) : (
-                // 🟢 5. USAR 'filteredDrivers' EN LUGAR DE 'drivers'
-                filteredDrivers?.map((driver) => (
+                drivers?.map((driver) => (
                   <TableRow key={driver.id}>
                     <TableCell className="font-medium">{driver.name}</TableCell>
                     <TableCell>{driver.rut}</TableCell>
@@ -402,6 +399,7 @@ export default function Drivers() {
                       </span>
                       {driver.licenseNumber}
                     </TableCell>
+                    {/* <TableCell>{driver.lastControlDate}</TableCell> */}
                     <TableCell>{driver.licenseDate}</TableCell>
                     <TableCell>{driver.phone}</TableCell>
                     {canEdit && (

@@ -31,23 +31,14 @@ type FormData = z.infer<typeof insertRouteSlipSchema>;
 
 interface RouteSlipFormProps {
   onSuccess: () => void;
-  initialData?: any; // Datos para editar
+  initialData?: any; // 🟢 NUEVO: Datos para editar
 }
-
-// 🟢 HELPER: Convierte el archivo a Base64 para enviarlo en el JSON
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
-  });
-};
 
 export function RouteSlipForm({ onSuccess, initialData }: RouteSlipFormProps) {
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(insertRouteSlipSchema),
     defaultValues: {
+      // Si hay datos iniciales (edición), los usamos. Si no, usamos defaults (creación).
       date: initialData?.date || new Date().toISOString().split('T')[0],
       vehicleId: initialData?.vehicleId || "",
       driverId: initialData?.driverId || "",
@@ -72,19 +63,16 @@ export function RouteSlipForm({ onSuccess, initialData }: RouteSlipFormProps) {
     try {
       setIsSubmitting(true);
       
-      // 🟢 MODIFICACIÓN: Creamos un objeto JSON en lugar de FormData
-      const payload: any = { ...data };
+      const formData = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value) formData.append(key, value);
+      });
       
-      // Si hay una nueva firma seleccionada, la convertimos a Base64
       if (file) {
-        try {
-          const base64Signature = await fileToBase64(file);
-          payload.signatureUrl = base64Signature;
-        } catch (e) {
-          console.error("Error al procesar la imagen de la firma", e);
-        }
+        formData.append("signature", file);
       }
 
+      // 🟢 LÓGICA INTELIGENTE: Si hay ID, es una actualización (PUT), si no, es creación (POST)
       let url = "/api/route-slips";
       let method = "POST";
 
@@ -93,32 +81,21 @@ export function RouteSlipForm({ onSuccess, initialData }: RouteSlipFormProps) {
         method = "PUT";
       }
 
-      // 🟢 MODIFICACIÓN: Enviamos como JSON para asegurar que el backend reciba todo
       const res = await fetch(url, {
         method: method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
-      if (!res.ok) {
-        const errorMsg = await res.text();
-        throw new Error(errorMsg || "Error al guardar");
-      }
+      if (!res.ok) throw new Error("Error al guardar");
 
       toast({ 
         title: initialData ? "Control Actualizado" : "Control Creado", 
-        description: "Los datos y el registro histórico se guardaron correctamente." 
+        description: "Los datos se guardaron correctamente." 
       });
       onSuccess(); 
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      toast({ 
-        title: "Error", 
-        description: error.message || "No se pudo guardar el registro.", 
-        variant: "destructive" 
-      });
+      toast({ title: "Error", description: "No se pudo guardar el registro.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -138,7 +115,7 @@ export function RouteSlipForm({ onSuccess, initialData }: RouteSlipFormProps) {
           <Label>Vehículo</Label>
           <Select 
             onValueChange={(val) => setValue("vehicleId", val)} 
-            defaultValue={initialData?.vehicleId}
+            defaultValue={initialData?.vehicleId} // Pre-seleccionar en edición
           >
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar auto" />
@@ -158,7 +135,7 @@ export function RouteSlipForm({ onSuccess, initialData }: RouteSlipFormProps) {
           <Label>Conductor</Label>
           <Select 
             onValueChange={(val) => setValue("driverId", val)}
-            defaultValue={initialData?.driverId}
+            defaultValue={initialData?.driverId} // Pre-seleccionar en edición
           >
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar conductor" />

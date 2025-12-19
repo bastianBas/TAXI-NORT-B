@@ -83,22 +83,14 @@ export function registerRoutes(app: Express): Server {
         with: { driver: true, vehicle: true }
       });
       if (!slip) return res.status(404).send("Documento no encontrado");
-
-      // MODIFICACIÓN: Si la relación falló por borrado, inyectar el snapshot
-      const processedSlip = {
-          ...slip,
-          driver: slip.driver || { name: slip.driverNameSnapshot || "(Eliminado)", rut: "---" },
-          vehicle: slip.vehicle || { plate: slip.vehiclePlateSnapshot || "(Eliminado)" }
-      };
-
-      res.json(processedSlip);
+      res.json(slip);
     } catch (e) {
       console.error("Error fetching public slip:", e);
       res.status(500).send("Error del servidor");
     }
   });
 
-  // Registro Público
+  // Registro Público (Aquí el usuario elige su propia password)
   app.post("/api/register", async (req: any, res, next) => {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
@@ -239,47 +231,51 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error GPS"); }
   });
 
-  // --- HOJAS DE RUTA (LÓGICA CON SNAPSHOTS CORREGIDA) ---
+  // --- HOJAS DE RUTA ---
   app.post("/api/route-slips", verifyAuth, async (req, res) => {
      if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
      
      try {
        const newId = randomUUID();
-
-       // 🟢 1. OBTENER INFORMACIÓN ANTES DE CREAR (Snapshot para Historial)
-       const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, req.body.driverId) });
-       const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, req.body.vehicleId) });
-       
-       const driverName = driverInfo?.name || "Conductor";
-       const plate = vehicleInfo?.plate || "Sin patente";
-
-       // 🟢 2. INCLUIR LOS SNAPSHOTS Y LIMPIAR DATA
        const data = { 
            ...req.body, 
            id: newId, 
-           driverNameSnapshot: driverName,
-           vehiclePlateSnapshot: plate,
            signatureUrl: req.body.signatureUrl || null,
-           paymentStatus: req.body.paymentStatus || 'pending', 
+           paymentStatus: 'pending', 
            isDuplicate: false, 
            createdAt: new Date() 
        };
        
        await db.insert(routeSlips).values(data);
        
+       const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, data.driverId) });
+       const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, data.vehicleId) });
+       const driverName = driverInfo?.name || "Un conductor";
+       const plate = vehicleInfo?.plate || "Sin patente";
+
        await logAction(req.user, "CREATE", "Route Slip", `Creada hoja para ${driverName} (${plate}) - ${data.date}`, newId);
 
-       // AVISOS (Mantengo tu lógica original)
-       await notifyAdmins("warning", "⚠️ Hoja Pendiente de Pago", `El conductor ${driverName} (${plate}) tiene pendiente su pago.`, "/route-slips");
+       // 🔔 CASO 1: AVISO AL ADMIN (NARANJA)
+       await notifyAdmins(
+         "warning", 
+         "⚠️ Hoja Pendiente de Pago",
+         `El conductor ${driverName} (Patente: ${plate}) tiene pendiente el pago de su hoja del ${data.date}.`,
+         "/route-slips"
+       );
+
+       // 🔔 CASO 2: AVISO AL CONDUCTOR (NARANJA)
        if (driverInfo && driverInfo.userId) {
-          await notifyUser(driverInfo.userId, "warning", "⚠️ Atención: Hoja Pendiente", `Nueva hoja asignada (${data.date}).`, "/route-slips");
+          await notifyUser(
+              driverInfo.userId,
+              "warning",
+              "⚠️ Atención: Hoja Pendiente",
+              `Se te ha asignado la hoja del ${data.date}. Estado: PENDIENTE DE PAGO.`,
+              "/route-slips"
+          );
        }
 
        res.status(201).json(data);
-     } catch (e) { 
-         console.error("Error al registrar hoja de ruta:", e);
-         res.status(500).send("Error guardando en base de datos. Verifique los campos."); 
-     }
+     } catch (e) { res.status(500).send("Error guardando en BD."); }
   });
 
   app.put("/api/route-slips/:id", verifyAuth, async (req, res) => { 
@@ -292,80 +288,79 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error al actualizar"); } 
   });
   
-  // 🟢 3. GET INTELIGENTE (RECUPERA DATOS DE SNAPSHOT SI ES NULL)
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
-        let result = [];
         if (req.user?.role === 'admin') {
-            result = await db.query.routeSlips.findMany({ 
+            const all = await db.query.routeSlips.findMany({ 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
+            return res.json(all);
         } else {
             const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user!.id) });
             if (!driver) return res.json([]);
-            result = await db.query.routeSlips.findMany({ 
+            const mySlips = await db.query.routeSlips.findMany({ 
                 where: eq(routeSlips.driverId, driver.id), 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
+            return res.json(mySlips);
         }
-
-        // PROCESAMIENTO: Si la relación falló porque el conductor fue borrado, usamos el Snapshot
-        const processed = result.map(slip => {
-            const finalDriver = slip.driver || {
-                id: "deleted",
-                name: slip.driverNameSnapshot || "(Conductor Eliminado)",
-                rut: "---"
-            };
-            const finalVehicle = slip.vehicle || {
-                id: "deleted",
-                plate: slip.vehiclePlateSnapshot || "(Eliminado)",
-                model: "---"
-            };
-            return { ...slip, driver: finalDriver, vehicle: finalVehicle };
-        });
-
-        return res.json(processed);
     } catch (e) { res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES ---
+  // --- CONDUCTORES (CRUD ADMIN) ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { 
       try {
-        const all = await db.query.drivers.findMany({ 
-            orderBy: (d, { desc }) => [desc(d.createdAt)] 
-        }); 
+        const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); 
         res.json(all); 
       } catch (e) { res.status(500).send("Error obteniendo conductores"); }
   });
   
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
     try { 
-      const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate, lastControlDate } = req.body; 
+      const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body; 
       
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); 
       if (exist) return res.status(400).json({ message: "El correo ya existe" }); 
       
       const uid = randomUUID(); 
+      
+      // 🟢 1. LÓGICA DE CONTRASEÑA = RUT SIN DV
+      // Limpiamos todo lo que no sea número o K (por seguridad), luego quitamos el último caracter
       const cleanRut = rut.replace(/[^0-9kK]/g, ""); 
       const rutBody = cleanRut.slice(0, -1);
+      
+      // La contraseña será el cuerpo numérico
       const pass = await bcrypt.hash(rutBody, 10); 
       
+      // Creamos usuario login
       await db.insert(users).values({ 
           id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() 
       }); 
       
       const did = randomUUID(); 
       const dData = { 
-          id: did, userId: uid, email, name, rut, phone, commune, address: address || null, 
-          licenseNumber, licenseClass, licenseDate, 
-          lastControlDate: lastControlDate || null, 
-          createdAt: new Date(), status: 'active' 
+          id: did, 
+          userId: uid, 
+          email, 
+          name, 
+          rut, 
+          phone, 
+          commune, 
+          address: address || null, 
+          licenseNumber, 
+          licenseClass, 
+          licenseDate, 
+          createdAt: new Date(), 
+          status: 'active' 
       }; 
       
+      // Creamos perfil conductor
       await db.insert(drivers).values(dData); 
+      
       await logAction(req.user, "CREATE", "Driver", `Creado conductor manualmente: ${name}`, did);
+
       res.status(201).json(dData); 
     } catch (e) { 
         console.error("Error creating driver:", e); 
@@ -381,32 +376,17 @@ export function registerRoutes(app: Express): Server {
     } catch (e) { res.status(500).send("Error actualizando conductor"); } 
   });
 
-  // 🟢 4. DELETE DRIVER (CORREGIDO PARA DESVINCULAR SIN ROMPER REGISTROS)
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { 
     try { 
       const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); 
       if (!d) return res.status(404).send("No encontrado"); 
       
-      // A) Desvincular Hojas de Ruta: Poner driverId en null (el nombre queda en el snapshot)
-      await db.update(routeSlips).set({ driverId: null }).where(eq(routeSlips.driverId, req.params.id));
-
-      // B) Desvincular Pagos
-      await db.update(payments).set({ driverId: null }).where(eq(payments.driverId, req.params.id));
-
-      // C) Borrar Usuario Login
-      if (d.userId) {
-          await db.delete(users).where(eq(users.id, d.userId)); 
-      }
+      await db.delete(drivers).where(eq(drivers.id, req.params.id)); 
+      if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); 
       
-      // D) Borrar Conductor Físicamente
-      await db.delete(drivers).where(eq(drivers.id, req.params.id));
-      
-      await logAction(req.user, "DELETE", "Driver", `Eliminado totalmente: ${d.name}`, req.params.id);
+      await logAction(req.user, "DELETE", "Driver", `Eliminado conductor: ${d.name}`, req.params.id);
       res.json({ message: "Eliminado" }); 
-    } catch (e) { 
-        console.error("Error al eliminar conductor:", e);
-        res.status(500).send("Error eliminando conductor y desvinculando registros."); 
-    } 
+    } catch (e) { res.status(500).send("Error eliminando"); } 
   });
   
   // --- VEHÍCULOS ---
@@ -418,7 +398,12 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/vehicles", verifyAuth, async (req, res) => { 
     try { 
       const vid = randomUUID(); 
-      const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; 
+      const vData = { 
+          ...req.body, 
+          id: vid, 
+          createdAt: new Date(), 
+          status: 'active' 
+      }; 
       await db.insert(vehicles).values(vData); 
       await logAction(req.user, "CREATE", "Vehicle", `Creado vehículo: ${req.body.plate}`, vid);
       res.status(201).json(vData); 
@@ -470,6 +455,8 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/payments", verifyAuth, async (req, res) => { 
       try { 
           const pid = randomUUID(); 
+          const proof = req.body.proofOfPayment; 
+          
           const pData = { 
               id: pid, 
               routeSlipId: req.body.routeSlipId, 
@@ -478,23 +465,42 @@ export function registerRoutes(app: Express): Server {
               driverId: req.body.driverId, 
               vehicleId: req.body.vehicleId, 
               date: req.body.date, 
-              proofOfPayment: req.body.proofOfPayment, 
+              proofOfPayment: proof, 
               status: 'completed', 
               createdAt: new Date() 
           }; 
           
           await db.insert(payments).values(pData); 
+          
           if (req.body.routeSlipId) { 
               await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); 
           }
           
           const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, pData.driverId) });
+          const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, pData.vehicleId) });
           const driverName = driverInfo?.name || "Conductor";
+          const plate = vehicleInfo?.plate || "Sin patente";
+
           await logAction(req.user, "CREATE", "Payment", `Pago: $${pData.amount} de ${driverName}`, pid);
 
-          await notifyAdmins("success", "✅ Pago Confirmado", `El conductor ${driverName} ha pagado $${pData.amount}.`, "/payments");
+          // 🔔 AVISO AL ADMIN (VERDE)
+          await notifyAdmins(
+            "success", 
+            "✅ Pago Confirmado", 
+            `El conductor ${driverName} (Patente: ${plate}) ha pagado $${pData.amount}.`, 
+            "/payments"
+          );
+
+          // 🔔 AVISO AL CONDUCTOR (VERDE)
+          // 🟢 CORREGIDO: Se usa driverInfo.userId
           if (driverInfo && driverInfo.userId) {
-              await notifyUser(driverInfo.userId, "success", "Pago Registrado", `Tu pago de $${pData.amount} fue recibido.`, "/payments");
+              await notifyUser(
+                  driverInfo.userId,
+                  "success",
+                  "Pago Registrado",
+                  `Tu pago de $${pData.amount} fue recibido. Puedes circular con normalidad.`,
+                  "/payments"
+              );
           }
 
           res.status(201).json(pData); 
@@ -503,10 +509,11 @@ export function registerRoutes(app: Express): Server {
 
   app.put("/api/payments/:id", verifyAuth, async (req, res) => {
     try {
+        const pId = req.params.id;
         const data: any = { ...req.body };
         if (data.amount) data.amount = parseInt(data.amount);
-        await db.update(payments).set(data).where(eq(payments.id, req.params.id));
-        await logAction(req.user, "MODIFY", "Payment", `Pago actualizado`, req.params.id);
+        await db.update(payments).set(data).where(eq(payments.id, pId));
+        await logAction(req.user, "MODIFY", "Payment", `Pago actualizado ID: ...${pId.slice(-6)}`, pId);
         res.json({ message: "Pago actualizado" });
     } catch (e) { res.status(500).json({ message: "Error al actualizar" }); }
   });

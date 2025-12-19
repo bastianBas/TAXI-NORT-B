@@ -5,27 +5,28 @@ import { queryClient, apiRequestJson } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-// 🟢 1. AGREGAR 'Search'
-import { Plus, Loader2, Trash2, Car, User, FileText, Pencil, Search } from "lucide-react";
+import { Plus, Loader2, Trash2, Car, User, FileText, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod"; 
+import { z } from "zod"; // 🟢 ZOD
 import { type Vehicle } from "@shared/schema";
 
+// 🟢 IMPORTS NUEVOS
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PlateInput } from "@/components/plate-input";
 
+// 🟢 ESQUEMA DE VALIDACIÓN ESTRICTO
 const strictVehicleSchema = z.object({
   plate: z.string()
     .min(1, "La patente es obligatoria")
     .max(8, "Máximo 8 caracteres")
-    .transform(val => val.toUpperCase()),
+    .transform(val => val.toUpperCase()), // Aseguramos mayúsculas
   model: z.string().min(1, "El modelo es obligatorio"),
   color: z.string().min(1, "El color es obligatorio"),
   ownerName: z.string().min(1, "El nombre del dueño es obligatorio"),
@@ -46,25 +47,14 @@ export default function Vehicles() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
-  // 🟢 2. ESTADO DE BÚSQUEDA
-  const [searchTerm, setSearchTerm] = useState("");
-
   const isAdmin = user?.role === "admin" || user?.role === "operator";
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
   });
 
-  // 🟢 3. FILTRADO (Patente, Modelo o Dueño)
-  const filteredVehicles = vehicles?.filter((v) => 
-    v.plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.ownerName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const form = useForm<VehicleFormValues>({
-    resolver: zodResolver(strictVehicleSchema),
+    resolver: zodResolver(strictVehicleSchema), // 🟢 Usamos esquema estricto
     defaultValues: {
       plate: "",
       model: "",
@@ -164,151 +154,142 @@ export default function Vehicles() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Vehículos</h1>
           <p className="text-muted-foreground">Flota y documentación</p>
         </div>
-        
-        {/* 🟢 4. BARRA DE BÚSQUEDA + BOTÓN */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative w-full md:w-64">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                    placeholder="Buscar por patente, modelo..." 
-                    className="pl-8" 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                />
-            </div>
-
-            {isAdmin && (
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogTrigger asChild>
-                <Button onClick={handleCreate} className="bg-slate-900 text-white hover:bg-slate-800 shrink-0">
-                    <Plus className="mr-2 h-4 w-4" /> Nuevo
-                </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{editingId ? "Editar Vehículo" : "Registrar Nuevo Vehículo"}</DialogTitle>
-                </DialogHeader>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    
-                    {/* SECCIÓN 1: DATOS DEL VEHÍCULO */}
-                    <div className="p-4 border rounded-md space-y-4">
-                        <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4"/> Datos del Vehículo</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <FormField control={form.control} name="plate" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Patente *</FormLabel>
-                                <FormControl>
-                                    <PlateInput {...field} placeholder="ABCD-12" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="model" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Modelo *</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        {...field} 
-                                        placeholder="Ej: Toyota Yaris" 
-                                        onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="color" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Color *</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        {...field} 
-                                        onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        </div>
+        {isAdmin && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={handleCreate} className="bg-slate-900 text-white hover:bg-slate-800">
+                <Plus className="mr-2 h-4 w-4" /> Nuevo Vehículo
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingId ? "Editar Vehículo" : "Registrar Nuevo Vehículo"}</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  
+                  {/* SECCIÓN 1: DATOS DEL VEHÍCULO */}
+                  <div className="p-4 border rounded-md space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4"/> Datos del Vehículo</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <FormField control={form.control} name="plate" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Patente *</FormLabel>
+                            <FormControl>
+                                {/* 🟢 INPUT DE PATENTE INTELIGENTE */}
+                                <PlateInput {...field} placeholder="ABCD-12" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="model" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Modelo *</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    placeholder="Ej: Toyota Yaris" 
+                                    // 🟢 AUTO-CAPITALIZAR 
+                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="color" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Color *</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    // 🟢 AUTO-CAPITALIZAR 
+                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
+                  </div>
 
-                    {/* SECCIÓN 2: DATOS DEL PROPIETARIO */}
-                    <div className="p-4 border rounded-md space-y-4 bg-slate-50 dark:bg-slate-900/50">
-                        <h3 className="font-semibold flex items-center gap-2"><User className="h-4 w-4"/> Propietario</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField control={form.control} name="ownerName" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Nombre Completo *</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        {...field} 
-                                        onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="ownerRut" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>RUT Propietario *</FormLabel>
-                                <FormControl>
-                                    <RutInput {...field} placeholder="12.345.678-9" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        </div>
+                  {/* SECCIÓN 2: DATOS DEL PROPIETARIO */}
+                  <div className="p-4 border rounded-md space-y-4 bg-slate-50 dark:bg-slate-900/50">
+                    <h3 className="font-semibold flex items-center gap-2"><User className="h-4 w-4"/> Propietario</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={form.control} name="ownerName" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Nombre Completo *</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    // 🟢 AUTO-CAPITALIZAR 
+                                    onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="ownerRut" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>RUT Propietario *</FormLabel>
+                            <FormControl>
+                                {/* 🟢 INPUT RUT INTELIGENTE */}
+                                <RutInput {...field} placeholder="12.345.678-9" />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
+                  </div>
 
-                    {/* SECCIÓN 3: DOCUMENTACIÓN */}
-                    <div className="p-4 border rounded-md space-y-4">
-                        <h3 className="font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> Vencimiento Documentos</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField control={form.control} name="technicalReviewDate" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Revisión Técnica *</FormLabel>
-                                <FormControl><Input type="date" {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="circulationPermitDate" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Permiso de Circulación *</FormLabel>
-                                <FormControl><Input type="date" {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="soapDate" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Vencimiento SOAP *</FormLabel>
-                                <FormControl><Input type="date" {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField control={form.control} name="authorizationDate" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Vencimiento Cartón (CIRNSTP) *</FormLabel>
-                                <FormControl><Input type="date" {...field} /></FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        </div>
+                  {/* SECCIÓN 3: DOCUMENTACIÓN */}
+                  <div className="p-4 border rounded-md space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> Vencimiento Documentos</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={form.control} name="technicalReviewDate" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Revisión Técnica *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="circulationPermitDate" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Permiso de Circulación *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="soapDate" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Vencimiento SOAP *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="authorizationDate" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Vencimiento Cartón (CIRNSTP) *</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
+                  </div>
 
-                    <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
-                        {editingId ? "Guardar Cambios" : "Guardar Vehículo"}
-                    </Button>
-                    </form>
-                </Form>
-                </DialogContent>
-            </Dialog>
-            )}
-        </div>
+                  <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {editingId ? "Guardar Cambios" : "Guardar Vehículo"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -325,15 +306,14 @@ export default function Vehicles() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredVehicles?.length === 0 ? (
+              {vehicles?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    {vehicles?.length === 0 ? "No hay vehículos registrados." : "No se encontraron resultados."}
+                    No hay vehículos registrados.
                   </TableCell>
                 </TableRow>
               ) : (
-                // 🟢 5. USAR 'filteredVehicles'
-                filteredVehicles?.map((vehicle) => (
+                vehicles?.map((vehicle) => (
                   <TableRow key={vehicle.id}>
                     <TableCell className="font-mono font-bold">{vehicle.plate}</TableCell>
                     <TableCell>
