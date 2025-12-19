@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, Info, AlertTriangle, DollarSign } from "lucide-react";
+import { Bell, Check, Info, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -14,18 +14,26 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
-// Helper para iconos según el título o tipo de notificación
-const getIcon = (type: string, title: string) => {
-    if (type === 'warning' || title.includes('Pendiente')) return <AlertTriangle className="h-4 w-4 text-orange-500" />;
-    if (type === 'success' || title.includes('Pago')) return <DollarSign className="h-4 w-4 text-green-500" />;
+// 🟢 HELPER: Iconos según el tipo de notificación
+const getIcon = (type: string) => {
+    if (type === 'warning') return <AlertTriangle className="h-4 w-4 text-orange-600" />;
+    if (type === 'success') return <CheckCircle2 className="h-4 w-4 text-green-600" />;
     return <Info className="h-4 w-4 text-blue-500" />;
+};
+
+// 🟢 HELPER: Color de fondo según importancia
+const getBgColor = (type: string, read: boolean) => {
+    if (read) return "bg-white hover:bg-gray-50"; // Leído = Blanco
+    if (type === 'warning') return "bg-orange-50 hover:bg-orange-100 border-l-4 border-orange-500"; // Deuda = Naranja
+    if (type === 'success') return "bg-green-50 hover:bg-green-100 border-l-4 border-green-500"; // Pago = Verde
+    return "bg-blue-50 hover:bg-blue-100 border-l-4 border-blue-500"; // Info = Azul
 };
 
 export function NotificationsPanel() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  // 1. CARGAR NOTIFICACIONES (CON POLLING DE 5 SEGUNDOS)
+  // 1. CARGA AUTOMÁTICA (POLLING)
   const { data: notifications = [] } = useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
@@ -33,7 +41,7 @@ export function NotificationsPanel() {
       if (!res.ok) return [];
       return res.json();
     },
-    // 🟢 ESTO HACE LA MAGIA: Actualiza solo cada 5 segundos
+    // 🟢 IMPORTANTE: Esto hace que se actualice solo cada 5 segundos
     refetchInterval: 5000, 
   });
 
@@ -57,7 +65,8 @@ export function NotificationsPanel() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5 text-gray-600" />
+          {/* Si hay notificaciones, la campana vibra (animate-pulse) y cambia de color */}
+          <Bell className={`h-5 w-5 ${unreadCount > 0 ? "text-orange-600 animate-pulse" : "text-gray-600"}`} />
           {unreadCount > 0 && (
             <Badge 
               variant="destructive" 
@@ -87,9 +96,7 @@ export function NotificationsPanel() {
               {notifications.map((notif: any) => (
                 <div
                   key={notif.id}
-                  className={`flex flex-col gap-1 p-4 border-b hover:bg-muted/50 transition-colors ${
-                    !notif.read ? "bg-blue-50/30" : ""
-                  }`}
+                  className={`flex flex-col gap-1 p-4 border-b transition-colors ${getBgColor(notif.type, notif.read)}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <Link href={notif.link || "#"} onClick={() => {
@@ -97,8 +104,8 @@ export function NotificationsPanel() {
                         setOpen(false);
                     }}>
                         <div className="flex items-center gap-2 cursor-pointer group">
-                            {getIcon(notif.type, notif.title)}
-                            <span className="text-sm font-medium group-hover:underline">
+                            {getIcon(notif.type)}
+                            <span className="text-sm font-bold group-hover:underline text-gray-800">
                                 {notif.title}
                             </span>
                         </div>
@@ -118,11 +125,12 @@ export function NotificationsPanel() {
                       </Button>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+                  <p className="text-xs text-gray-600 leading-relaxed pl-6">
                     {notif.message}
                   </p>
                   <span className="text-[10px] text-muted-foreground/70 pl-6">
-                    {format(new Date(notif.timestamp), "d MMM, HH:mm", { locale: es })}
+                    {/* Nos aseguramos de leer la fecha correctamente */}
+                    {format(new Date(notif.timestamp || notif.createdAt || new Date()), "d MMM, HH:mm", { locale: es })}
                   </span>
                 </div>
               ))}

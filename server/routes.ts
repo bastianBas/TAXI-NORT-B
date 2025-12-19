@@ -35,8 +35,8 @@ export function registerRoutes(app: Express): Server {
     }
   };
 
-  // 🟢 HELPER: Notificar a TODOS los Administradores
-  const notifyAdmins = async (title: string, message: string, link: string) => {
+  // 🟢 HELPER 1: Notificar a TODOS los Administradores
+  const notifyAdmins = async (type: 'info' | 'warning' | 'success', title: string, message: string, link: string) => {
     try {
       const admins = await db.query.users.findMany({
         where: eq(users.role, 'admin')
@@ -45,7 +45,7 @@ export function registerRoutes(app: Express): Server {
       for (const admin of admins) {
         await storage.createNotification({
           userId: admin.id,
-          type: 'info',
+          type: type,
           title,
           message,
           link
@@ -56,23 +56,35 @@ export function registerRoutes(app: Express): Server {
     }
   };
 
+  // 🟢 HELPER 2: Notificar a un Usuario Específico (Conductor)
+  const notifyUser = async (userId: string, type: 'info' | 'warning' | 'success', title: string, message: string, link: string) => {
+    try {
+        await storage.createNotification({
+            userId: userId,
+            type: type,
+            title,
+            message,
+            link
+        });
+    } catch (e) {
+        console.error("Error notificando usuario:", e);
+    }
+  };
+
   // =================================================================
   // ZONA PÚBLICA (Accesible SIN Login)
   // =================================================================
 
-  // 🟢 NUEVO ENDPOINT PARA EL QR (Permite ver el PDF sin loguearse)
+  // 🟢 ENDPOINT PARA EL QR
   app.get("/api/public/route-slips/:id", async (req, res) => {
     try {
       const id = req.params.id;
-      // Buscamos la hoja de ruta con sus datos (Conductor y Vehículo)
       const slip = await db.query.routeSlips.findFirst({
         where: eq(routeSlips.id, id),
         with: { driver: true, vehicle: true }
       });
       
       if (!slip) return res.status(404).send("Documento no encontrado");
-      
-      // Devolvemos los datos al frontend público
       res.json(slip);
     } catch (e) {
       console.error("Error fetching public slip:", e);
@@ -85,12 +97,10 @@ export function registerRoutes(app: Express): Server {
     try {
       const { email, password, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body;
 
-      // Validaciones básicas
       if (!email || !password || !name || !rut) {
-        return res.status(400).send("Faltan campos obligatorios (Email, Password, Nombre, RUT)");
+        return res.status(400).send("Faltan campos obligatorios");
       }
 
-      // Verificar si ya existe
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) });
       if (exist) {
         return res.status(400).send("El correo electrónico ya está registrado");
@@ -99,41 +109,25 @@ export function registerRoutes(app: Express): Server {
       const uid = randomUUID();
       const hashedPassword = await bcrypt.hash(password, 10);
       
-      // 1. Crear Usuario (Login)
       const newUser = {
-        id: uid,
-        email,
-        password: hashedPassword,
-        name,
-        role: 'driver',
-        createdAt: new Date()
+        id: uid, email, password: hashedPassword, name, role: 'driver', createdAt: new Date()
       };
       await db.insert(users).values(newUser);
 
-      // 2. Crear Perfil de Conductor
       const did = randomUUID();
       await db.insert(drivers).values({
-        id: did,
-        userId: uid,
-        email,
-        name,
-        rut,
-        phone: phone || "Por completar",
-        commune: commune || "Por completar",
-        address: address || null,
-        licenseNumber: licenseNumber || "Por completar",
-        licenseClass: licenseClass || "B",
+        id: did, userId: uid, email, name, rut,
+        phone: phone || "Por completar", commune: commune || "Por completar", address: address || null,
+        licenseNumber: licenseNumber || "Por completar", licenseClass: licenseClass || "B",
         licenseDate: licenseDate || new Date().toISOString().split('T')[0],
-        status: 'active',
-        createdAt: new Date()
+        status: 'active', createdAt: new Date()
       });
 
-      await logAction({ id: uid, name: name }, "REGISTER", "User", `Nuevo conductor registrado por formulario público: ${name}`, uid);
+      await logAction({ id: uid, name: name }, "REGISTER", "User", `Nuevo conductor registrado: ${name}`, uid);
 
-      // Notificar a Admins del registro
-      await notifyAdmins("Nuevo Conductor", `${name} (${rut}) se ha registrado en la plataforma.`, "/drivers");
+      // Notificar a Admins
+      await notifyAdmins("info", "Nuevo Registro", `${name} (${rut}) se ha registrado en la plataforma.`, "/drivers");
 
-      // Auto-Login después del registro
       req.login(newUser, (err: any) => {
         if (err) return next(err);
         const { password: _, ...userWithoutPassword } = newUser;
@@ -142,7 +136,7 @@ export function registerRoutes(app: Express): Server {
 
     } catch (e) {
       console.error("Error en registro público:", e);
-      res.status(500).send("Error interno del servidor al registrar usuario.");
+      res.status(500).send("Error interno");
     }
   });
 
@@ -150,7 +144,7 @@ export function registerRoutes(app: Express): Server {
   // ZONA PROTEGIDA (Requiere Inicio de Sesión)
   // =================================================================
 
-  // --- AUDIT LOGS (Historial de acciones) ---
+  // --- AUDIT LOGS ---
   app.get("/api/audit-logs", verifyAuth, async (req, res) => {
     if (req.user?.role !== 'admin') return res.sendStatus(403);
     try {
@@ -159,10 +153,7 @@ export function registerRoutes(app: Express): Server {
         limit: 100
       });
       res.json(logs);
-    } catch (e) {
-      console.error("Error fetching audit logs:", e);
-      res.status(500).json([]);
-    }
+    } catch (e) { res.status(500).json([]); }
   });
 
   // --- NOTIFICACIONES ---
@@ -171,28 +162,21 @@ export function registerRoutes(app: Express): Server {
     try {
         const notifs = await storage.getNotifications(req.user.id);
         res.json(notifs);
-    } catch (e) {
-        console.error("Error notifications:", e);
-        res.status(500).json([]);
-    }
+    } catch (e) { res.status(500).json([]); }
   });
 
   app.patch("/api/notifications/:id/read", verifyAuth, async (req, res) => {
     try {
         await storage.markNotificationAsRead(req.params.id);
         res.sendStatus(200);
-    } catch (e) {
-        res.status(500).send("Error marcando notificación");
-    }
+    } catch (e) { res.status(500).send("Error"); }
   });
 
-  // --- GPS Y UBICACIONES (Lógica Completa) ---
+  // --- GPS Y UBICACIONES ---
   app.get("/api/vehicle-locations", verifyAuth, async (req, res) => {
     try {
       const activeLocations = await storage.getAllVehicleLocations();
       const enrichedFleet = [];
-      
-      // Enriquecemos la data del GPS con info del vehículo y conductor
       for (const loc of activeLocations) {
         const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, loc.vehicleId) });
         const slip = await db.query.routeSlips.findFirst({
@@ -211,10 +195,7 @@ export function registerRoutes(app: Express): Server {
         }
       }
       res.json(enrichedFleet);
-    } catch (error) {
-      console.error("Error fetching fleet:", error);
-      res.status(500).json([]);
-    }
+    } catch (error) { res.status(500).json([]); }
   });
 
   app.post("/api/vehicle-locations", verifyAuth, async (req, res) => {
@@ -225,7 +206,6 @@ export function registerRoutes(app: Express): Server {
       const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
       if (!driver) return res.status(404).send("Perfil de conductor no encontrado");
 
-      // Buscamos la hoja de ruta activa para este conductor
       const slips = await db.query.routeSlips.findMany({
         where: eq(routeSlips.driverId, driver.id),
         orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -233,17 +213,15 @@ export function registerRoutes(app: Express): Server {
         with: { vehicle: true }
       });
 
-      if (slips.length === 0 || !slips[0].vehicle) return res.sendStatus(200); // No hay vehículo asignado
+      if (slips.length === 0 || !slips[0].vehicle) return res.sendStatus(200);
       
       const activeVehicle = slips[0].vehicle;
 
-      // Si el conductor se pone offline, borramos su ubicación del mapa
       if (status === 'offline') {
         await storage.removeVehicleLocation(activeVehicle.id);
         return res.sendStatus(200);
       }
 
-      // Actualizamos ubicación en memoria
       await storage.updateVehicleLocation({
         vehicleId: activeVehicle.id,
         plate: activeVehicle.plate,
@@ -255,25 +233,18 @@ export function registerRoutes(app: Express): Server {
       } as any);
 
       res.sendStatus(200);
-    } catch (e) {
-      console.error("Error GPS update:", e);
-      res.status(500).send("Error guardando ubicación");
-    }
+    } catch (e) { res.status(500).send("Error GPS"); }
   });
 
-  // --- HOJAS DE RUTA (Arreglado: Acepta JSON para que funcione la creación) ---
+  // --- HOJAS DE RUTA ---
   app.post("/api/route-slips", verifyAuth, async (req, res) => {
      if (req.user?.role !== 'admin') return res.status(403).send("No autorizado");
      
      try {
        const newId = randomUUID();
-       
-       // Leemos directamente del body (JSON), ya no usamos multer aquí
-       // Esto soluciona el error de creación de hojas de ruta
        const data = { 
            ...req.body, 
            id: newId, 
-           // Si en el futuro agregas firmas, vendrán aquí como texto Base64
            signatureUrl: req.body.signatureUrl || null,
            paymentStatus: 'pending', 
            isDuplicate: false, 
@@ -282,7 +253,7 @@ export function registerRoutes(app: Express): Server {
        
        await db.insert(routeSlips).values(data);
        
-       // 🟢 OBTENER DATOS DETALLADOS (Nombre y Patente)
+       // 1. OBTENER DATOS (Nombre y Patente)
        const driverInfo = await db.query.drivers.findFirst({ where: eq(drivers.id, data.driverId) });
        const vehicleInfo = await db.query.vehicles.findFirst({ where: eq(vehicles.id, data.vehicleId) });
        const driverName = driverInfo?.name || "Un conductor";
@@ -290,65 +261,50 @@ export function registerRoutes(app: Express): Server {
 
        await logAction(req.user, "CREATE", "Route Slip", `Creada hoja para ${driverName} (${plate}) - ${data.date}`, newId);
 
-       // 🟢 2. NOTIFICAR AL ADMIN (CON DETALLE)
+       // 🔔 AVISO AL ADMIN (NARANJA - DEUDA)
        await notifyAdmins(
-         "⚠️ Nueva Hoja Pendiente",
-         `${driverName} (${plate}) tiene una hoja pendiente para el ${data.date}.`,
+         "warning", 
+         "⚠️ Hoja Pendiente de Pago",
+         `El conductor ${driverName} (Patente: ${plate}) tiene pendiente el pago de su hoja del ${data.date}.`,
          "/route-slips"
        );
 
-       // 🟢 3. NOTIFICAR AL CONDUCTOR (CON DETALLE)
-       try {
-         if (driverInfo && driverInfo.userId) {
-            await storage.createNotification({ 
-                userId: driverInfo.userId, 
-                type: 'warning', 
-                title: 'Nueva Hoja de Ruta Pendiente', 
-                message: `Se te ha asignado la hoja del ${data.date}. Estado: Pendiente de pago.`, 
-                link: '/route-slips' 
-            });
-         }
-       } catch (notifError) { console.error("Error enviando notificación:", notifError); }
+       // 🔔 AVISO AL CONDUCTOR (NARANJA - DEBES PAGAR)
+       if (driverInfo && driverInfo.userId) {
+          await notifyUser(
+              driverInfo.userId,
+              "warning",
+              "⚠️ Atención: Hoja Pendiente",
+              `Se te ha asignado la hoja del ${data.date}. Estado: PENDIENTE DE PAGO.`,
+              "/route-slips"
+          );
+       }
 
        res.status(201).json(data);
-     } catch (e) { 
-         console.error("Error creando Hoja de Ruta:", e); 
-         res.status(500).send("Error guardando en BD."); 
-     }
+     } catch (e) { res.status(500).send("Error guardando en BD."); }
   });
 
   app.put("/api/route-slips/:id", verifyAuth, async (req, res) => { 
     try { 
       const data: any = { ...req.body }; 
-      
-      // Limpieza para evitar errores de Drizzle
       if (data.isDuplicate === undefined) delete data.isDuplicate;
-
       await db.update(routeSlips).set(data).where(eq(routeSlips.id, req.params.id)); 
-      
       await logAction(req.user, "MODIFY", "Route Slip", `Modificada ID: ...${req.params.id.slice(-6)}`, req.params.id);
-      
       res.json({ message: "Actualizado correctamente" }); 
-    } catch (e) { 
-        console.error("Error actualizando Hoja:", e);
-        res.status(500).send("Error al actualizar"); 
-    } 
+    } catch (e) { res.status(500).send("Error al actualizar"); } 
   });
   
   app.get("/api/route-slips", verifyAuth, async (req, res) => {
     try {
         if (req.user?.role === 'admin') {
-            // Admin ve todas
             const all = await db.query.routeSlips.findMany({ 
                 with: { driver: true, vehicle: true }, 
                 orderBy: (t, { desc }) => [desc(t.createdAt)] 
             });
             return res.json(all);
         } else {
-            // Conductor ve solo las suyas
             const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user!.id) });
             if (!driver) return res.json([]);
-            
             const mySlips = await db.query.routeSlips.findMany({ 
                 where: eq(routeSlips.driverId, driver.id), 
                 with: { driver: true, vehicle: true }, 
@@ -356,13 +312,10 @@ export function registerRoutes(app: Express): Server {
             });
             return res.json(mySlips);
         }
-    } catch (e) { 
-        console.error(e); 
-        res.status(500).json([]); 
-    }
+    } catch (e) { res.status(500).json([]); }
   });
 
-  // --- CONDUCTORES (CRUD Completo y Detallado) ---
+  // --- CONDUCTORES ---
   app.get("/api/drivers", verifyAuth, async (req, res) => { 
       try {
         const all = await db.query.drivers.findMany({ orderBy: (d, { desc }) => [desc(d.createdAt)] }); 
@@ -373,45 +326,17 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/drivers", verifyAuth, async (req, res) => { 
     try { 
       const { email, name, rut, phone, commune, address, licenseNumber, licenseClass, licenseDate } = req.body; 
-      
       const exist = await db.query.users.findFirst({ where: eq(users.email, email) }); 
       if (exist) return res.status(400).json({ message: "El correo ya existe" }); 
-      
       const uid = randomUUID(); 
-      const pass = await bcrypt.hash("123456", 10); // Password por defecto
-      
-      // Creamos usuario login
-      await db.insert(users).values({ 
-          id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() 
-      }); 
-      
+      const pass = await bcrypt.hash("123456", 10); 
+      await db.insert(users).values({ id: uid, email, password: pass, name, role: 'driver', createdAt: new Date() }); 
       const did = randomUUID(); 
-      const dData = { 
-          id: did, 
-          userId: uid, 
-          email, 
-          name, 
-          rut, 
-          phone, 
-          commune, 
-          address: address || null, 
-          licenseNumber, 
-          licenseClass, 
-          licenseDate, 
-          createdAt: new Date(), 
-          status: 'active' 
-      }; 
-      
-      // Creamos perfil conductor
+      const dData = { id: did, userId: uid, email, name, rut, phone, commune, address: address || null, licenseNumber, licenseClass, licenseDate, createdAt: new Date(), status: 'active' }; 
       await db.insert(drivers).values(dData); 
-      
       await logAction(req.user, "CREATE", "Driver", `Creado conductor manualmente: ${name}`, did);
-
       res.status(201).json(dData); 
-    } catch (e) { 
-        console.error("Error creating driver:", e); 
-        res.status(500).send("Error creando conductor"); 
-    } 
+    } catch (e) { res.status(500).send("Error creando conductor"); } 
   });
 
   app.put("/api/drivers/:id", verifyAuth, async (req, res) => { 
@@ -419,32 +344,21 @@ export function registerRoutes(app: Express): Server {
       await db.update(drivers).set(req.body).where(eq(drivers.id, req.params.id)); 
       await logAction(req.user, "MODIFY", "Driver", `Actualizado conductor`, req.params.id);
       res.json({ message: "Actualizado" }); 
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send("Error actualizando conductor"); 
-    } 
+    } catch (e) { res.status(500).send("Error actualizando conductor"); } 
   });
 
   app.delete("/api/drivers/:id", verifyAuth, async (req, res) => { 
     try { 
       const d = await db.query.drivers.findFirst({ where: eq(drivers.id, req.params.id) }); 
       if (!d) return res.status(404).send("No encontrado"); 
-      
-      // Borrar driver
       await db.delete(drivers).where(eq(drivers.id, req.params.id)); 
-      // Borrar usuario asociado para limpiar la BD
       if (d.userId) await db.delete(users).where(eq(users.id, d.userId)); 
-      
       await logAction(req.user, "DELETE", "Driver", `Eliminado conductor: ${d.name}`, req.params.id);
-      
       res.json({ message: "Eliminado" }); 
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send("Error eliminando"); 
-    } 
+    } catch (e) { res.status(500).send("Error eliminando"); } 
   });
   
-  // --- VEHÍCULOS (CRUD Completo y Detallado) ---
+  // --- VEHÍCULOS ---
   app.get("/api/vehicles", verifyAuth, async (req, res) => { 
       const all = await db.query.vehicles.findMany(); 
       res.json(all); 
@@ -453,20 +367,11 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/vehicles", verifyAuth, async (req, res) => { 
     try { 
       const vid = randomUUID(); 
-      const vData = { 
-          ...req.body, 
-          id: vid, 
-          createdAt: new Date(), 
-          status: 'active' 
-      }; 
+      const vData = { ...req.body, id: vid, createdAt: new Date(), status: 'active' }; 
       await db.insert(vehicles).values(vData); 
-      
       await logAction(req.user, "CREATE", "Vehicle", `Creado vehículo: ${req.body.plate}`, vid);
       res.status(201).json(vData); 
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send("Error creando vehículo"); 
-    } 
+    } catch (e) { res.status(500).send("Error creando vehículo"); } 
   });
 
   app.put("/api/vehicles/:id", verifyAuth, async (req, res) => { 
@@ -500,7 +405,6 @@ export function registerRoutes(app: Express): Server {
           } else {
               const driver = await db.query.drivers.findFirst({ where: eq(drivers.userId, req.user.id) });
               if (!driver) return res.json([]);
-              
               const myPayments = await db.query.payments.findMany({ 
                   where: eq(payments.driverId, driver.id), 
                   with: { routeSlip: { with: { driver: true, vehicle: true } } }, 
@@ -508,18 +412,12 @@ export function registerRoutes(app: Express): Server {
               }); 
               return res.json(myPayments);
           }
-      } catch (e) { 
-          console.error(e);
-          res.status(500).json([]); 
-      } 
+      } catch (e) { res.status(500).json([]); } 
   });
 
   app.post("/api/payments", verifyAuth, async (req, res) => { 
       try { 
           const pid = randomUUID(); 
-          
-          // 🟢 RECUPERAMOS LA IMAGEN DIRECTAMENTE DEL JSON
-          // No usamos req.file, usamos el string Base64 enviado desde el front
           const proof = req.body.proofOfPayment; 
           
           const pData = { 
@@ -530,14 +428,13 @@ export function registerRoutes(app: Express): Server {
               driverId: req.body.driverId, 
               vehicleId: req.body.vehicleId, 
               date: req.body.date, 
-              proofOfPayment: proof, // Se guarda en la DB, no en disco
+              proofOfPayment: proof, 
               status: 'completed', 
               createdAt: new Date() 
           }; 
           
           await db.insert(payments).values(pData); 
           
-          // Actualizar estado de la hoja de ruta
           if (req.body.routeSlipId) { 
               await db.update(routeSlips).set({ paymentStatus: 'paid' }).where(eq(routeSlips.id, req.body.routeSlipId)); 
           }
@@ -550,37 +447,40 @@ export function registerRoutes(app: Express): Server {
 
           await logAction(req.user, "CREATE", "Payment", `Pago: $${pData.amount} de ${driverName}`, pid);
 
-          // 🟢 2. NOTIFICAR A ADMINS (CON DETALLE)
+          // 🔔 AVISO AL ADMIN (VERDE - PAGO EXITOSO)
           await notifyAdmins(
-            "💰 Nuevo Pago Recibido", 
-            `${driverName} (${plate}) ha pagado $${pData.amount}.`, 
+            "success", 
+            "✅ Pago Confirmado", 
+            `El conductor ${driverName} (Patente: ${plate}) ha pagado $${pData.amount}.`, 
             "/payments"
           );
 
+          // 🔔 AVISO AL CONDUCTOR (VERDE - GRACIAS)
+          // 🟢 CORRECCIÓN: Usamos driverInfo.userId en lugar de req.user.id
+          // Esto asegura que si paga el Admin, la notificación le llegue al Conductor
+          if (driverInfo && driverInfo.userId) {
+              await notifyUser(
+                  driverInfo.userId,
+                  "success",
+                  "Pago Registrado",
+                  `Tu pago de $${pData.amount} fue recibido. Puedes circular con normalidad.`,
+                  "/payments"
+              );
+          }
+
           res.status(201).json(pData); 
-      } catch (e) { 
-          console.error("Error en pago:", e); 
-          res.status(500).send("Error guardando el pago"); 
-      } 
+      } catch (e) { res.status(500).send("Error guardando el pago"); } 
   });
 
   app.put("/api/payments/:id", verifyAuth, async (req, res) => {
     try {
         const pId = req.params.id;
         const data: any = { ...req.body };
-        
         if (data.amount) data.amount = parseInt(data.amount);
-
-        // Si se envía un nuevo proofOfPayment en base64, se sobrescribe en la BD
         await db.update(payments).set(data).where(eq(payments.id, pId));
-        
         await logAction(req.user, "MODIFY", "Payment", `Pago actualizado ID: ...${pId.slice(-6)}`, pId);
-
         res.json({ message: "Pago actualizado" });
-    } catch (e) {
-        console.error("Error actualizando pago:", e);
-        res.status(500).json({ message: "Error al actualizar" }); 
-    }
+    } catch (e) { res.status(500).json({ message: "Error al actualizar" }); }
   });
 
   app.delete("/api/payments/:id", verifyAuth, async (req, res) => { 
@@ -588,10 +488,7 @@ export function registerRoutes(app: Express): Server {
       await db.delete(payments).where(eq(payments.id, req.params.id)); 
       await logAction(req.user, "DELETE", "Payment", `Pago eliminado`, req.params.id);
       res.json({ message: "Eliminado" }); 
-    } catch (e) { 
-        console.error(e);
-        res.status(500).send("Error eliminando"); 
-    } 
+    } catch (e) { res.status(500).send("Error eliminando"); } 
   });
 
   const httpServer = createServer(app);

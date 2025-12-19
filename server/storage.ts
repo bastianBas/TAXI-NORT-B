@@ -120,23 +120,23 @@ export class DatabaseStorage implements IStorage {
 
   // --- NOTIFICACIONES ---
   async getNotifications(userId: string): Promise<Notification[]> {
-    // 🟢 CORRECCIÓN 1: Usamos 'timestamp' en lugar de 'createdAt'
+    // 🟢 ESTO ESTÁ PERFECTO: Coincide con tu schema.ts
     return await db.select()
         .from(notifications)
         .where(eq(notifications.userId, userId))
-        .orderBy(desc(notifications.timestamp)) // <--- AQUÍ ESTABA EL ERROR 1
+        .orderBy(desc(notifications.timestamp)) 
         .limit(50);
   }
 
   async createNotification(insertNotif: InsertNotification): Promise<Notification> {
     const id = randomUUID();
-    // 🟢 CORRECCIÓN 2: Usamos 'timestamp' en lugar de 'createdAt'
+    // 🟢 ESTO TAMBIÉN ESTÁ PERFECTO
     const newNotif: Notification = { 
       id, 
       ...insertNotif, 
       link: insertNotif.link ?? null, 
       read: false, 
-      timestamp: new Date() // <--- AQUÍ ESTABA EL ERROR 2
+      timestamp: new Date() 
     };
     await db.insert(notifications).values(newNotif);
     return newNotif;
