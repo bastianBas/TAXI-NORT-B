@@ -1,16 +1,12 @@
-// server/auth.ts
-
 import { Express, Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs"; 
+import bcrypt from "bcryptjs"; // CORREGIDO: Importación simple para bcryptjs
 import jwt from "jsonwebtoken";
-// ✅ CORRECCIÓN: Importación por defecto (sin llaves)
-import storage from "./storage"; 
+import { storage } from "./storage";
 import { type User } from "@shared/schema";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret";
+const JWT_SECRET = process.env.SESSION_SECRET || "taxinort_jwt_secret_key";
 
-// ... (El resto del código de verifyAuth se mantiene igual) ...
-
+// Middleware para verificar Token (Header Authorization o Cookie)
 export async function verifyAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   let token;
@@ -40,16 +36,11 @@ export async function verifyAuth(req: Request, res: Response, next: NextFunction
   }
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-    }
-  }
-}
+declare global { namespace Express { interface Request { user?: User; } } }
 
 export function setupAuth(app: Express) {
   
+  // LOGIN: Genera y devuelve el token
   app.post("/api/auth/login", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
@@ -66,9 +57,8 @@ export function setupAuth(app: Express) {
       }
 
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
-
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
-
+      
       const { password, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword, token });
 
@@ -78,54 +68,41 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // 🟢 REGISTRO ACTUALIZADO: Crea Conductor vinculado
+  // REGISTRO
   app.post("/api/auth/register", async (req, res) => {
     try {
       const email = req.body.email.trim().toLowerCase();
       if (await storage.getUserByEmail(email)) {
-        return res.status(400).json({ message: "Email registrado" });
+        return res.status(400).json({ message: "El email ya está registrado" });
       }
 
-      // 1. Crear Usuario
       const hashedPassword = await bcrypt.hash(req.body.password, 10);
       const user = await storage.createUser({
         name: req.body.name,
-        email,
+        email: email,
         password: hashedPassword,
         role: "driver" 
       });
 
-      // 2. Crear Ficha de Conductor Automática (Vinculada)
-      await storage.createDriver({
-          userId: user.id, // VINCULACIÓN
-          name: user.name,
-          email: user.email,
-          rut: req.body.rut || "SIN-RUT", 
-          phone: req.body.phone || "SIN-FONO",
-          commune: "Copiapó",
-          address: "",
-          licenseNumber: "PENDIENTE",
-          licenseClass: "B",
-          licenseDate: new Date().toISOString().split('T')[0],
-          status: "active"
-      });
-
       const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "30d" });
+
+      // Cookie backup
       res.cookie("token", token, { httpOnly: true, secure: false, sameSite: "lax", maxAge: 30 * 24 * 60 * 60 * 1000 });
 
       const { password, ...userWithoutPassword } = user;
       res.status(201).json({ user: userWithoutPassword, token });
     } catch (err) {
-      console.error("Register error:", err);
       res.status(500).json({ message: "Error en registro" });
     }
   });
 
+  // LOGOUT (El cliente borra el token)
   app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("token");
     res.sendStatus(200);
   });
 
+  // OBTENER USUARIO (Requiere token)
   app.get("/api/user", verifyAuth, (req, res) => {
     const { password, ...userWithoutPassword } = (req as any).user;
     res.json(userWithoutPassword);
