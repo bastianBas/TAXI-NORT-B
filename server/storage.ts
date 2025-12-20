@@ -1,80 +1,157 @@
-import { users, drivers, vehicles, routeSlips, payments, auditLogs } from "@shared/schema";
-import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation } from "@shared/schema";
+import { users, drivers, vehicles, routeSlips, payments, auditLogs, notifications, gpsHistory } from "@shared/schema";
+import type { User, InsertUser, Driver, InsertDriver, Vehicle, InsertVehicle, RouteSlip, InsertRouteSlip, Payment, InsertPayment, AuditLog, InsertAuditLog, VehicleLocation, Notification, InsertNotification, GpsHistory, InsertGpsHistory } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { firebaseDb } from "./firebase";
+// Asegúrate de que este archivo exista con tu configuración de Firebase
+import { firebaseDb } from "./firebase"; 
+import bcrypt from "bcryptjs";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  getAllUsers(): Promise<User[]>;
+  
   getDriver(id: string): Promise<Driver | undefined>;
-  getAllDrivers(): Promise<Driver[]>;
+  getDriverByUserId(userId: string): Promise<Driver | undefined>;
   createDriver(driver: InsertDriver): Promise<Driver>;
-  updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
-  deleteDriver(id: string): Promise<boolean>;
-  getVehicle(id: string): Promise<Vehicle | undefined>;
-  getAllVehicles(): Promise<Vehicle[]>;
-  createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
-  updateVehicle(id: string, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
-  deleteVehicle(id: string): Promise<boolean>;
-  getRouteSlip(id: string): Promise<RouteSlip | undefined>;
-  getAllRouteSlips(): Promise<RouteSlip[]>;
-  createRouteSlip(slip: InsertRouteSlip): Promise<RouteSlip>;
-  checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean>;
-  getPayment(id: string): Promise<Payment | undefined>;
-  getAllPayments(): Promise<Payment[]>;
-  createPayment(payment: InsertPayment): Promise<Payment>;
-  getAllAuditLogs(): Promise<AuditLog[]>;
-  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  
+  // GPS (Firebase)
   updateVehicleLocation(location: VehicleLocation): Promise<void>;
-  getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null>;
+  getAllVehicleLocations(): Promise<VehicleLocation[]>;
+  removeVehicleLocation(vehicleId: string): Promise<void>;
+  
+  // Notificaciones
+  getNotifications(userId: string): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: string): Promise<void>;
+  
+  // Admins
+  getAdmins(): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
+  // --- USUARIOS ---
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return await db.query.users.findFirst({ where: eq(users.id, id) });
   }
+
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
+    return await db.query.users.findFirst({ where: eq(users.email, email) });
   }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    // CORRECCIÓN: Asignamos explícitamente el valor por defecto si no viene
-    const newUser: User = { 
-      ...insertUser, 
-      id, 
-      createdAt: new Date(),
-      role: insertUser.role ?? "driver" 
+    const user: User = { 
+        ...insertUser, 
+        id, 
+        role: insertUser.role ?? "driver", 
+        createdAt: new Date() 
     };
-    await db.insert(users).values(newUser);
-    return newUser;
+    await db.insert(users).values(user);
+    return user;
   }
-  async getAllUsers(): Promise<User[]> { return await db.select().from(users); }
-  async getDriver(id: string): Promise<Driver | undefined> { const [driver] = await db.select().from(drivers).where(eq(drivers.id, id)); return driver; }
-  async getAllDrivers(): Promise<Driver[]> { return await db.select().from(drivers); }
-  async createDriver(insertDriver: InsertDriver): Promise<Driver> { const id = randomUUID(); const newDriver: Driver = { ...insertDriver, id, createdAt: new Date(), status: insertDriver.status ?? "active" }; await db.insert(drivers).values(newDriver); return newDriver; }
-  async updateDriver(id: string, insertDriver: Partial<InsertDriver>): Promise<Driver | undefined> { await db.update(drivers).set(insertDriver).where(eq(drivers.id, id)); return this.getDriver(id); }
-  async deleteDriver(id: string): Promise<boolean> { const [result] = await db.delete(drivers).where(eq(drivers.id, id)); return (result as any).affectedRows > 0; }
-  async getVehicle(id: string): Promise<Vehicle | undefined> { const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id)); return vehicle; }
-  async getAllVehicles(): Promise<Vehicle[]> { return await db.select().from(vehicles); }
-  async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> { const id = randomUUID(); const newVehicle: Vehicle = { ...insertVehicle, id, createdAt: new Date(), status: insertVehicle.status ?? "active" }; await db.insert(vehicles).values(newVehicle); return newVehicle; }
-  async updateVehicle(id: string, insertVehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined> { await db.update(vehicles).set(insertVehicle).where(eq(vehicles.id, id)); return this.getVehicle(id); }
-  async deleteVehicle(id: string): Promise<boolean> { const [result] = await db.delete(vehicles).where(eq(vehicles.id, id)); return (result as any).affectedRows > 0; }
-  async getRouteSlip(id: string): Promise<RouteSlip | undefined> { const [slip] = await db.select().from(routeSlips).where(eq(routeSlips.id, id)); return slip; }
-  async getAllRouteSlips(): Promise<RouteSlip[]> { return await db.select().from(routeSlips).orderBy(desc(routeSlips.createdAt)); }
-  async checkDuplicateRouteSlip(driverId: string, vehicleId: string, date: string): Promise<boolean> { const [existing] = await db.select().from(routeSlips).where(and(eq(routeSlips.driverId, driverId), eq(routeSlips.vehicleId, vehicleId), eq(routeSlips.date, date))); return !!existing; }
-  async createRouteSlip(insertSlip: InsertRouteSlip): Promise<RouteSlip> { const id = randomUUID(); const isDuplicate = await this.checkDuplicateRouteSlip(insertSlip.driverId, insertSlip.vehicleId, insertSlip.date); const newSlip: RouteSlip = { ...insertSlip, id, isDuplicate, createdAt: new Date(), paymentStatus: insertSlip.paymentStatus ?? "pending", notes: insertSlip.notes ?? null, signature: insertSlip.signature ?? null, totalAmount: insertSlip.totalAmount ?? 0, expenses: insertSlip.expenses ?? 0, netAmount: insertSlip.netAmount ?? 0 }; await db.insert(routeSlips).values(newSlip); return newSlip; }
-  async getPayment(id: string): Promise<Payment | undefined> { const [payment] = await db.select().from(payments).where(eq(payments.id, id)); return payment; }
-  async getAllPayments(): Promise<Payment[]> { return await db.select().from(payments).orderBy(desc(payments.createdAt)); }
-  async createPayment(insertPayment: InsertPayment): Promise<Payment> { const id = randomUUID(); const newPayment: Payment = { ...insertPayment, id, createdAt: new Date(), status: insertPayment.status ?? "pending", proofOfPayment: insertPayment.proofOfPayment ?? null }; await db.insert(payments).values(newPayment); return newPayment; }
-  async getAllAuditLogs(): Promise<AuditLog[]> { return await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)); }
-  async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> { const id = randomUUID(); const newLog: AuditLog = { ...insertLog, id, timestamp: new Date(), entityId: insertLog.entityId ?? null, details: insertLog.details ?? null }; await db.insert(auditLogs).values(newLog); return newLog; }
-  async updateVehicleLocation(location: VehicleLocation): Promise<void> { if (!firebaseDb) return; try { const ref = firebaseDb.ref(`locations/${location.vehicleId}`); await ref.set({ ...location, timestamp: Date.now() }); } catch (error) { console.error("Error actualizando ubicación en Firebase:", error); } }
-  async getVehicleLocation(vehicleId: string): Promise<VehicleLocation | null> { if (!firebaseDb) return null; try { const ref = firebaseDb.ref(`locations/${vehicleId}`); const snapshot = await ref.once('value'); return snapshot.val() as VehicleLocation | null; } catch (error) { console.error("Error obteniendo ubicación de Firebase:", error); return null; } }
+
+  // --- CONDUCTORES ---
+  async getDriver(id: string): Promise<Driver | undefined> {
+    return await db.query.drivers.findFirst({ where: eq(drivers.id, id) });
+  }
+
+  async getDriverByUserId(userId: string): Promise<Driver | undefined> {
+    return await db.query.drivers.findFirst({ where: eq(drivers.userId, userId) });
+  }
+
+  async createDriver(insertDriver: InsertDriver): Promise<Driver> {
+    const id = randomUUID();
+    const driver: Driver = { 
+      ...insertDriver, 
+      id, 
+      userId: insertDriver.userId ?? null,
+      email: insertDriver.email ?? null,
+      address: insertDriver.address ?? null,
+      status: insertDriver.status ?? "active", 
+      createdAt: new Date() 
+    };
+    await db.insert(drivers).values(driver);
+    return driver;
+  }
+  
+  // --- GPS & FIREBASE ---
+  async updateVehicleLocation(location: VehicleLocation): Promise<void> {
+    if (!firebaseDb) return;
+    try {
+        await firebaseDb.ref(`locations/${location.vehicleId}`).set({ 
+            ...location, 
+            timestamp: Date.now() 
+        });
+    } catch (error) {
+        console.error("Error updating Firebase:", error);
+    }
+  }
+
+  async removeVehicleLocation(vehicleId: string): Promise<void> {
+    if (!firebaseDb) return;
+    try {
+        await firebaseDb.ref(`locations/${vehicleId}`).remove();
+    } catch (error) {
+        console.error("Error removing from Firebase:", error);
+    }
+  }
+
+  async getAllVehicleLocations(): Promise<VehicleLocation[]> {
+    if (!firebaseDb) return [];
+    try {
+      const snapshot = await firebaseDb.ref("locations").once("value");
+      const data = snapshot.val();
+      if (!data) return [];
+      
+      const locations: any[] = Object.values(data);
+      
+      // Filtramos ubicaciones viejas (más de 60 segundos)
+      const TIMEOUT_MS = 60000; 
+      return locations.filter((loc: any) => 
+        loc.timestamp && (Date.now() - loc.timestamp < TIMEOUT_MS)
+      ) as VehicleLocation[];
+    } catch (e) { 
+        console.error("Error fetching form Firebase:", e);
+        return []; 
+    }
+  }
+
+  // --- NOTIFICACIONES ---
+  async getNotifications(userId: string): Promise<Notification[]> {
+    // 🟢 ESTO ESTÁ PERFECTO: Coincide con tu schema.ts
+    return await db.select()
+        .from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.timestamp)) 
+        .limit(50);
+  }
+
+  async createNotification(insertNotif: InsertNotification): Promise<Notification> {
+    const id = randomUUID();
+    // 🟢 ESTO TAMBIÉN ESTÁ PERFECTO
+    const newNotif: Notification = { 
+      id, 
+      ...insertNotif, 
+      link: insertNotif.link ?? null, 
+      read: false, 
+      timestamp: new Date() 
+    };
+    await db.insert(notifications).values(newNotif);
+    return newNotif;
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    await db.update(notifications)
+        .set({ read: true })
+        .where(eq(notifications.id, id));
+  }
+
+  // --- ADMINS ---
+  async getAdmins(): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, "admin"));
+  }
 }
-export const storage = new DatabaseStorage();
+
+export default new DatabaseStorage();

@@ -1,11 +1,9 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// Función para obtener el token guardado
 function getToken() {
   return localStorage.getItem("auth_token");
 }
 
-// Función helper para crear headers con autenticación
 function getAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { "Authorization": `Bearer ${token}` } : {};
@@ -18,14 +16,12 @@ export async function apiRequest({
 }) {
   const [path] = queryKey as [string];
   
-  // Enviamos el token en el header Authorization
   const res = await fetch(path, {
-    headers: getAuthHeaders() // Simplificado para evitar error de tipos
+    headers: getAuthHeaders()
   });
 
   if (!res.ok) {
     if (res.status === 401) {
-      // Si el token es inválido, lo borramos y redirigimos
       localStorage.removeItem("auth_token");
       if (window.location.pathname !== "/login") {
          window.location.href = "/login";
@@ -60,7 +56,7 @@ export async function apiRequestJson(
     method,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders() // Aquí TypeScript ya aceptará la mezcla correctamente
+      ...getAuthHeaders()
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -80,4 +76,45 @@ export async function apiRequestJson(
   if (res.status === 204) return null;
   
   return res.json().catch(() => null);
+}
+
+// --- NUEVA FUNCIÓN AGREGADA ---
+export async function apiRequestFormData(
+  url: string,
+  method: string,
+  formData: FormData
+): Promise<any> {
+  const token = getToken();
+  const headers: HeadersInit = {};
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  // NOTA: No establecemos 'Content-Type' manualmente, 
+  // el navegador lo hace automáticamente para FormData (incluyendo el boundary)
+
+  const res = await fetch(url, {
+    method,
+    headers, 
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("auth_token");
+    if (window.location.pathname !== "/login") {
+       window.location.href = "/login";
+    }
+    throw new Error("Sesión expirada. Por favor, inicia sesión nuevamente.");
+  }
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Error ${res.status}: ${res.statusText}`);
+  }
+
+  if (res.status === 204) {
+    return null;
+  }
+
+  return res.json();
 }
