@@ -16,6 +16,50 @@ export function registerRoutes(app: Express): Server {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+  // =================================================================
+  // 🔴 RUTA DE EMERGENCIA: RESET DE ADMIN
+  // =================================================================
+  app.get("/api/emergency-reset-admin", async (_req, res) => {
+    try {
+      const adminEmail = "admin@taxinort.cl";
+      // CORRECCIÓN: Usamos bcrypt directamente ya que está importado en tu archivo
+      const hashedPassword = await bcrypt.hash("admin123", 10); 
+      const adminId = randomUUID();
+
+      // Buscamos si ya existe el usuario
+      const existing = await db.query.users.findFirst({ 
+        where: eq(users.email, adminEmail) 
+      });
+
+      if (existing) {
+        // Si existe, actualizamos password y rol
+        await db.update(users)
+          .set({ 
+            password: hashedPassword, 
+            role: 'admin', 
+            name: 'Administrador Sistema' 
+          })
+          .where(eq(users.email, adminEmail));
+        return res.json({ message: "Admin reset: admin123" });
+      } else {
+        // Si no existe, lo creamos
+        await db.insert(users).values({
+          id: adminId,
+          email: adminEmail,
+          password: hashedPassword,
+          name: "Administrador Sistema",
+          role: "admin",
+          createdAt: new Date(),
+        });
+        return res.json({ message: "Admin created: admin123" });
+      }
+    } catch (error: any) {
+      console.error("Fatal Emergency API Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  // =================================================================
+
   // 🟢 HELPER: Logs de Auditoría
   const logAction = async (user: any, action: string, entity: string, details: string, entityId?: string) => {
     if (!user) return;
