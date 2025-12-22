@@ -1,3 +1,4 @@
+import { useEffect } from "react"; // 🟢 AGREGADO: Para escuchar cambios en el RUT
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/lib/auth";
@@ -26,7 +27,7 @@ import { Car } from "lucide-react";
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
-import { PhoneInput } from "@/components/phone-input"; // 🟢 IMPORTAR PHONE INPUT
+import { PhoneInput } from "@/components/phone-input";
 
 // Schema Estricto
 const registerSchema = z.object({
@@ -40,9 +41,9 @@ const registerSchema = z.object({
       message: "RUT inválido (El dígito verificador no coincide)",
     }),
 
-  // 🟢 TELÉFONO ESTRICTO (+56 9 1234 5678 son 16 caracteres)
+  // 🟢 TELÉFONO CORREGIDO: Se ajustó a min(15) para coincidir con "+56 9 XXXX XXXX"
   phone: z.string()
-    .min(16, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
+    .min(15, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
 
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
   confirmPassword: z.string().min(1, "Confirme la contraseña"),
@@ -67,6 +68,26 @@ export default function Register() {
       confirmPassword: "",
     },
   });
+
+  // 🟢 LÓGICA AGREGADA: RUT -> CONTRASEÑA
+  const rutValue = form.watch("rut");
+
+  useEffect(() => {
+    if (rutValue) {
+      // 1. Limpiar RUT: quitar puntos y guiones
+      const clean = rutValue.replace(/\./g, "").replace(/-/g, "");
+      
+      // 2. Si tiene longitud suficiente para tener cuerpo + DV
+      if (clean.length > 1) {
+        // 3. Obtener solo el cuerpo (sin el último dígito verificador)
+        const pass = clean.slice(0, -1);
+        
+        // 4. Asignar automáticamente a los campos de contraseña
+        form.setValue("password", pass, { shouldValidate: true });
+        form.setValue("confirmPassword", pass, { shouldValidate: true });
+      }
+    }
+  }, [rutValue, form]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4">
@@ -144,7 +165,6 @@ export default function Register() {
                     <FormItem>
                         <FormLabel>Teléfono *</FormLabel>
                         <FormControl>
-                        {/* 🟢 USAMOS EL COMPONENTE DE TELÉFONO */}
                         <PhoneInput {...field} />
                         </FormControl>
                         <FormMessage />
@@ -160,6 +180,7 @@ export default function Register() {
                   <FormItem>
                     <FormLabel>Contraseña *</FormLabel>
                     <FormControl>
+                      {/* Se llenará automáticamente al escribir el RUT */}
                       <Input type="password" {...field} />
                     </FormControl>
                     <FormMessage />
