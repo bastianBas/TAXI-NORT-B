@@ -5,28 +5,27 @@ import { queryClient, apiRequestJson } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Loader2, Trash2, Car, User, FileText, Pencil } from "lucide-react";
+// 🟢 AGREGADO: Search al import
+import { Plus, Loader2, Trash2, Car, User, FileText, Pencil, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod"; // 🟢 ZOD
+import { z } from "zod"; 
 import { type Vehicle } from "@shared/schema";
 
-// 🟢 IMPORTS NUEVOS
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PlateInput } from "@/components/plate-input";
 
-// 🟢 ESQUEMA DE VALIDACIÓN ESTRICTO
 const strictVehicleSchema = z.object({
   plate: z.string()
     .min(1, "La patente es obligatoria")
     .max(8, "Máximo 8 caracteres")
-    .transform(val => val.toUpperCase()), // Aseguramos mayúsculas
+    .transform(val => val.toUpperCase()),
   model: z.string().min(1, "El modelo es obligatorio"),
   color: z.string().min(1, "El color es obligatorio"),
   ownerName: z.string().min(1, "El nombre del dueño es obligatorio"),
@@ -47,14 +46,29 @@ export default function Vehicles() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // 🟢 AGREGADO: Estado para el buscador
+  const [searchTerm, setSearchTerm] = useState("");
+
   const isAdmin = user?.role === "admin" || user?.role === "operator";
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
   });
 
+  // 🟢 AGREGADO: Lógica de filtrado
+  const filteredVehicles = vehicles?.filter((vehicle) => {
+    const search = searchTerm.toLowerCase();
+    return (
+      vehicle.plate.toLowerCase().includes(search) ||
+      vehicle.model.toLowerCase().includes(search) ||
+      vehicle.ownerName.toLowerCase().includes(search) ||
+      vehicle.ownerRut.toLowerCase().includes(search)
+    );
+  }) || [];
+
   const form = useForm<VehicleFormValues>({
-    resolver: zodResolver(strictVehicleSchema), // 🟢 Usamos esquema estricto
+    resolver: zodResolver(strictVehicleSchema),
     defaultValues: {
       plate: "",
       model: "",
@@ -181,7 +195,6 @@ export default function Vehicles() {
                         <FormItem>
                             <FormLabel>Patente *</FormLabel>
                             <FormControl>
-                                {/* 🟢 INPUT DE PATENTE INTELIGENTE */}
                                 <PlateInput {...field} placeholder="ABCD-12" />
                             </FormControl>
                             <FormMessage />
@@ -194,7 +207,6 @@ export default function Vehicles() {
                                 <Input 
                                     {...field} 
                                     placeholder="Ej: Toyota Yaris" 
-                                    // 🟢 AUTO-CAPITALIZAR 
                                     onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                                 />
                             </FormControl>
@@ -207,7 +219,6 @@ export default function Vehicles() {
                             <FormControl>
                                 <Input 
                                     {...field} 
-                                    // 🟢 AUTO-CAPITALIZAR 
                                     onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                                 />
                             </FormControl>
@@ -227,7 +238,6 @@ export default function Vehicles() {
                             <FormControl>
                                 <Input 
                                     {...field} 
-                                    // 🟢 AUTO-CAPITALIZAR 
                                     onChange={(e) => field.onChange(toTitleCase(e.target.value))}
                                 />
                             </FormControl>
@@ -238,7 +248,6 @@ export default function Vehicles() {
                         <FormItem>
                             <FormLabel>RUT Propietario *</FormLabel>
                             <FormControl>
-                                {/* 🟢 INPUT RUT INTELIGENTE */}
                                 <RutInput {...field} placeholder="12.345.678-9" />
                             </FormControl>
                             <FormMessage />
@@ -292,6 +301,17 @@ export default function Vehicles() {
         )}
       </div>
 
+      {/* 🟢 AGREGADO: Componente Visual del Buscador */}
+      <div className="flex items-center gap-2 bg-background p-2 rounded-lg border shadow-sm max-w-md">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <Input 
+          placeholder="Buscar por patente, modelo o dueño..." 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border-0 focus-visible:ring-0 bg-transparent"
+        />
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -306,14 +326,15 @@ export default function Vehicles() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vehicles?.length === 0 ? (
+              {/* 🟢 MODIFICADO: Uso de filteredVehicles */}
+              {filteredVehicles.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No hay vehículos registrados.
+                    {vehicles && vehicles.length > 0 ? "No se encontraron resultados." : "No hay vehículos registrados."}
                   </TableCell>
                 </TableRow>
               ) : (
-                vehicles?.map((vehicle) => (
+                filteredVehicles.map((vehicle) => (
                   <TableRow key={vehicle.id}>
                     <TableCell className="font-mono font-bold">{vehicle.plate}</TableCell>
                     <TableCell>

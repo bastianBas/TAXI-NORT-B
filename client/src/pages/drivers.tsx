@@ -39,45 +39,31 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type Driver } from "@shared/schema";
-import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car } from "lucide-react";
+// 🟢 AGREGADO: Search al import
+import { Plus, Pencil, Trash2, Loader2, UserSquare2, Car, Search } from "lucide-react";
 import { z } from "zod"; 
 
-// 🟢 IMPORTS DE UTILIDADES
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PhoneInput } from "@/components/phone-input";
 
-// 🟢 ESQUEMA ESTRICTO CORREGIDO Y AMPLIADO
 const strictDriverSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
-  
-  // RUT Principal (Usuario/Contraseña)
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), { message: "RUT inválido (Dígito incorrecto)" }),
-
-  // 🟢 CORRECCIÓN: Teléfono min(15) exactos (+56 9 XXXX XXXX son 15 chars)
   phone: z.string()
     .min(15, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
-
   commune: z.string().min(1, "La comuna es obligatoria"),
   address: z.string().min(1, "La dirección es obligatoria"),
-  
-  // N° Licencia (RUT)
   licenseNumber: z.string()
     .min(1, "N° Licencia obligatorio")
     .refine((val) => validateRut(val), { message: "RUT de licencia inválido" }),
-
   licenseClass: z.string().min(1, "Clase obligatoria"),
-  
-  // 🟢 NUEVO CAMPO: Último Control
   lastControlDate: z.string().min(1, "Fecha último control obligatoria"),
-  
-  // Próximo Control
   licenseDate: z.string().min(1, "Vencimiento obligatorio"),
-  
   status: z.string().default("active"),
 });
 
@@ -89,11 +75,25 @@ export default function Drivers() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // 🟢 AGREGADO: Estado para el buscador
+  const [searchTerm, setSearchTerm] = useState("");
+
   const canEdit = ["admin", "operator"].includes(user?.role || "");
 
   const { data: drivers, isLoading } = useQuery<Driver[]>({
     queryKey: ["/api/drivers"],
   });
+
+  // 🟢 AGREGADO: Lógica de filtrado
+  const filteredDrivers = drivers?.filter((driver) => {
+    const search = searchTerm.toLowerCase();
+    return (
+      driver.name.toLowerCase().includes(search) ||
+      driver.rut.toLowerCase().includes(search) ||
+      driver.phone?.includes(search) ||
+      driver.email?.toLowerCase().includes(search)
+    );
+  }) || [];
 
   const form = useForm<DriverFormValues>({
     resolver: zodResolver(strictDriverSchema),
@@ -106,7 +106,7 @@ export default function Drivers() {
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
-      lastControlDate: "", // 🟢 Default nuevo campo
+      lastControlDate: "",
       licenseDate: "",
       status: "active",
     },
@@ -162,7 +162,7 @@ export default function Drivers() {
     }
   };
 
-  const handleEdit = (driver: any) => { // Usamos any temporalmente si el tipo Driver en DB aun no tiene lastControlDate
+  const handleEdit = (driver: any) => {
     setEditingId(driver.id);
     form.reset({
       name: driver.name,
@@ -173,7 +173,7 @@ export default function Drivers() {
       address: driver.address || "",
       licenseNumber: driver.licenseNumber,
       licenseClass: driver.licenseClass,
-      lastControlDate: driver.lastControlDate || "", // 🟢 Cargar dato al editar
+      lastControlDate: driver.lastControlDate || "",
       licenseDate: driver.licenseDate,
       status: driver.status,
     });
@@ -191,7 +191,7 @@ export default function Drivers() {
       address: "",
       licenseNumber: "",
       licenseClass: "A2",
-      lastControlDate: "", // 🟢 Reset nuevo campo
+      lastControlDate: "",
       licenseDate: "",
       status: "active",
     });
@@ -302,10 +302,8 @@ export default function Drivers() {
                   {/* LICENCIA */}
                   <div className="p-4 border rounded-md bg-slate-50 dark:bg-slate-900/50 space-y-4">
                     <h3 className="font-semibold flex items-center gap-2"><Car className="h-4 w-4" /> Licencia de Conducir</h3>
-                    {/* 🟢 CAMBIO GRID: md:grid-cols-2 para acomodar 4 campos */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       
-                      {/* N° LICENCIA */}
                       <FormField control={form.control} name="licenseNumber" render={({ field }) => (
                         <FormItem>
                           <FormLabel>N° Licencia (RUT) *</FormLabel>
@@ -316,7 +314,6 @@ export default function Drivers() {
                         </FormItem>
                       )} />
 
-                      {/* CLASE */}
                       <FormField control={form.control} name="licenseClass" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Clase *</FormLabel>
@@ -334,7 +331,6 @@ export default function Drivers() {
                         </FormItem>
                       )} />
 
-                      {/* 🟢 NUEVO CAMPO: ÚLTIMO CONTROL */}
                       <FormField control={form.control} name="lastControlDate" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Último Control *</FormLabel>
@@ -343,7 +339,6 @@ export default function Drivers() {
                         </FormItem>
                       )} />
 
-                      {/* PRÓXIMO CONTROL */}
                       <FormField control={form.control} name="licenseDate" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Próx. Control *</FormLabel>
@@ -364,6 +359,17 @@ export default function Drivers() {
         )}
       </div>
 
+      {/* 🟢 AGREGADO: Componente Visual del Buscador */}
+      <div className="flex items-center gap-2 bg-background p-2 rounded-lg border shadow-sm max-w-md">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <Input 
+          placeholder="Buscar por nombre, RUT o teléfono..." 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border-0 focus-visible:ring-0 bg-transparent"
+        />
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -373,22 +379,21 @@ export default function Drivers() {
                 <TableHead>RUT</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Licencia</TableHead>
-                {/* 🟢 AGREGAR HEADER SI QUIERES VERLO EN LA TABLA */}
-                {/* <TableHead>Ult. Control</TableHead> */}
                 <TableHead>Próx. Control</TableHead>
                 <TableHead>Teléfono</TableHead>
                 {canEdit && <TableHead className="w-[100px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {drivers?.length === 0 ? (
+              {/* 🟢 MODIFICADO: Uso de filteredDrivers en lugar de drivers */}
+              {filteredDrivers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    No hay conductores registrados.
+                    {drivers && drivers.length > 0 ? "No se encontraron resultados." : "No hay conductores registrados."}
                   </TableCell>
                 </TableRow>
               ) : (
-                drivers?.map((driver) => (
+                filteredDrivers.map((driver) => (
                   <TableRow key={driver.id}>
                     <TableCell className="font-medium">{driver.name}</TableCell>
                     <TableCell>{driver.rut}</TableCell>
@@ -399,7 +404,6 @@ export default function Drivers() {
                       </span>
                       {driver.licenseNumber}
                     </TableCell>
-                    {/* <TableCell>{driver.lastControlDate}</TableCell> */}
                     <TableCell>{driver.licenseDate}</TableCell>
                     <TableCell>{driver.phone}</TableCell>
                     {canEdit && (
