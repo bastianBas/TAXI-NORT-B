@@ -1,4 +1,4 @@
-import { useEffect } from "react"; // 🟢 AGREGADO: Para escuchar cambios en el RUT
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/lib/auth";
@@ -23,25 +23,21 @@ import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { Car } from "lucide-react";
 
-// 🟢 IMPORTS DE UTILIDADES
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PhoneInput } from "@/components/phone-input";
 
-// Schema Estricto
 const registerSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
   
-  // 🟢 RUT ESTRICTO
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), {
       message: "RUT inválido (El dígito verificador no coincide)",
     }),
 
-  // 🟢 TELÉFONO CORREGIDO: Se ajustó a min(15) para coincidir con "+56 9 XXXX XXXX"
   phone: z.string()
     .min(15, "El teléfono debe tener 8 dígitos (+56 9 XXXX XXXX)"),
 
@@ -63,26 +59,27 @@ export default function Register() {
       name: "",
       email: "",
       rut: "",
-      phone: "+56 9 ", // Valor inicial
+      phone: "+56 9 ",
       password: "",
       confirmPassword: "",
     },
   });
 
-  // 🟢 LÓGICA AGREGADA: RUT -> CONTRASEÑA
+  // Lógica: RUT -> Contraseña
   const rutValue = form.watch("rut");
 
   useEffect(() => {
     if (rutValue) {
-      // 1. Limpiar RUT: quitar puntos y guiones
+      // 1. Limpiar RUT: quitar puntos y guiones (ej: 21.087.819-k -> 21087819k)
       const clean = rutValue.replace(/\./g, "").replace(/-/g, "");
       
       // 2. Si tiene longitud suficiente para tener cuerpo + DV
       if (clean.length > 1) {
-        // 3. Obtener solo el cuerpo (sin el último dígito verificador)
+        // 3. Obtener solo el cuerpo (sin el último caracter/DV)
+        // ej: 21087819k -> 21087819
         const pass = clean.slice(0, -1);
         
-        // 4. Asignar automáticamente a los campos de contraseña
+        // 4. Asignar automáticamente a los campos ocultos
         form.setValue("password", pass, { shouldValidate: true });
         form.setValue("confirmPassword", pass, { shouldValidate: true });
       }
@@ -144,13 +141,15 @@ export default function Register() {
                 )}
               />
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4"> 
+              {/* Cambiado a 1 columna para que el RUT tenga espacio para el texto largo */}
                 <FormField
                     control={form.control}
                     name="rut"
                     render={({ field }) => (
                     <FormItem>
-                        <FormLabel>RUT *</FormLabel>
+                        {/* 🟢 ETIQUETA MODIFICADA CON AVISO DE CONTRASEÑA */}
+                        <FormLabel>RUT (Se usará como contraseña sin dígito verificador) *</FormLabel>
                         <FormControl>
                         <RutInput placeholder="12.345.678-9" {...field} />
                         </FormControl>
@@ -158,6 +157,7 @@ export default function Register() {
                     </FormItem>
                     )}
                 />
+                
                 <FormField
                     control={form.control}
                     name="phone"
@@ -173,33 +173,10 @@ export default function Register() {
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Contraseña *</FormLabel>
-                    <FormControl>
-                      {/* Se llenará automáticamente al escribir el RUT */}
-                      <Input type="password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirmar Contraseña *</FormLabel>
-                    <FormControl>
-                      <Input type="password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* 🟢 CAMPOS OCULTOS PARA CONTRASEÑA (Necesarios para el envío del formulario) */}
+              <input type="hidden" {...form.register("password")} />
+              <input type="hidden" {...form.register("confirmPassword")} />
+
               <Button
                 type="submit"
                 className="w-full bg-slate-900 text-white hover:bg-slate-800"
