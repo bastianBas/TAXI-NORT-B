@@ -3,31 +3,21 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/lib/auth";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
-import { Car } from "lucide-react";
+// 🟢 IMPORTS DE ICONOS PARA ESTILO VISUAL
+import { Car, User, Mail, Smartphone, IdCard } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 import { validateRut } from "@/lib/rut-utils";
 import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PhoneInput } from "@/components/phone-input";
 
+// --- VALIDACIONES (Misma lógica corregida) ---
 const registerSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
@@ -35,7 +25,7 @@ const registerSchema = z.object({
   rut: z.string()
     .min(1, "El RUT es obligatorio")
     .refine((val) => validateRut(val), {
-      message: "RUT inválido (El dígito verificador no coincide)",
+      message: "RUT inválido (DV incorrecto)",
     }),
 
   phone: z.string()
@@ -65,134 +55,172 @@ export default function Register() {
     },
   });
 
-  // Lógica: RUT -> Contraseña
+  // --- LÓGICA AUTOMÁTICA (RUT -> PASSWORD) ---
   const rutValue = form.watch("rut");
 
   useEffect(() => {
     if (rutValue) {
-      // 1. Limpiar RUT: quitar puntos y guiones (ej: 21.087.819-k -> 21087819k)
       const clean = rutValue.replace(/\./g, "").replace(/-/g, "");
-      
-      // 2. Si tiene longitud suficiente para tener cuerpo + DV
       if (clean.length > 1) {
-        // 3. Obtener solo el cuerpo (sin el último caracter/DV)
-        // ej: 21087819k -> 21087819
         const pass = clean.slice(0, -1);
-        
-        // 4. Asignar automáticamente a los campos ocultos
         form.setValue("password", pass, { shouldValidate: true });
         form.setValue("confirmPassword", pass, { shouldValidate: true });
       }
     }
   }, [rutValue, form]);
 
+  // CLASES DE ESTILO IDÉNTICAS AL LOGIN
+  const inputIconClass = "absolute left-3 top-3 h-5 w-5 text-yellow-500/70 z-10";
+  const inputFieldClass = "pl-10 bg-zinc-950/50 border-zinc-700 text-white focus:border-yellow-500 focus:ring-yellow-500/20";
+  // Clase especial para PhoneInput (puede requerir ajuste según el componente, pero intentamos aplicar estilo base)
+  const phoneFieldClass = "bg-zinc-950/50 border-zinc-700 text-white focus-within:border-yellow-500 focus-within:ring-yellow-500/20";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-slate-900 rounded-full">
-              <Car className="h-8 w-8 text-white" />
-            </div>
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 relative overflow-hidden py-10">
+      {/* Fondo decorativo (Igual que login) */}
+      <div 
+        className="absolute inset-0 z-0 opacity-20"
+        style={{
+          backgroundImage: "url('https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?q=80&w=2070&auto=format&fit=crop')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(4px)'
+        }}
+      />
+      
+      {/* Franjas decorativas tipo Taxi */}
+      <div className="absolute top-0 left-0 right-0 h-4 bg-[repeating-linear-gradient(45deg,#FDB813,#FDB813_20px,#000_20px,#000_40px)] z-10 opacity-80"></div>
+      <div className="absolute bottom-0 left-0 right-0 h-4 bg-[repeating-linear-gradient(45deg,#FDB813,#FDB813_20px,#000_20px,#000_40px)] z-10 opacity-80"></div>
+
+      <Card className="w-full max-w-lg shadow-2xl z-10 bg-zinc-900/90 border-yellow-500/50 backdrop-blur-sm">
+        <CardHeader className="space-y-2 text-center pb-6">
+          <div className="mx-auto bg-yellow-500 p-3 rounded-full w-fit mb-2 shadow-[0_0_15px_rgba(253,184,19,0.5)]">
+            <Car className="w-8 h-8 text-black" />
           </div>
-          <CardTitle className="text-2xl font-bold">Crear Cuenta</CardTitle>
-          <CardDescription>
-            Regístrate para unirte a la flota de Taxi Nort
+          <CardTitle className="text-3xl font-black text-white tracking-tighter uppercase">
+            Crear <span className="text-yellow-500">Cuenta</span>
+          </CardTitle>
+          <CardDescription className="text-yellow-500/80 font-medium tracking-widest text-xs uppercase">
+            Únete a la flota Taxi Nort
           </CardDescription>
         </CardHeader>
+        
         <CardContent>
           <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))}
-              className="space-y-4"
-            >
+            <form onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))} className="space-y-4">
+              
+              {/* NOMBRE */}
               <FormField
                 control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nombre Completo *</FormLabel>
+                    <FormLabel className="text-zinc-400">Nombre Completo</FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="Juan Pérez" 
-                        {...field} 
-                        onChange={(e) => field.onChange(toTitleCase(e.target.value))}
-                      />
+                      <div className="relative">
+                        <User className={inputIconClass} />
+                        <Input 
+                          placeholder="Juan Pérez" 
+                          {...field} 
+                          onChange={(e) => field.onChange(toTitleCase(e.target.value))}
+                          className={inputFieldClass}
+                        />
+                      </div>
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-red-400" />
                   </FormItem>
                 )}
               />
+
+              {/* EMAIL */}
               <FormField
                 control={form.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email *</FormLabel>
+                    <FormLabel className="text-zinc-400">Correo Electrónico</FormLabel>
                     <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="juan@ejemplo.com"
-                        {...field}
-                      />
+                      <div className="relative">
+                        <Mail className={inputIconClass} />
+                        <Input 
+                          type="email"
+                          placeholder="juan@ejemplo.com"
+                          {...field}
+                          className={inputFieldClass}
+                        />
+                      </div>
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-red-400" />
                   </FormItem>
                 )}
               />
               
-              <div className="grid grid-cols-1 gap-4"> 
-              {/* Cambiado a 1 columna para que el RUT tenga espacio para el texto largo */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* RUT */}
                 <FormField
                     control={form.control}
                     name="rut"
                     render={({ field }) => (
                     <FormItem>
-                        {/* 🟢 ETIQUETA MODIFICADA CON AVISO DE CONTRASEÑA */}
-                        <FormLabel>RUT (Se usará como contraseña sin dígito verificador) *</FormLabel>
+                        <FormLabel className="text-zinc-400">RUT (Será tu Clave)</FormLabel>
                         <FormControl>
-                        <RutInput placeholder="12.345.678-9" {...field} />
+                            <div className="relative">
+                                <IdCard className={inputIconClass} />
+                                <RutInput 
+                                    placeholder="12.345.678-9" 
+                                    {...field} 
+                                    className={inputFieldClass}
+                                />
+                            </div>
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className="text-red-400" />
                     </FormItem>
                     )}
                 />
-                
+
+                {/* TELÉFONO */}
                 <FormField
                     control={form.control}
                     name="phone"
                     render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Teléfono *</FormLabel>
+                        <FormLabel className="text-zinc-400">Teléfono</FormLabel>
                         <FormControl>
-                        <PhoneInput {...field} />
+                            {/* PhoneInput suele tener su propia estructura, aplicamos clases contenedoras */}
+                            <div className={phoneFieldClass + " rounded-md flex items-center"}>
+                                {/* Ajuste visual para que coincida con el tema oscuro */}
+                                <PhoneInput {...field} className="border-0 bg-transparent text-white placeholder:text-zinc-500 focus-visible:ring-0" />
+                            </div>
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className="text-red-400" />
                     </FormItem>
                     )}
                 />
               </div>
 
-              {/* 🟢 CAMPOS OCULTOS PARA CONTRASEÑA (Necesarios para el envío del formulario) */}
+              {/* CAMPOS OCULTOS DE CONTRASEÑA */}
               <input type="hidden" {...form.register("password")} />
               <input type="hidden" {...form.register("confirmPassword")} />
-
-              <Button
-                type="submit"
-                className="w-full bg-slate-900 text-white hover:bg-slate-800"
+              
+              <Button 
+                type="submit" 
+                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold text-lg h-12 shadow-lg transition-all duration-200 uppercase tracking-wide mt-4" 
                 disabled={registerMutation.isPending}
               >
-                {registerMutation.isPending ? "Registrando..." : "Crear Cuenta"}
+                {registerMutation.isPending ? "Registrando..." : "REGISTRARSE"}
               </Button>
             </form>
           </Form>
-          <div className="mt-4 text-center text-sm">
-            ¿Ya tienes una cuenta?{" "}
-            <Link href="/login" className="text-primary hover:underline font-medium">
-              Inicia sesión
-            </Link>
-          </div>
         </CardContent>
+        
+        <CardFooter className="justify-center border-t border-zinc-800 pt-6">
+          <p className="text-sm text-zinc-500">
+            ¿Ya tienes cuenta?{" "}
+            <Link href="/login" className="text-yellow-500 hover:text-yellow-400 hover:underline font-semibold transition-colors">
+              Inicia sesión aquí
+            </Link>
+          </p>
+        </CardFooter>
       </Card>
     </div>
   );
