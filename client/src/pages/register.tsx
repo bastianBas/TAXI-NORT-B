@@ -4,8 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/lib/auth";
 import { z } from "zod";
 import { Link } from "wouter";
-// 🟢 IMPORTS DE ICONOS PARA ESTILO VISUAL
-import { Car, User, Mail, Smartphone, IdCard } from "lucide-react";
+import { User, Mail, IdCard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +16,7 @@ import { toTitleCase } from "@/lib/format-utils";
 import { RutInput } from "@/components/rut-input";
 import { PhoneInput } from "@/components/phone-input";
 
-// --- VALIDACIONES (Misma lógica corregida) ---
+// --- VALIDACIONES ---
 const registerSchema = z.object({
   name: z.string().min(1, "El nombre es obligatorio"),
   email: z.string().min(1, "El email es obligatorio").email("Email inválido"),
@@ -69,15 +68,13 @@ export default function Register() {
     }
   }, [rutValue, form]);
 
-  // CLASES DE ESTILO IDÉNTICAS AL LOGIN
   const inputIconClass = "absolute left-3 top-3 h-5 w-5 text-yellow-500/70 z-10";
   const inputFieldClass = "pl-10 bg-zinc-950/50 border-zinc-700 text-white focus:border-yellow-500 focus:ring-yellow-500/20";
-  // Clase especial para PhoneInput (puede requerir ajuste según el componente, pero intentamos aplicar estilo base)
   const phoneFieldClass = "bg-zinc-950/50 border-zinc-700 text-white focus-within:border-yellow-500 focus-within:ring-yellow-500/20";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 relative overflow-hidden py-10">
-      {/* Fondo decorativo (Igual que login) */}
+      {/* Fondo decorativo */}
       <div 
         className="absolute inset-0 z-0 opacity-20"
         style={{
@@ -88,15 +85,22 @@ export default function Register() {
         }}
       />
       
-      {/* Franjas decorativas tipo Taxi */}
+      {/* Franjas decorativas */}
       <div className="absolute top-0 left-0 right-0 h-4 bg-[repeating-linear-gradient(45deg,#FDB813,#FDB813_20px,#000_20px,#000_40px)] z-10 opacity-80"></div>
       <div className="absolute bottom-0 left-0 right-0 h-4 bg-[repeating-linear-gradient(45deg,#FDB813,#FDB813_20px,#000_20px,#000_40px)] z-10 opacity-80"></div>
 
       <Card className="w-full max-w-lg shadow-2xl z-10 bg-zinc-900/90 border-yellow-500/50 backdrop-blur-sm">
         <CardHeader className="space-y-2 text-center pb-6">
-          <div className="mx-auto bg-yellow-500 p-3 rounded-full w-fit mb-2 shadow-[0_0_15px_rgba(253,184,19,0.5)]">
-            <Car className="w-8 h-8 text-black" />
+          
+          {/* 🟢 LOGO ACTUALIZADO: logo-oficial.jpg */}
+          <div className="mx-auto mb-4">
+             <img 
+               src="/uploads/logo-oficial.jpg" 
+               alt="Logo Taxi Nort" 
+               className="h-24 w-auto mx-auto rounded-lg object-contain shadow-lg border border-yellow-500/20"
+             />
           </div>
+
           <CardTitle className="text-3xl font-black text-white tracking-tighter uppercase">
             Crear <span className="text-yellow-500">Cuenta</span>
           </CardTitle>
@@ -109,7 +113,6 @@ export default function Register() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit((data) => registerMutation.mutate(data))} className="space-y-4">
               
-              {/* NOMBRE */}
               <FormField
                 control={form.control}
                 name="name"
@@ -132,7 +135,6 @@ export default function Register() {
                 )}
               />
 
-              {/* EMAIL */}
               <FormField
                 control={form.control}
                 name="email"
@@ -156,7 +158,6 @@ export default function Register() {
               />
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* RUT */}
                 <FormField
                     control={form.control}
                     name="rut"
@@ -178,7 +179,6 @@ export default function Register() {
                     )}
                 />
 
-                {/* TELÉFONO */}
                 <FormField
                     control={form.control}
                     name="phone"
@@ -186,9 +186,7 @@ export default function Register() {
                     <FormItem>
                         <FormLabel className="text-zinc-400">Teléfono</FormLabel>
                         <FormControl>
-                            {/* PhoneInput suele tener su propia estructura, aplicamos clases contenedoras */}
                             <div className={phoneFieldClass + " rounded-md flex items-center"}>
-                                {/* Ajuste visual para que coincida con el tema oscuro */}
                                 <PhoneInput {...field} className="border-0 bg-transparent text-white placeholder:text-zinc-500 focus-visible:ring-0" />
                             </div>
                         </FormControl>
@@ -198,7 +196,6 @@ export default function Register() {
                 />
               </div>
 
-              {/* CAMPOS OCULTOS DE CONTRASEÑA */}
               <input type="hidden" {...form.register("password")} />
               <input type="hidden" {...form.register("confirmPassword")} />
               

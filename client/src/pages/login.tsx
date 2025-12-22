@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
-import { Car, User, Lock } from "lucide-react"; // Asegúrate de tener lucide-react instalado (común en shadcn)
+import { User, Lock } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -35,26 +35,31 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 relative overflow-hidden">
-      {/* Fondo decorativo con imagen difuminada o degradado */}
+      {/* Fondo decorativo */}
       <div 
         className="absolute inset-0 z-0 opacity-20"
         style={{
-          backgroundImage: "url('https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?q=80&w=2070&auto=format&fit=crop')", // Imagen genérica de ciudad/tráfico
+          backgroundImage: "url('https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?q=80&w=2070&auto=format&fit=crop')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(4px)'
         }}
       />
       
-      {/* Franjas decorativas tipo Taxi (Amarillo/Negro) */}
+      {/* Franjas decorativas */}
       <div className="absolute top-0 left-0 right-0 h-4 bg-[repeating-linear-gradient(45deg,#FDB813,#FDB813_20px,#000_20px,#000_40px)] z-10 opacity-80"></div>
       <div className="absolute bottom-0 left-0 right-0 h-4 bg-[repeating-linear-gradient(45deg,#FDB813,#FDB813_20px,#000_20px,#000_40px)] z-10 opacity-80"></div>
 
       <Card className="w-full max-w-md shadow-2xl z-10 bg-zinc-900/90 border-yellow-500/50 backdrop-blur-sm">
         <CardHeader className="space-y-2 text-center pb-8">
-          {/* Logo o Icono Principal */}
-          <div className="mx-auto bg-yellow-500 p-3 rounded-full w-fit mb-2 shadow-[0_0_15px_rgba(253,184,19,0.5)]">
-            <Car className="w-8 h-8 text-black" />
+          
+          {/* 🟢 LOGO ACTUALIZADO: logo-oficial.jpg */}
+          <div className="mx-auto mb-4">
+            <img 
+              src="/uploads/logo-oficial.jpg" 
+              alt="Logo Taxi Nort" 
+              className="h-24 w-auto mx-auto rounded-lg object-contain shadow-lg border border-yellow-500/20"
+            />
           </div>
           
           <CardTitle className="text-4xl font-black text-white tracking-tighter uppercase">
