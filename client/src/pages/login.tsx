@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
-import { Car, User, Lock } from "lucide-react"; // Asegúrate de tener lucide-react instalado (común en shadcn)
+import { Car, User, Lock } from "lucide-react"; 
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -35,14 +35,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 relative overflow-hidden">
-      {/* Fondo decorativo con imagen difuminada o degradado */}
+      {/* Fondo con tu imagen cargada */}
       <div 
-        className="absolute inset-0 z-0 opacity-20"
+        className="absolute inset-0 z-0 opacity-40"
         style={{
-          backgroundImage: "url('https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?q=80&w=2070&auto=format&fit=crop')", // Imagen genérica de ciudad/tráfico
+          backgroundImage: "url('/image_ea23c8.jpg')", // Ruta directa a tu imagen en la carpeta public
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          filter: 'blur(4px)'
+          filter: 'blur(3px)'
         }}
       />
       
